@@ -1,0 +1,46 @@
+# Lint on every push and pull request (also called by release.yml before a release is built).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: php -l (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+      - name: Lint every PHP file
+        run: |
+          set -o pipefail
+          if ! git ls-files -z '*.php' | xargs -0 -n 1 -P 4 php -l > lint.log 2>&1; then
+            grep -v '^No syntax errors detected' lint.log
+            exit 1
+          fi
+          echo "$(grep -c '^No syntax errors detected' lint.log) PHP files OK on PHP ${{ matrix.php }}"
+
+  versions:
+    name: Version strings agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Header Version == LB_VERSION == readme Stable tag
+        run: node tools/release.mjs verify

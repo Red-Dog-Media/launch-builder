@@ -1,0 +1,23 @@
+# Line endings: LF in the repository, in checkouts and in the release zip.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
+
+# Kept out of the release zip (launch-builder.zip is built with `git archive`, which honours export-ignore).
+# The zip ships the plugin itself: launch-builder.php, uninstall.php, includes/, blocks/, patterns/, assets/,
+# readme.txt, CHANGELOG.md and LICENSE.
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.github export-ignore
+/.playground export-ignore
+/docs export-ignore
+/screenshots export-ignore
+/tests export-ignore
+/tools export-ignore
+/README.md export-ignore
+*.cmd export-ignore
+*.mjs export-ignore

@@ -1,0 +1,467 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "launch/rating",
+	"title": "Rating Widget",
+	"category": "launch-builder",
+	"icon": "star-filled",
+	"description": "Star rating, review count and platform logos. Pick a layout from the block toolbar (Variations) or the Styles panel.",
+	"keywords": [
+		"reviews",
+		"stars",
+		"reputation",
+		"testimonial",
+		"trust"
+	],
+	"textdomain": "launch-builder",
+	"attributes": {
+		"type": {
+			"type": "string",
+			"default": "badge"
+		},
+		"rating": {
+			"type": "number",
+			"default": 4.8
+		},
+		"showRating": {
+			"type": "boolean",
+			"default": true
+		},
+		"text": {
+			"type": "string",
+			"default": "887+ Combined Reviews"
+		},
+		"link": {
+			"type": "string",
+			"default": ""
+		},
+		"newTab": {
+			"type": "boolean",
+			"default": true
+		},
+		"starCount": {
+			"type": "number",
+			"default": 5
+		},
+		"starStyle": {
+			"type": "string",
+			"default": "sharp"
+		},
+		"starColor": {
+			"type": "string",
+			"default": ""
+		},
+		"starEmpty": {
+			"type": "string",
+			"default": ""
+		},
+		"starSize": {
+			"type": "number",
+			"default": 34
+		},
+		"starGap": {
+			"type": "number",
+			"default": 4
+		},
+		"ratingSize": {
+			"type": "number",
+			"default": 44
+		},
+		"ratingColor": {
+			"type": "string",
+			"default": ""
+		},
+		"ratingWeight": {
+			"type": "string",
+			"default": "300"
+		},
+		"textSize": {
+			"type": "number",
+			"default": 17
+		},
+		"textColor": {
+			"type": "string",
+			"default": ""
+		},
+		"textWeight": {
+			"type": "string",
+			"default": "400"
+		},
+		"logos": {
+			"type": "array",
+			"default": []
+		},
+		"logoHeight": {
+			"type": "number",
+			"default": 46
+		},
+		"logoGap": {
+			"type": "number",
+			"default": 12
+		},
+		"logoPosition": {
+			"type": "string",
+			"default": "start"
+		},
+		"logoStyle": {
+			"type": "string",
+			"default": "original"
+		},
+		"logoDivider": {
+			"type": "boolean",
+			"default": false
+		},
+		"contentAlign": {
+			"type": "string",
+			"default": "start"
+		},
+		"gap": {
+			"type": "number",
+			"default": 22
+		},
+		"maxWidth": {
+			"type": "number",
+			"default": 0
+		},
+		"mobile": {
+			"type": "string",
+			"default": "stack"
+		},
+		"breakpoint": {
+			"type": "string",
+			"default": "480"
+		},
+		"mobileScale": {
+			"type": "number",
+			"default": 85
+		},
+		"shape": {
+			"type": "string",
+			"default": "soft"
+		},
+		"density": {
+			"type": "string",
+			"default": "default"
+		}
+	},
+	"supports": {
+		"html": false,
+		"anchor": true,
+		"align": [
+			"wide",
+			"full"
+		],
+		"color": {
+			"background": true,
+			"gradients": true,
+			"text": false
+		},
+		"spacing": {
+			"margin": true,
+			"padding": true
+		},
+		"typography": {
+			"fontFamily": true
+		},
+		"__experimentalBorder": {
+			"color": true,
+			"radius": true,
+			"style": true,
+			"width": true
+		},
+		"shadow": true
+	},
+	"variations": [
+		{
+			"name": "badge",
+			"title": "Rating Badge",
+			"description": "Logos, big score, stars and review count in a row.",
+			"attributes": {
+				"type": "badge"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"isDefault": true,
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "badge-soft",
+			"title": "Badge: soft",
+			"description": "Badge on a soft palette-tinted surface.",
+			"attributes": {
+				"type": "badge",
+				"className": "is-style-soft"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "badge-outline",
+			"title": "Badge: outline",
+			"description": "Badge with a thin outline and sharp corners.",
+			"attributes": {
+				"type": "badge",
+				"className": "is-style-outline",
+				"shape": "sharp"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "badge-dark",
+			"title": "Badge: dark",
+			"description": "Badge on a dark surface for light sections.",
+			"attributes": {
+				"type": "badge",
+				"className": "is-style-dark"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "card",
+			"title": "Rating Card",
+			"description": "Centered stat card: score, stars, caption.",
+			"attributes": {
+				"type": "card",
+				"contentAlign": "center",
+				"logoPosition": "top",
+				"ratingWeight": "700",
+				"ratingSize": 56,
+				"className": "is-style-soft"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "card-outline",
+			"title": "Card: outline",
+			"description": "Stat card with an outline and sharp corners.",
+			"attributes": {
+				"type": "card",
+				"contentAlign": "center",
+				"logoPosition": "top",
+				"ratingWeight": "700",
+				"ratingSize": 56,
+				"className": "is-style-outline",
+				"shape": "sharp"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "card-dark",
+			"title": "Card: dark",
+			"description": "Stat card on a dark surface.",
+			"attributes": {
+				"type": "card",
+				"contentAlign": "center",
+				"logoPosition": "top",
+				"ratingWeight": "700",
+				"ratingSize": 56,
+				"className": "is-style-dark"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "card-brand",
+			"title": "Card: brand",
+			"description": "Stat card in your brand color.",
+			"attributes": {
+				"type": "card",
+				"contentAlign": "center",
+				"logoPosition": "top",
+				"ratingWeight": "700",
+				"ratingSize": 56,
+				"className": "is-style-brand"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "pill",
+			"title": "Rating Pill",
+			"description": "Compact one-line strip: stars, score, review count.",
+			"attributes": {
+				"type": "pill",
+				"starSize": 18,
+				"ratingSize": 16,
+				"ratingWeight": "600",
+				"textSize": 15,
+				"logoHeight": 22,
+				"gap": 12
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "pill-outline",
+			"title": "Pill: outline",
+			"description": "Compact pill with a round outline.",
+			"attributes": {
+				"type": "pill",
+				"starSize": 18,
+				"ratingSize": 16,
+				"ratingWeight": "600",
+				"textSize": 15,
+				"logoHeight": 22,
+				"gap": 12,
+				"className": "is-style-outline",
+				"shape": "round",
+				"density": "compact"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "pill-dark",
+			"title": "Pill: dark",
+			"description": "Compact round pill on a dark surface.",
+			"attributes": {
+				"type": "pill",
+				"starSize": 18,
+				"ratingSize": 16,
+				"ratingWeight": "600",
+				"textSize": 15,
+				"logoHeight": 22,
+				"gap": 12,
+				"className": "is-style-dark",
+				"shape": "round",
+				"density": "compact"
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		},
+		{
+			"name": "stacked",
+			"title": "Rating Stacked",
+			"description": "Stars on top, score and caption below.",
+			"attributes": {
+				"type": "stacked",
+				"contentAlign": "center",
+				"logoPosition": "top",
+				"ratingSize": 22,
+				"ratingWeight": "700",
+				"starSize": 30
+			},
+			"isActive": [
+				"type",
+				"className",
+				"shape"
+			],
+			"scope": [
+				"block",
+				"transform"
+			]
+		}
+	],
+	"render": "file:./render.php",
+	"editorScript": "file:./edit.js",
+	"style": "file:./style.css",
+	"styles": [
+		{
+			"name": "plain",
+			"label": "Plain",
+			"isDefault": true
+		},
+		{
+			"name": "soft",
+			"label": "Soft"
+		},
+		{
+			"name": "outline",
+			"label": "Outline"
+		},
+		{
+			"name": "dark",
+			"label": "Dark"
+		},
+		{
+			"name": "brand",
+			"label": "Brand"
+		}
+	],
+	"example": {
+		"attributes": {
+			"type": "badge",
+			"text": "887+ Combined Reviews"
+		}
+	}
+}

@@ -1,0 +1,10 @@
+/* Breadcrumb trail. Colours from the Kadence palette. */
+.lb-crumbs ol{display:flex;flex-wrap:wrap;align-items:center;gap:0;list-style:none;margin:0;padding:0;font-size:.95rem}
+.lb-crumbs li{display:flex;align-items:center;margin:0;color:var(--global-palette4,#334155)}
+.lb-crumbs li+li:before{content:"\00bb";margin:0 .6em;color:var(--global-palette5,#64748b)}
+.lb-crumbs a{color:var(--global-palette1,#0f766e);text-decoration:underline}
+.lb-crumbs a:hover{color:var(--global-palette2,#115e59)}
+.lb-crumb-home{display:inline-flex;align-items:center;color:var(--global-palette1,#0f766e);text-decoration:none!important}
+.lb-crumbs li:first-child{padding-right:.4em;border-right:1px solid var(--global-palette6,#cbd5e1);margin-right:.2em}
+.lb-crumbs li:first-child+li:before{content:none}
+.lb-crumbs li[aria-current]{font-weight:600;color:var(--global-palette3,#0f172a)}

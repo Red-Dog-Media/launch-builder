@@ -1,0 +1,16 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "launch/breadcrumbs",
+	"title": "Breadcrumbs",
+	"category": "launch-builder",
+	"icon": "arrow-right-alt2",
+	"description": "Home > parent > current page. Understands services (category) and service areas (parent area). Used in the shared breadcrumb bar.",
+	"keywords": ["breadcrumb", "trail", "navigation", "path"],
+	"textdomain": "launch-builder",
+	"attributes": {},
+	"supports": { "html": false, "align": ["wide", "full"], "spacing": { "margin": true, "padding": true } },
+	"render": "file:./render.php",
+	"editorScript": "file:./edit.js",
+	"style": "file:./style.css"
+}

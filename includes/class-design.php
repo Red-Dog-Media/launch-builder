@@ -1,0 +1,537 @@
+<?php
+namespace LaunchBuilder;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Design controls that sit above individual patterns: the theme button style, menu + dropdown styling, the page title
+ * and layout standard for inner pages, and Kadence's "block defaults". Patterns stay free of one-off styling, so a client's
+ * look is changed here once and every page follows. Everything is snapshotted so a change can be undone with restore-snapshot.
+ */
+final class Design {
+
+	public static function define_tools(): void {
+		Abilities::add( 'set-brand', 'Set brand: palette, fonts, logo', 'One call to restyle the whole Kadence site. palette: palette1 (primary accent), palette2 (darker accent), palette3 (headings, darkest), palette4 (body text), palette5-6 (muted text), palette7-8 (light backgrounds), palette9 (white/base). fonts: body/headings/h1..h6. Snapshots first.',
+			[ 'properties' => [
+				'palette'            => [ 'type' => 'object', 'description' => 'palette1..palette9 => hex colour' ],
+				'fonts'              => [ 'type' => 'object', 'description' => '{ body:{family,size,weight,lineHeight}, headings:{family,weight}, h1..h6:{size,lineHeight,weight} }. Google font names are auto-flagged.' ],
+				'logo_attachment_id' => [ 'type' => 'integer' ],
+			] ], [ __CLASS__, 'set_brand' ] );
+
+		Abilities::add( 'set-buttons', 'Design the site-wide buttons', 'Buttons in patterns use the Kadence "Theme Base" style, so this one call restyles every button on the site. primary = the standard button, secondary = Theme Secondary, outline = Outline. Each takes any of: background, color, hover_background, hover_color (palette1-9 or #hex), border_color, border_width (px), radius (px, or "pill"), padding ("sm"|"md"|"lg"|"xl" or [vertical, horizontal] px), weight (400-900), size (px), uppercase (bool), shadow ("none"|"soft"|"lift").',
+			[ 'properties' => [ 'primary' => [ 'type' => 'object' ], 'secondary' => [ 'type' => 'object' ], 'outline' => [ 'type' => 'object' ] ] ], [ __CLASS__, 'set_buttons' ], 'edit_theme_options' );
+
+		Abilities::add( 'set-nav-style', 'Style the menu and its dropdowns', 'Design the main menu (block header) and the sub-menu dropdown. links: {color, hover, active, style ("standard"|"underline"|"underline-fullheight"|"bold"), weight, size, uppercase}. dropdown: {background, hover_background, color, hover_color, active_color, width (px), radius (px), shadow ("none"|"soft"|"strong"), reveal ("none"|"fade"|"fade-up"|"fade-down"), divider (bool or colour), padding ([vertical, horizontal] px per item), spacing (gap under the parent, px), size (px), align ("left"|"center"|"right")}. Applies to the menus this plugin made (or one key), and with theme:true also to the Customizer dropdown used by non-block headers.',
+			[ 'properties' => [ 'key' => [ 'type' => 'string' ], 'links' => [ 'type' => 'object' ], 'dropdown' => [ 'type' => 'object' ], 'theme' => [ 'type' => 'boolean' ] ] ], [ __CLASS__, 'set_nav_style' ], 'edit_theme_options' );
+
+		Abilities::add( 'set-page-style', 'Standardise inner pages: title banner and layout', 'Sets the Kadence Customizer defaults every ordinary page inherits, so inner pages need no hero pattern and can be plain text. title: {show, layout ("above" = banner above the content, "normal"), align ("left"|"center"|"right"), height (px), background (palette/hex), color (title colour), overlay, breadcrumbs (bool)}. content: {width ("normal"|"narrow"|"fullwidth"|"right"|"left" = with sidebar), style ("boxed"|"unboxed"), padding ("show"|"hide")}. site: {content_width (px, the max width rows inherit), edge_spacing (rem)}. preset: "banner" gives a tinted title banner with breadcrumbs and unboxed content (recommended for text pages).',
+			[ 'properties' => [ 'preset' => [ 'type' => 'string', 'enum' => [ 'banner', 'plain' ] ], 'title' => [ 'type' => 'object' ], 'content' => [ 'type' => 'object' ], 'site' => [ 'type' => 'object' ] ] ], [ __CLASS__, 'set_page_style' ], 'edit_theme_options' );
+
+		Abilities::add( 'set-sidebar', 'Fill the theme sidebar', 'Puts a synced pattern (by key, from set-synced-pattern; sidebar-contact and sidebar-services are made for it) into the theme sidebar widget area. Every page whose layout has a sidebar (set-page-layout type "sidebar", or width "right"/"left") then shows it; edit it once and all update. key "" removes it. sidebar defaults to the Kadence "sidebar-primary".',
+			[ 'properties' => [ 'key' => [ 'type' => 'string' ], 'sidebar' => [ 'type' => 'string' ] ], 'required' => [ 'key' ] ], [ __CLASS__, 'set_sidebar' ], 'edit_theme_options' );
+
+		Abilities::add( 'set-block-defaults', 'Set Kadence block defaults', 'What a newly inserted Kadence block starts with. preset "standard" makes buttons use Theme Base, rows inherit the theme max width, and icon lists start as a stylised check list in the brand colour. defaults: {"kadence/iconlist": {...attributes}} merges extra block defaults. reset:true clears them all.',
+			[ 'properties' => [ 'preset' => [ 'type' => 'string', 'enum' => [ 'standard' ] ], 'defaults' => [ 'type' => 'object' ], 'reset' => [ 'type' => 'boolean' ] ] ], [ __CLASS__, 'set_block_defaults' ], 'edit_theme_options' );
+	}
+
+	/* ------------------------------------------------------------------ helpers */
+
+	/** A Kadence colour: palette slug, hex or rgb(a). Null when it is none of those. */
+	public static function color( $v ): ?string {
+		$v = trim( (string) $v );
+		if ( preg_match( '/^palette(10|[1-9])$/', $v ) || preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $v ) || preg_match( '/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)$/', $v ) ) {
+			return $v;
+		}
+		return 'transparent' === strtolower( $v ) ? 'transparent' : null;
+	}
+
+	/** Current value of a Kadence theme setting as an array. */
+	private static function mod( string $key, array $default = [] ): array {
+		$cur = get_theme_mod( $key );
+		$arr = is_string( $cur ) ? json_decode( $cur, true ) : ( is_array( $cur ) ? $cur : null );
+		return is_array( $arr ) ? $arr : $default;
+	}
+
+	private static function px( $v, int $min = 0, int $max = 999 ): int {
+		return max( $min, min( $max, (int) $v ) );
+	}
+
+	private static function shadow( string $kind ): array {
+		$none = [ 'color' => 'rgba(0,0,0,0)', 'hOffset' => 0, 'vOffset' => 0, 'blur' => 0, 'spread' => -7, 'inset' => false, 'disabled' => true ];
+		if ( 'soft' === $kind ) {
+			return [ 'color' => 'rgba(0,0,0,0.16)', 'hOffset' => 0, 'vOffset' => 6, 'blur' => 16, 'spread' => -6, 'inset' => false, 'disabled' => false ];
+		}
+		if ( 'lift' === $kind ) {
+			return [ 'color' => 'rgba(0,0,0,0.22)', 'hOffset' => 0, 'vOffset' => 14, 'blur' => 26, 'spread' => -8, 'inset' => false, 'disabled' => false ];
+		}
+		return $none;
+	}
+
+	/* ------------------------------------------------------------------ brand */
+
+	/** Palette (the active Kadence palette option), fonts (theme mods) and logo. Snapshots first. */
+	public static function set_brand( $input ) {
+		$pal_in = (array) ( $input['palette'] ?? [] );
+		$fonts_in = (array) ( $input['fonts'] ?? [] );
+		$logo = (int) ( $input['logo_attachment_id'] ?? 0 );
+		$keys = [];
+		$opt_keys = $pal_in ? [ 'kadence_global_palette' ] : []; // Kadence stores the palette as an option, not a theme mod.
+		foreach ( $fonts_in as $k => $_ ) {
+			$keys[] = [ 'body' => 'base_font', 'headings' => 'heading_font' ][ $k ] ?? ( preg_match( '/^h[1-6]$/', (string) $k ) ? $k . '_font' : null );
+		}
+		if ( $logo ) {
+			$keys[] = 'custom_logo';
+		}
+		$keys = array_values( array_unique( array_filter( $keys ) ) );
+		if ( ! $keys && ! $opt_keys ) {
+			return new \WP_Error( 'lb_empty', 'Nothing to set. Provide palette, fonts or logo_attachment_id.', [ 'status' => 400 ] );
+		}
+		$snap = Abilities::snapshot( 'set-brand', $keys, $opt_keys );
+		$changed = [];
+
+		if ( $pal_in ) {
+			$names = [ 'palette1' => '#2B6CB0', 'palette2' => '#215387', 'palette3' => '#1A202C', 'palette4' => '#2D3748', 'palette5' => '#4A5568', 'palette6' => '#718096', 'palette7' => '#EDF2F7', 'palette8' => '#F7FAFC', 'palette9' => '#ffffff', 'palette10' => '#FfFfFf' ];
+			$default = [ 'palette' => [], 'second-palette' => [], 'third-palette' => [], 'active' => 'palette' ];
+			foreach ( $names as $slug => $color ) {
+				$default['palette'][] = [ 'color' => $color, 'slug' => $slug, 'name' => 'palette10' === $slug ? 'Palette Color Complement' : 'Palette Color ' . substr( $slug, 7 ) ];
+			}
+			$cur = get_option( 'kadence_global_palette' );
+			$pal = is_string( $cur ) && is_array( json_decode( $cur, true ) ) ? json_decode( $cur, true ) : $default;
+			foreach ( $pal['palette'] as &$entry ) {
+				if ( isset( $pal_in[ $entry['slug'] ] ) ) {
+					$hex = sanitize_hex_color( $pal_in[ $entry['slug'] ] );
+					if ( $hex ) {
+						$entry['color'] = $hex;
+					}
+				}
+			}
+			unset( $entry );
+			update_option( 'kadence_global_palette', wp_json_encode( $pal ) );
+			$changed[] = 'palette';
+		}
+
+		$sys = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"';
+		$defaults = [
+			'base_font'    => [ 'size' => [ 'desktop' => 17 ], 'lineHeight' => [ 'desktop' => 1.6 ], 'family' => $sys, 'google' => false, 'weight' => '400', 'variant' => 'regular', 'color' => 'palette4' ],
+			'heading_font' => [ 'family' => 'inherit', 'google' => false, 'weight' => '700', 'variant' => '700', 'color' => 'palette3' ],
+		];
+		foreach ( $fonts_in as $k => $spec ) {
+			$mod = [ 'body' => 'base_font', 'headings' => 'heading_font' ][ $k ] ?? ( preg_match( '/^h[1-6]$/', (string) $k ) ? $k . '_font' : '' );
+			if ( '' === $mod || ! is_array( $spec ) ) {
+				continue;
+			}
+			$font = self::mod( $mod, $defaults[ $mod ] ?? [ 'family' => 'inherit', 'google' => false ] );
+			if ( ! empty( $spec['family'] ) ) {
+				$fam = sanitize_text_field( $spec['family'] );
+				$is_sys = in_array( strtolower( $fam ), [ 'inherit', 'system', 'system-ui', 'sans-serif', 'serif' ], true );
+				$font['family'] = $is_sys ? ( 'system' === strtolower( $fam ) ? $sys : $fam ) : $fam;
+				$font['google'] = ! $is_sys;
+				$font['loadGoogle'] = true;
+			}
+			if ( isset( $spec['weight'] ) ) {
+				$font['weight'] = (string) $spec['weight'];
+				$font['variant'] = 'regular' === $font['weight'] ? 'regular' : (string) $spec['weight'];
+			}
+			if ( isset( $spec['size'] ) ) {
+				$font['size'] = array_merge( (array) ( $font['size'] ?? [] ), [ 'desktop' => 0 + $spec['size'] ] );
+			}
+			if ( isset( $spec['lineHeight'] ) ) {
+				$font['lineHeight'] = array_merge( (array) ( $font['lineHeight'] ?? [] ), [ 'desktop' => 0 + $spec['lineHeight'] ] );
+			}
+			set_theme_mod( $mod, $font ); // Kadence typography settings are stored as arrays (the palette alone is a JSON string).
+			$changed[] = $mod;
+		}
+		if ( $logo && wp_attachment_is_image( $logo ) ) {
+			set_theme_mod( 'custom_logo', $logo );
+			$changed[] = 'custom_logo';
+		}
+		return [ 'changed' => $changed, 'snapshot' => $snap ];
+	}
+
+	/* ------------------------------------------------------------------ buttons */
+
+	public static function set_buttons( $input ) {
+		$prefix = [ 'primary' => 'buttons', 'secondary' => 'buttons_secondary', 'outline' => 'buttons_outline' ];
+		$plan = [];
+		foreach ( $prefix as $kind => $p ) {
+			$s = (array) ( $input[ $kind ] ?? [] );
+			if ( ! $s ) {
+				continue;
+			}
+			// Colours: text, hover text, background, hover background.
+			$col = self::mod( $p . '_color', [ 'color' => '', 'hover' => '' ] );
+			foreach ( [ 'color' => 'color', 'hover_color' => 'hover' ] as $in => $k ) {
+				if ( isset( $s[ $in ] ) && null !== ( $c = self::color( $s[ $in ] ) ) ) {
+					$col[ $k ] = $c;
+					$plan[ $p . '_color' ] = $col;
+				}
+			}
+			if ( 'outline' !== $kind ) {
+				$bg = self::mod( $p . '_background', [ 'color' => '', 'hover' => '' ] );
+				foreach ( [ 'background' => 'color', 'hover_background' => 'hover' ] as $in => $k ) {
+					if ( isset( $s[ $in ] ) && null !== ( $c = self::color( $s[ $in ] ) ) ) {
+						$bg[ $k ] = $c;
+						$plan[ $p . '_background' ] = $bg;
+					}
+				}
+			}
+			// Border.
+			if ( isset( $s['border_width'] ) || isset( $s['border_color'] ) ) {
+				$w = self::px( $s['border_width'] ?? 2, 0, 12 );
+				$plan[ $p . '_border' ] = [ 'width' => $w, 'unit' => 'px', 'style' => $w ? 'solid' : 'none' ];
+				if ( isset( $s['border_color'] ) && null !== ( $c = self::color( $s['border_color'] ) ) ) {
+					$plan[ $p . '_border_colors' ] = [ 'color' => $c, 'hover' => $c ];
+				}
+			}
+			// Corners.
+			if ( isset( $s['radius'] ) ) {
+				$r = 'pill' === $s['radius'] ? 999 : self::px( $s['radius'], 0, 999 );
+				$plan[ $p . '_border_radius' ] = [ 'size' => [ 'mobile' => '', 'tablet' => '', 'desktop' => $r ], 'unit' => [ 'mobile' => 'px', 'tablet' => 'px', 'desktop' => 'px' ] ];
+			}
+			// Padding.
+			if ( isset( $s['padding'] ) ) {
+				$presets = [ 'sm' => [ 8, 18 ], 'md' => [ 12, 26 ], 'lg' => [ 16, 34 ], 'xl' => [ 20, 42 ] ];
+				$vh = is_array( $s['padding'] ) ? [ self::px( $s['padding'][0] ?? 12, 0, 80 ), self::px( $s['padding'][1] ?? 26, 0, 120 ) ] : ( $presets[ (string) $s['padding'] ] ?? null );
+				if ( $vh ) {
+					$plan[ $p . '_padding' ] = [ 'size' => [ 'desktop' => [ $vh[0], $vh[1], $vh[0], $vh[1] ] ], 'unit' => [ 'desktop' => 'px' ], 'locked' => [ 'desktop' => false ] ];
+				}
+			}
+			// Type.
+			if ( isset( $s['weight'] ) || isset( $s['size'] ) || isset( $s['uppercase'] ) ) {
+				$t = self::mod( $p . '_typography', [ 'size' => [ 'desktop' => '' ], 'lineHeight' => [ 'desktop' => '' ], 'family' => 'inherit', 'google' => false, 'weight' => '', 'variant' => '' ] );
+				if ( isset( $s['weight'] ) ) {
+					$w = (string) self::px( $s['weight'], 100, 900 );
+					$t['weight'] = $w;
+					$t['variant'] = $w;
+				}
+				if ( isset( $s['size'] ) ) {
+					$t['size'] = array_merge( (array) ( $t['size'] ?? [] ), [ 'desktop' => self::px( $s['size'], 10, 40 ) ] );
+				}
+				if ( isset( $s['uppercase'] ) ) {
+					$t['transform'] = $s['uppercase'] ? 'uppercase' : 'none';
+				}
+				$plan[ $p . '_typography' ] = $t;
+			}
+			// Shadow (hover lifts when "lift").
+			if ( isset( $s['shadow'] ) && in_array( $s['shadow'], [ 'none', 'soft', 'lift' ], true ) ) {
+				$plan[ $p . '_shadow' ] = self::shadow( 'lift' === $s['shadow'] ? 'soft' : $s['shadow'] );
+				$plan[ $p . '_shadow_hover' ] = 'none' === $s['shadow'] ? self::shadow( 'none' ) : self::shadow( 'lift' );
+			}
+		}
+		if ( ! $plan ) {
+			return new \WP_Error( 'lb_empty', 'Nothing to set. Give primary, secondary and/or outline settings.', [ 'status' => 400 ] );
+		}
+		$snap = Abilities::snapshot( 'set-buttons', array_keys( $plan ) );
+		foreach ( $plan as $k => $v ) {
+			set_theme_mod( $k, $v );
+		}
+		return [ 'changed' => array_keys( $plan ), 'snapshot' => $snap, 'note' => 'Buttons set to "Theme Base" in patterns follow the primary style; "Theme Secondary" follows secondary.' ];
+	}
+
+	/* ------------------------------------------------------------------ menu + dropdown */
+
+	private static function nav_shadow( string $kind ): array {
+		if ( 'none' === $kind ) {
+			return [ [ 'enable' => false, 'color' => '#000000', 'opacity' => 0.1, 'spread' => 0, 'blur' => 13, 'hOffset' => 0, 'vOffset' => 2, 'inset' => false ] ];
+		}
+		$strong = 'strong' === $kind;
+		return [ [ 'enable' => true, 'color' => '#000000', 'opacity' => $strong ? 0.22 : 0.12, 'spread' => 0, 'blur' => $strong ? 34 : 24, 'hOffset' => 0, 'vOffset' => $strong ? 14 : 10, 'inset' => false ] ];
+	}
+
+	private static function nav_typo( array $cur, array $s ): array {
+		$t = $cur ? $cur : [ 'size' => [ '', '', '' ], 'sizeType' => 'px', 'lineHeight' => [ '', '', '' ], 'lineType' => '', 'letterSpacing' => [ '', '', '' ], 'letterType' => 'px', 'textTransform' => '', 'family' => '', 'google' => false, 'style' => '', 'weight' => '', 'variant' => '', 'subset' => '', 'loadGoogle' => true ];
+		if ( isset( $s['size'] ) ) {
+			$t['size'] = [ self::px( $s['size'], 10, 40 ), '', '' ];
+		}
+		if ( isset( $s['weight'] ) ) {
+			$t['weight'] = (string) self::px( $s['weight'], 100, 900 );
+		}
+		if ( isset( $s['uppercase'] ) ) {
+			$t['textTransform'] = $s['uppercase'] ? 'uppercase' : 'none';
+		}
+		return $t;
+	}
+
+	public static function set_nav_style( $input ) {
+		$links = (array) ( $input['links'] ?? [] );
+		$dd = (array) ( $input['dropdown'] ?? [] );
+		$theme = ! empty( $input['theme'] );
+		if ( ! $links && ! $dd ) {
+			return new \WP_Error( 'lb_empty', 'Nothing to set. Give links and/or dropdown settings.', [ 'status' => 400 ] );
+		}
+		$meta = [];
+		$mods = [];
+
+		foreach ( [ 'color' => 'linkColor', 'hover' => 'linkColorHover', 'active' => 'linkColorActive' ] as $in => $m ) {
+			if ( isset( $links[ $in ] ) && null !== ( $c = self::color( $links[ $in ] ) ) ) {
+				$meta[ '_kad_navigation_' . $m ] = $c;
+			}
+		}
+		if ( isset( $links['style'] ) && in_array( $links['style'], [ 'standard', 'underline', 'underline-fullheight', 'bold' ], true ) ) {
+			$meta['_kad_navigation_style'] = $links['style'];
+		}
+		foreach ( [ 'background' => 'dropdownBg', 'hover_background' => 'dropdownBgHover', 'active_background' => 'dropdownBgActive', 'color' => 'dropdownColor', 'hover_color' => 'dropdownColorHover', 'active_color' => 'dropdownColorActive' ] as $in => $alias ) {
+			if ( isset( $dd[ $in ] ) && null !== ( $c = self::color( $dd[ $in ] ) ) ) {
+				$map = [ 'dropdownBg' => '_kad_navigation_backgroundDropdown', 'dropdownBgHover' => '_kad_navigation_backgroundDropdownHover', 'dropdownBgActive' => '_kad_navigation_backgroundDropdownActive', 'dropdownColor' => '_kad_navigation_linkColorDropdown', 'dropdownColorHover' => '_kad_navigation_linkColorDropdownHover', 'dropdownColorActive' => '_kad_navigation_linkColorDropdownActive' ];
+				$meta[ $map[ $alias ] ] = $c;
+			}
+		}
+		if ( isset( $dd['width'] ) ) {
+			$meta['_kad_navigation_dropdownWidth'] = (string) self::px( $dd['width'], 120, 600 );
+			$meta['_kad_navigation_dropdownWidthUnit'] = 'px';
+		}
+		if ( isset( $dd['radius'] ) ) {
+			$r = self::px( $dd['radius'], 0, 60 );
+			$meta['_kad_navigation_dropdownBorderRadius'] = [ $r, $r, $r, $r ];
+			$meta['_kad_navigation_dropdownBorderRadiusUnit'] = 'px';
+		}
+		if ( isset( $dd['shadow'] ) && in_array( $dd['shadow'], [ 'none', 'soft', 'strong' ], true ) ) {
+			$meta['_kad_navigation_dropdownShadow'] = self::nav_shadow( $dd['shadow'] );
+		}
+		if ( isset( $dd['reveal'] ) && in_array( $dd['reveal'], [ 'none', 'fade', 'fade-up', 'fade-down' ], true ) ) {
+			$meta['_kad_navigation_dropdownReveal'] = $dd['reveal'];
+		}
+		if ( isset( $dd['divider'] ) ) {
+			$dc = is_string( $dd['divider'] ) ? self::color( $dd['divider'] ) : ( $dd['divider'] ? 'rgba(0,0,0,0.08)' : null );
+			$none = [ '', '', '' ];
+			$meta['_kad_navigation_dropdownDivider'] = [ [ 'top' => $none, 'right' => $none, 'bottom' => $dc ? [ $dc, 'solid', 1 ] : $none, 'left' => $none, 'unit' => 'px' ] ];
+		}
+		if ( isset( $dd['padding'] ) && is_array( $dd['padding'] ) ) {
+			$v = self::px( $dd['padding'][0] ?? 10, 0, 60 );
+			$h = self::px( $dd['padding'][1] ?? 18, 0, 80 );
+			$meta['_kad_navigation_paddingDropdownLink'] = [ (string) $v, (string) $h, (string) $v, (string) $h ];
+			$meta['_kad_navigation_paddingDropdownLinkUnit'] = 'px';
+		}
+		if ( isset( $dd['spacing'] ) ) {
+			$meta['_kad_navigation_dropdownVerticalSpacing'] = (string) self::px( $dd['spacing'], 0, 60 );
+		}
+		if ( isset( $dd['align'] ) && in_array( $dd['align'], [ 'left', 'center', 'right' ], true ) ) {
+			$meta['_kad_navigation_dropdownLinkHorizontalAlignment'] = $dd['align'];
+		}
+
+		// Menus to style: one key, or every menu this plugin made.
+		$q = [ 'post_type' => 'kadence_navigation', 'post_status' => 'any', 'numberposts' => 20, 'fields' => 'ids', 'meta_key' => '_lb_key' ];
+		if ( ! empty( $input['key'] ) ) {
+			$q['meta_value'] = 'nav-' . sanitize_key( $input['key'] );
+		}
+		$ids = post_type_exists( 'kadence_navigation' ) ? get_posts( $q ) : [];
+		if ( empty( $input['key'] ) ) {
+			$ids = array_values( array_filter( $ids, static function ( $id ) { return 0 === strpos( (string) get_post_meta( $id, '_lb_key', true ), 'nav-' ); } ) );
+		}
+		foreach ( $ids as $id ) { // Typography is merged into what the menu already has.
+			if ( isset( $links['size'] ) || isset( $links['weight'] ) || isset( $links['uppercase'] ) ) {
+				$cur = get_post_meta( $id, '_kad_navigation_typography', true );
+				$meta_t = self::nav_typo( is_array( $cur ) && isset( $cur[0] ) ? $cur[0] : [], $links );
+				update_post_meta( $id, '_kad_navigation_typography', [ $meta_t ] );
+			}
+			if ( isset( $dd['size'] ) ) {
+				$cur = get_post_meta( $id, '_kad_navigation_dropdownTypography', true );
+				update_post_meta( $id, '_kad_navigation_dropdownTypography', [ self::nav_typo( is_array( $cur ) && isset( $cur[0] ) ? $cur[0] : [], [ 'size' => $dd['size'] ] ) ] );
+			}
+			foreach ( $meta as $k => $v ) {
+				update_post_meta( $id, $k, $v );
+			}
+		}
+
+		// The Customizer dropdown (used by non-block headers). Optional.
+		if ( $theme ) {
+			$cur_c = self::mod( 'dropdown_navigation_color', [ 'color' => 'palette8', 'hover' => 'palette9', 'active' => 'palette9' ] );
+			$cur_b = self::mod( 'dropdown_navigation_background', [ 'color' => 'palette3', 'hover' => 'palette4', 'active' => 'palette4' ] );
+			foreach ( [ 'color' => 'color', 'hover_color' => 'hover', 'active_color' => 'active' ] as $in => $k ) {
+				if ( isset( $dd[ $in ] ) && null !== ( $c = self::color( $dd[ $in ] ) ) ) {
+					$cur_c[ $k ] = $c;
+					$mods['dropdown_navigation_color'] = $cur_c;
+				}
+			}
+			foreach ( [ 'background' => 'color', 'hover_background' => 'hover', 'active_background' => 'active' ] as $in => $k ) {
+				if ( isset( $dd[ $in ] ) && null !== ( $c = self::color( $dd[ $in ] ) ) ) {
+					$cur_b[ $k ] = $c;
+					$mods['dropdown_navigation_background'] = $cur_b;
+				}
+			}
+			if ( isset( $dd['width'] ) ) {
+				$mods['dropdown_navigation_width'] = [ 'size' => self::px( $dd['width'], 120, 600 ), 'unit' => 'px' ];
+			}
+			if ( isset( $dd['radius'] ) ) {
+				$r = self::px( $dd['radius'], 0, 60 );
+				$mods['dropdown_navigation_border_radius'] = [ 'size' => [ $r, $r, $r, $r ], 'unit' => 'px', 'locked' => true ];
+			}
+			if ( isset( $dd['reveal'] ) && in_array( $dd['reveal'], [ 'none', 'fade', 'fade-up', 'fade-down' ], true ) ) {
+				$mods['dropdown_navigation_reveal'] = $dd['reveal'];
+			}
+			if ( isset( $dd['shadow'] ) && in_array( $dd['shadow'], [ 'none', 'soft', 'strong' ], true ) ) {
+				$mods['dropdown_navigation_shadow'] = 'none' === $dd['shadow'] ? [ 'color' => 'rgba(0,0,0,0)', 'hOffset' => 0, 'vOffset' => 0, 'blur' => 0, 'spread' => 0, 'inset' => false, 'disabled' => true ]
+					: [ 'color' => 'rgba(0,0,0,' . ( 'strong' === $dd['shadow'] ? '0.22' : '0.12' ) . ')', 'hOffset' => 0, 'vOffset' => 'strong' === $dd['shadow'] ? 14 : 10, 'blur' => 'strong' === $dd['shadow'] ? 34 : 24, 'spread' => 0, 'inset' => false, 'disabled' => false ];
+			}
+			if ( isset( $dd['divider'] ) ) {
+				$dc = is_string( $dd['divider'] ) ? self::color( $dd['divider'] ) : ( $dd['divider'] ? 'rgba(0,0,0,0.08)' : null );
+				$mods['dropdown_navigation_divider'] = [ 'width' => $dc ? 1 : 0, 'unit' => 'px', 'style' => 'solid', 'color' => $dc ?: 'rgba(0,0,0,0)' ];
+			}
+			if ( isset( $dd['size'] ) ) {
+				$t = self::mod( 'dropdown_navigation_typography', [ 'size' => [ 'desktop' => '' ], 'family' => 'inherit', 'google' => false ] );
+				$t['size'] = array_merge( (array) ( $t['size'] ?? [] ), [ 'desktop' => self::px( $dd['size'], 10, 40 ) ] );
+				$mods['dropdown_navigation_typography'] = $t;
+			}
+		}
+		if ( ! $ids && ! $mods ) {
+			return new \WP_Error( 'lb_no_nav', 'No menu from this plugin to style yet. Run set-navigation or set-header with nav items first (or pass theme:true for the Customizer dropdown).', [ 'status' => 404 ] );
+		}
+		$snap = $mods ? Abilities::snapshot( 'set-nav-style', array_keys( $mods ) ) : null;
+		foreach ( $mods as $k => $v ) {
+			set_theme_mod( $k, $v );
+		}
+		return [ 'menus' => $ids, 'menu_settings' => array_keys( $meta ), 'theme_settings' => array_keys( $mods ), 'snapshot' => $snap ];
+	}
+
+	/* ------------------------------------------------------------------ page title + layout */
+
+	public static function set_page_style( $input ) {
+		$preset = (string) ( $input['preset'] ?? '' );
+		$title = (array) ( $input['title'] ?? [] );
+		$content = (array) ( $input['content'] ?? [] );
+		$site = (array) ( $input['site'] ?? [] );
+		if ( 'banner' === $preset ) {
+			$title += [ 'show' => true, 'layout' => 'above', 'align' => 'left', 'height' => 200, 'background' => 'palette7', 'color' => 'palette3', 'breadcrumbs' => true ];
+			$content += [ 'style' => 'unboxed', 'width' => 'normal', 'padding' => 'show' ];
+		} elseif ( 'plain' === $preset ) {
+			$title += [ 'show' => true, 'layout' => 'normal', 'align' => 'left', 'breadcrumbs' => false ];
+			$content += [ 'style' => 'unboxed', 'width' => 'normal', 'padding' => 'show' ];
+		}
+		$plan = [];
+
+		if ( isset( $title['show'] ) ) {
+			$plan['page_title'] = (bool) $title['show'];
+		}
+		if ( isset( $title['layout'] ) && in_array( $title['layout'], [ 'above', 'normal' ], true ) ) {
+			$plan['page_title_layout'] = $title['layout'];
+		}
+		if ( isset( $title['align'] ) && in_array( $title['align'], [ 'left', 'center', 'right' ], true ) ) {
+			$plan['page_title_align'] = [ 'mobile' => '', 'tablet' => '', 'desktop' => $title['align'] ];
+		}
+		if ( isset( $title['height'] ) ) {
+			$plan['page_title_height'] = [ 'size' => [ 'mobile' => '', 'tablet' => '', 'desktop' => self::px( $title['height'], 60, 700 ) ], 'unit' => [ 'mobile' => 'px', 'tablet' => 'px', 'desktop' => 'px' ] ];
+		}
+		if ( isset( $title['background'] ) && null !== ( $c = self::color( $title['background'] ) ) ) {
+			$plan['page_title_background'] = [ 'desktop' => [ 'color' => $c ] ];
+		}
+		if ( isset( $title['overlay'] ) && null !== ( $c = self::color( $title['overlay'] ) ) ) {
+			$plan['page_title_overlay_color'] = $c;
+		}
+		if ( isset( $title['color'] ) && null !== ( $c = self::color( $title['color'] ) ) ) {
+			$font = self::mod( 'page_title_font', [ 'size' => [ 'desktop' => '' ], 'lineHeight' => [ 'desktop' => '' ], 'family' => 'inherit', 'google' => false, 'weight' => '', 'variant' => '', 'color' => '' ] );
+			$font['color'] = $c;
+			$plan['page_title_font'] = $font;
+		}
+		if ( isset( $title['breadcrumbs'] ) ) {
+			$bc = self::mod( 'page_title_element_breadcrumb', [ 'enabled' => false, 'show_title' => true ] );
+			$bc['enabled'] = (bool) $title['breadcrumbs'];
+			$plan['page_title_element_breadcrumb'] = $bc;
+		}
+		if ( isset( $content['width'] ) && in_array( $content['width'], [ 'normal', 'narrow', 'fullwidth', 'left', 'right' ], true ) ) {
+			$plan['page_layout'] = $content['width'];
+		}
+		if ( isset( $content['style'] ) && in_array( $content['style'], [ 'boxed', 'unboxed' ], true ) ) {
+			$plan['page_content_style'] = $content['style'];
+		}
+		if ( isset( $content['padding'] ) && in_array( $content['padding'], [ 'show', 'hide' ], true ) ) {
+			$plan['page_vertical_padding'] = $content['padding'];
+		}
+		if ( isset( $site['content_width'] ) ) {
+			$plan['content_width'] = [ 'size' => self::px( $site['content_width'], 600, 2000 ), 'unit' => 'px' ];
+		}
+		if ( isset( $site['edge_spacing'] ) ) {
+			$plan['content_edge_spacing'] = [ 'size' => [ 'mobile' => '', 'tablet' => '', 'desktop' => max( 0, min( 6, (float) $site['edge_spacing'] ) ) ], 'unit' => [ 'mobile' => 'rem', 'tablet' => 'rem', 'desktop' => 'rem' ] ];
+		}
+		if ( ! $plan ) {
+			return new \WP_Error( 'lb_empty', 'Nothing to set. Give a preset, title, content or site settings.', [ 'status' => 400 ] );
+		}
+		$snap = Abilities::snapshot( 'set-page-style', array_keys( $plan ) );
+		foreach ( $plan as $k => $v ) {
+			set_theme_mod( $k, $v );
+		}
+		return [ 'changed' => array_keys( $plan ), 'snapshot' => $snap ];
+	}
+
+	/* ------------------------------------------------------------------ sidebar */
+
+	/** Show a synced pattern in a theme sidebar through one block widget this plugin owns. */
+	public static function set_sidebar( $input ) {
+		global $wp_registered_sidebars;
+		$sid = sanitize_key( $input['sidebar'] ?? 'sidebar-primary' ) ?: 'sidebar-primary';
+		if ( empty( $wp_registered_sidebars[ $sid ] ) ) {
+			return new \WP_Error( 'lb_sidebar', 'Unknown sidebar "' . $sid . '". Registered: ' . implode( ', ', array_keys( (array) $wp_registered_sidebars ) ), [ 'status' => 404 ] );
+		}
+		$key = sanitize_key( $input['key'] ?? '' );
+		$bid = '' === $key ? 0 : Blueprint::find_synced( $key );
+		if ( '' !== $key && ! $bid ) {
+			return new \WP_Error( 'lb_key', 'No synced pattern with key "' . $key . '". Create it with set-synced-pattern first.', [ 'status' => 404 ] );
+		}
+		$snap = Abilities::snapshot( 'set-sidebar', [], [ 'sidebars_widgets', 'widget_block', 'launch_builder_sidebar_widget' ] );
+		$instances = (array) get_option( 'widget_block', [] );
+		$num = (int) get_option( 'launch_builder_sidebar_widget', 0 );
+		$sw = wp_get_sidebars_widgets();
+		if ( $num ) {
+			foreach ( $sw as $k => $list ) {
+				if ( is_array( $list ) ) {
+					$sw[ $k ] = array_values( array_diff( $list, [ 'block-' . $num ] ) );
+				}
+			}
+		}
+		if ( '' === $key ) {
+			unset( $instances[ $num ] );
+			update_option( 'widget_block', $instances );
+			delete_option( 'launch_builder_sidebar_widget' );
+			wp_set_sidebars_widgets( $sw );
+			return [ 'sidebar' => $sid, 'cleared' => true, 'snapshot' => $snap ];
+		}
+		if ( ! $num || ! isset( $instances[ $num ] ) ) {
+			$nums = array_filter( array_keys( $instances ), 'is_int' );
+			$num = $nums ? max( $nums ) + 1 : 2;
+		}
+		$instances[ $num ] = [ 'content' => '<!-- wp:block {"ref":' . $bid . '} /-->' ];
+		$instances['_multiwidget'] = 1;
+		update_option( 'widget_block', $instances );
+		update_option( 'launch_builder_sidebar_widget', $num );
+		$sw[ $sid ] = array_merge( [ 'block-' . $num ], array_values( array_diff( (array) ( $sw[ $sid ] ?? [] ), [ 'block-' . $num ] ) ) );
+		wp_set_sidebars_widgets( $sw );
+		return [ 'sidebar' => $sid, 'synced_id' => $bid, 'widget' => 'block-' . $num, 'snapshot' => $snap, 'note' => 'Pages show it when their layout has a sidebar: set-page-layout type "sidebar".' ];
+	}
+
+	/* ------------------------------------------------------------------ block defaults */
+
+	/** The recommended defaults: theme-base buttons, theme-width rows, stylised icon lists. */
+	public static function standard_defaults(): array {
+		return [
+			'kadence/singlebtn' => [ 'inheritStyles' => 'inherit' ],
+			'kadence/rowlayout' => [ 'inheritMaxWidth' => true ],
+			'kadence/iconlist'  => [ 'icon' => 'fe_checkCircle', 'listGap' => 12 ],
+			'kadence/listitem'  => [ 'icon' => 'fe_checkCircle', 'color' => 'palette1', 'showIcon' => true ],
+		];
+	}
+
+	public static function set_block_defaults( $input ) {
+		$cur = json_decode( (string) get_option( 'kadence_blocks_config_blocks', '' ), true );
+		$cur = is_array( $cur ) ? $cur : [];
+		$snap = Abilities::snapshot( 'set-block-defaults', [], [ 'kadence_blocks_config_blocks' ] );
+		if ( ! empty( $input['reset'] ) ) {
+			$cur = [];
+		}
+		$add = [];
+		if ( 'standard' === ( $input['preset'] ?? '' ) ) {
+			$add = self::standard_defaults();
+		}
+		foreach ( (array) ( $input['defaults'] ?? [] ) as $block => $attrs ) {
+			if ( is_string( $block ) && preg_match( '#^kadence/[a-z0-9-]+$#', $block ) && is_array( $attrs ) ) {
+				$add[ $block ] = array_merge( (array) ( $add[ $block ] ?? [] ), $attrs );
+			}
+		}
+		if ( ! $add && empty( $input['reset'] ) ) {
+			return new \WP_Error( 'lb_empty', 'Give preset "standard", defaults, or reset:true.', [ 'status' => 400 ] );
+		}
+		foreach ( $add as $block => $attrs ) {
+			$cur[ $block ] = array_merge( (array) ( $cur[ $block ] ?? [] ), $attrs );
+		}
+		update_option( 'kadence_blocks_config_blocks', $cur ? wp_json_encode( $cur ) : '' );
+		return [ 'blocks' => array_keys( $cur ), 'snapshot' => $snap, 'note' => 'New Kadence blocks inserted in the editor start with these. Existing blocks and patterns are unchanged.' ];
+	}
+}

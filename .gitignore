@@ -1,0 +1,13 @@
+# Local Playground preview (written by preview.cmd / preview-share.cmd)
+.playground/apppass.txt
+.playground/blueprint-share.json
+
+# Release builds (node tools/release.mjs build)
+/dist/
+*.zip
+
+# Dependencies and editor/OS files
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
