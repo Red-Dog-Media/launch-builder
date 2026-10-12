@@ -5,6 +5,7 @@
  * Description: Full-width photo with a dark brand overlay: big headline, a sub-line, a trust line (live phone support, no voicemail), two buttons and the rating pill.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, photo, background, overlay, trust, cta
+ * Roles: home
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"129_c1fa53-30","columns":1,"colLayout":"equal","minHeight":560,"bgColor":"palette3","bgImg":"<?php echo esc_url( LB_URL . 'assets/placeholders/wide.svg' ); ?>","overlay":"palette3","overlayOpacity":78,"align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["3xl","","3xl",""],"kbVersion":2} -->

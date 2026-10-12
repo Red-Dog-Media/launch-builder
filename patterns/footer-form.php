@@ -5,6 +5,7 @@
  * Description: Dark footer with a request-a-quote form (your embed from Business Info) beside link and contact columns.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, form, quote, contact, dark
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_6204ce-94","tabletLayout":"row","colLayout":"equal","bgColor":"palette3","align":"full","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

@@ -5,7 +5,7 @@
 	"title": "Rating Widget",
 	"category": "launch-builder",
 	"icon": "star-filled",
-	"description": "Star rating, review count and platform logos. Pick a layout from the block toolbar (Variations) or the Styles panel.",
+	"description": "Star rating with review count and platform logos, from Business Info or typed in. Pick a layout from the toolbar (Badge, Card, Pill, Stars) and a look from Styles.",
 	"keywords": [
 		"reviews",
 		"stars",
@@ -19,13 +19,17 @@
 			"type": "string",
 			"default": "badge"
 		},
+		"useGlobal": {
+			"type": "boolean",
+			"default": false
+		},
+		"source": {
+			"type": "string",
+			"default": ""
+		},
 		"rating": {
 			"type": "number",
 			"default": 4.8
-		},
-		"showRating": {
-			"type": "boolean",
-			"default": true
 		},
 		"text": {
 			"type": "string",
@@ -34,6 +38,29 @@
 		"link": {
 			"type": "string",
 			"default": ""
+		},
+		"platforms": {
+			"type": "array",
+			"default": [],
+			"items": {
+				"type": "string"
+			}
+		},
+		"size": {
+			"type": "string",
+			"default": ""
+		},
+		"contentAlign": {
+			"type": "string",
+			"default": "start"
+		},
+		"logos": {
+			"type": "array",
+			"default": []
+		},
+		"showRating": {
+			"type": "boolean",
+			"default": true
 		},
 		"newTab": {
 			"type": "boolean",
@@ -87,10 +114,6 @@
 			"type": "string",
 			"default": "400"
 		},
-		"logos": {
-			"type": "array",
-			"default": []
-		},
 		"logoHeight": {
 			"type": "number",
 			"default": 46
@@ -110,10 +133,6 @@
 		"logoDivider": {
 			"type": "boolean",
 			"default": false
-		},
-		"contentAlign": {
-			"type": "string",
-			"default": "start"
 		},
 		"gap": {
 			"type": "number",
@@ -177,159 +196,35 @@
 			"title": "Rating Badge",
 			"description": "Logos, big score, stars and review count in a row.",
 			"attributes": {
-				"type": "badge"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"isDefault": true,
-			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "badge-soft",
-			"title": "Badge: soft",
-			"description": "Badge on a soft palette-tinted surface.",
-			"attributes": {
 				"type": "badge",
-				"className": "is-style-soft"
+				"useGlobal": true,
+				"size": "md"
 			},
 			"isActive": [
-				"type",
-				"className",
-				"shape"
+				"type"
 			],
 			"scope": [
+				"inserter",
 				"block",
 				"transform"
-			]
-		},
-		{
-			"name": "badge-outline",
-			"title": "Badge: outline",
-			"description": "Badge with a thin outline and sharp corners.",
-			"attributes": {
-				"type": "badge",
-				"className": "is-style-outline",
-				"shape": "sharp"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
 			],
-			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "badge-dark",
-			"title": "Badge: dark",
-			"description": "Badge on a dark surface for light sections.",
-			"attributes": {
-				"type": "badge",
-				"className": "is-style-dark"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
-				"block",
-				"transform"
-			]
+			"isDefault": true
 		},
 		{
 			"name": "card",
 			"title": "Rating Card",
-			"description": "Centered stat card: score, stars, caption.",
+			"description": "Centered card: logos on top, score, stars, caption.",
 			"attributes": {
 				"type": "card",
-				"contentAlign": "center",
-				"logoPosition": "top",
-				"ratingWeight": "700",
-				"ratingSize": 56,
-				"className": "is-style-soft"
+				"useGlobal": true,
+				"size": "lg",
+				"contentAlign": "center"
 			},
 			"isActive": [
-				"type",
-				"className",
-				"shape"
+				"type"
 			],
 			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "card-outline",
-			"title": "Card: outline",
-			"description": "Stat card with an outline and sharp corners.",
-			"attributes": {
-				"type": "card",
-				"contentAlign": "center",
-				"logoPosition": "top",
-				"ratingWeight": "700",
-				"ratingSize": 56,
-				"className": "is-style-outline",
-				"shape": "sharp"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "card-dark",
-			"title": "Card: dark",
-			"description": "Stat card on a dark surface.",
-			"attributes": {
-				"type": "card",
-				"contentAlign": "center",
-				"logoPosition": "top",
-				"ratingWeight": "700",
-				"ratingSize": 56,
-				"className": "is-style-dark"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "card-brand",
-			"title": "Card: brand",
-			"description": "Stat card in your brand color.",
-			"attributes": {
-				"type": "card",
-				"contentAlign": "center",
-				"logoPosition": "top",
-				"ratingWeight": "700",
-				"ratingSize": 56,
-				"className": "is-style-brand"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
+				"inserter",
 				"block",
 				"transform"
 			]
@@ -337,96 +232,35 @@
 		{
 			"name": "pill",
 			"title": "Rating Pill",
-			"description": "Compact one-line strip: stars, score, review count.",
+			"description": "Compact rating row for heroes: round review-site logos, score and stars, review count below.",
 			"attributes": {
 				"type": "pill",
-				"starSize": 18,
-				"ratingSize": 16,
-				"ratingWeight": "600",
-				"textSize": 15,
-				"logoHeight": 22,
-				"gap": 12
+				"useGlobal": true,
+				"size": "md"
 			},
 			"isActive": [
-				"type",
-				"className",
-				"shape"
+				"type"
 			],
 			"scope": [
+				"inserter",
 				"block",
 				"transform"
 			]
 		},
 		{
-			"name": "pill-outline",
-			"title": "Pill: outline",
-			"description": "Compact pill with a round outline.",
+			"name": "stars",
+			"title": "Rating Stars",
+			"description": "Stars only (e.g. under a testimonial).",
 			"attributes": {
-				"type": "pill",
-				"starSize": 18,
-				"ratingSize": 16,
-				"ratingWeight": "600",
-				"textSize": 15,
-				"logoHeight": 22,
-				"gap": 12,
-				"className": "is-style-outline",
-				"shape": "round",
-				"density": "compact"
+				"type": "stars",
+				"useGlobal": true,
+				"size": "md"
 			},
 			"isActive": [
-				"type",
-				"className",
-				"shape"
+				"type"
 			],
 			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "pill-dark",
-			"title": "Pill: dark",
-			"description": "Compact round pill on a dark surface.",
-			"attributes": {
-				"type": "pill",
-				"starSize": 18,
-				"ratingSize": 16,
-				"ratingWeight": "600",
-				"textSize": 15,
-				"logoHeight": 22,
-				"gap": 12,
-				"className": "is-style-dark",
-				"shape": "round",
-				"density": "compact"
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
-				"block",
-				"transform"
-			]
-		},
-		{
-			"name": "stacked",
-			"title": "Rating Stacked",
-			"description": "Stars on top, score and caption below.",
-			"attributes": {
-				"type": "stacked",
-				"contentAlign": "center",
-				"logoPosition": "top",
-				"ratingSize": 22,
-				"ratingWeight": "700",
-				"starSize": 30
-			},
-			"isActive": [
-				"type",
-				"className",
-				"shape"
-			],
-			"scope": [
+				"inserter",
 				"block",
 				"transform"
 			]
@@ -434,7 +268,10 @@
 	],
 	"render": "file:./render.php",
 	"editorScript": "file:./edit.js",
-	"style": "file:./style.css",
+	"style": [
+		"file:./style.css",
+		"file:./legacy.css"
+	],
 	"styles": [
 		{
 			"name": "plain",
@@ -461,7 +298,13 @@
 	"example": {
 		"attributes": {
 			"type": "badge",
-			"text": "887+ Combined Reviews"
+			"size": "md",
+			"useGlobal": true,
+			"platforms": [
+				"google",
+				"yelp",
+				"bbb"
+			]
 		}
 	}
 }

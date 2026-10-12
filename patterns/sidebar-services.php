@@ -3,7 +3,7 @@
  * Title: Sidebar: service links
  * Slug: launch-builder/sidebar-services
  * Description: A card of links to your services for the theme sidebar. Link each item to its service page.
- * Categories: launch-builder-content, launch-builder
+ * Categories: launch-builder-templates, launch-builder
  * Keywords: sidebar, services, links, menu, widget
  */
 ?>

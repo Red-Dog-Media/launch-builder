@@ -5,6 +5,7 @@
  * Description: Dark utility bar with the rating on the left and a promo on the right; below it the logo, menu with dropdowns, phone number and the main button.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette9"},"_kad_header_isSticky":"0"}
  */

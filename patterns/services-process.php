@@ -3,7 +3,7 @@
  * Title: Services: 4-step process
  * Slug: launch-builder/services-process
  * Description: Numbered steps showing how working with you goes.
- * Categories: launch-builder-services, launch-builder
+ * Categories: launch-builder-process, launch-builder
  * Keywords: process, steps, how it works
  */
 ?>

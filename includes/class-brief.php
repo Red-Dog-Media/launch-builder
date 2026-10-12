@@ -4,51 +4,217 @@ namespace LaunchBuilder;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The brief: client facts in, a site plan out. Today that is new-blueprint (a brief becomes a build-site blueprint with
- * the standard pages, menu, entries, chrome and design style). Modules describe the brief data they
- * consume through the module hook
+ * The brief: client facts in, a whole site out. build-from-brief validates the brief, builds the site in resumable parts
+ * (see Brief_Build) and reports a plan first (dry run); export-brief writes the site back as a brief (see Brief_Export). The
+ * simple path stays: new-blueprint turns a short client brief into a build-site blueprint with the standard pages, menu,
+ * entries, chrome and design style. Modules describe the brief data they consume through the module hook
  * brief_schema( array &$schema ) (see schema()).
  */
 final class Brief {
 
 	public static function define_tools(): void {
+		Abilities::add( 'build-from-brief', 'Build a whole site from one brief', 'The standard way to build a site: ONE brief in, the whole site out. Sections: business (Business Info), brand (palette or colours, fonts, style preset, logo), seo (templates per role, schema type, per-page SEO), sitemap (pages with role, recipe or sections, markdown, slot values), entries (service categories, services and areas with summary, markdown, icon, image, faqs), content, media [{key, url, alt, use}] (each image imported once), forms, menus (main, footer, legal with auto items), chrome (the chrome map), urls and migrate (URL structure, redirects, old sitemap), legal (privacy, terms, accessibility generated from templates, sms_consent), launch {indexing}, conversions (the exit-intent popup is on unless exit_intent is false). Call it first with dry_run true (the default): the whole brief is validated and every problem comes back as a list of {path, message}; a valid brief returns the plan (create, update, keep, prune per object) and copy_needed, the pages and entries that still hold [[placeholders]] or unchanged pattern copy and would be created as drafts. Write the copy into the brief (markdown per page, service and area; slots or replace per section), then call it with dry_run false. Work is done in parts of at most 25 objects or about 20 seconds: while done is false call again with job (the job id) until it is true; phase runs one part (' . implode( ', ', Brief_Build::PHASES ) . '), cursor continues it. It takes a snapshot before the first write, reuses every owner module (Business Info, Design, Style, Entries, Patterns, Chrome, Nav, SEO sync, Conversions, URLs) and is idempotent: pages and entries are matched by key, an unchanged brief changes nothing, an object edited since the last build is kept (force overwrites) and a page an admin drafted is not republished. prune drafts pages and entries an earlier brief built that this one no longer lists. Rank Math Instant Indexing is held back while a build runs and while launch.indexing is false. Then audit-site and go-live.',
+			[ 'properties' => [
+				'brief'   => self::schema(),
+				'job'     => [ 'type' => 'string', 'description' => 'The job id from a previous call, to continue it.' ],
+				'dry_run' => [ 'type' => 'boolean', 'description' => 'Default true: validate and plan, write nothing.' ],
+				'phase'   => [ 'type' => 'string', 'enum' => array_merge( [ 'all' ], Brief_Build::PHASES ), 'description' => 'Run one part only (default all).' ],
+				'cursor'  => [ 'type' => 'integer', 'description' => 'Continue a part at this item (the cursor of the previous result).' ],
+				'prune'   => [ 'type' => 'boolean', 'description' => 'Draft pages and entries an earlier brief built that this brief no longer lists.' ],
+				'force'   => [ 'type' => 'boolean', 'description' => 'Overwrite objects an admin edited since the last build.' ],
+			] ], [ Brief_Build::class, 'tool' ], 'manage_options' );
+
+		Abilities::add( 'export-brief', 'Export the site as a brief', 'The current site as a brief: Business Info, brand, SEO templates, pages (role, status, SEO, order), service categories, services and areas, imported media, menus, the chrome map, URL structure and the launch state. Two exports of an unchanged site are identical, and build-from-brief with dry_run on the export reports no changes. Pages and entries carry content "keep" (their text is left alone when built from the export); include_content adds the text of services and areas as Markdown (converted from the blocks, so it can differ in small ways). sections limits what is returned; lists are cut at limit (default 150): call again with offset.',
+			[ 'properties' => [
+				'sections'        => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'business, brand, seo, sitemap, entries, media, menus, chrome, urls, launch (default all).' ],
+				'include_content' => [ 'type' => 'boolean', 'description' => 'Add services and areas text as Markdown.' ],
+				'offset'          => [ 'type' => 'integer' ],
+				'limit'           => [ 'type' => 'integer', 'description' => '1-300 (default 150).' ],
+			] ], [ Brief_Export::class, 'tool' ], 'edit_pages', [ 'readonly' => true ] );
+
 		Abilities::add( 'new-blueprint', 'Turn a client brief into a starter blueprint', 'Give the client brief and get back a complete blueprint for build-site: the standard pages (home, about, a page per service category and per service, service areas hub and city pages, contact, FAQ), the header menu with dropdowns, a global bottom stack (reviews, offers, service areas) and footer, brand palette derived from the colours, and a design style. Copy is left as [[bracketed]] placeholders and default pattern text for you to rewrite. brief: {name, city, state, industry, services:[{name, children:["Service", ...]}] (categories with their services, or a flat list), areas:["City", ...], colors:{primary, accent, dark} (hex), style:"bold"|"clean"|"soft", phone, email, address, hours, about, tone, keywords}.',
 			[ 'properties' => [ 'name' => [ 'type' => 'string' ], 'city' => [ 'type' => 'string' ], 'state' => [ 'type' => 'string' ], 'industry' => [ 'type' => 'string' ], 'services' => [ 'type' => 'array' ], 'areas' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ] ], 'colors' => [ 'type' => 'object' ], 'style' => [ 'type' => 'string', 'enum' => [ 'bold', 'clean', 'soft' ] ], 'phone' => [ 'type' => 'string' ], 'email' => [ 'type' => 'string' ], 'address' => [ 'type' => 'string' ], 'hours' => [ 'type' => 'string' ], 'about' => [ 'type' => 'string' ], 'tone' => [ 'type' => 'string' ], 'keywords' => [ 'type' => 'string' ] ], 'required' => [ 'name', 'city' ] ], [ __CLASS__, 'new_blueprint' ], 'edit_pages', [ 'readonly' => true ] );
 	}
 
 	/**
-	 * The brief schema: the top-level sections as typed objects, then whatever each module adds. Not a
-	 * tool input yet.
+	 * The brief schema: the top-level sections as typed objects, then whatever each module adds through its
+	 * brief_schema() hook. It is the schema of the brief property of build-from-brief.
 	 *
 	 * @return array JSON schema (type object)
 	 */
 	public static function schema(): array {
-		$section = static function ( string $desc ): array {
-			return [ 'type' => 'object', 'description' => $desc, 'properties' => [] ];
+		$str = [ 'type' => 'string' ];
+		$int = [ 'type' => 'integer' ];
+		$bool = [ 'type' => 'boolean' ];
+		$obj = static function ( string $desc, array $props = [] ): array {
+			return $props ? [ 'type' => 'object', 'description' => $desc, 'properties' => $props ] : [ 'type' => 'object', 'description' => $desc ];
 		};
+		$list = static function ( string $desc, array $items = [ 'type' => 'object' ] ): array {
+			return [ 'type' => 'array', 'description' => $desc, 'items' => $items ];
+		};
+		$business = [];
+		foreach ( Company::fields() as $k => $f ) {
+			$business[ $k ] = 'list' === $f[1] ? [ 'type' => 'array', 'items' => [ 'type' => [ 'object', 'string' ] ], 'description' => (string) $f[0] ] : [ 'type' => [ 'string', 'number', 'boolean' ], 'description' => (string) $f[0] ];
+		}
+		$business['site_title'] = [ 'type' => 'string', 'description' => 'The WordPress site title when it differs from the business name.' ];
+		$business['site_tagline'] = [ 'type' => 'string', 'description' => 'The WordPress tagline when it differs from the Business Info tagline.' ];
+		$seo_page = $obj( 'Per-page SEO.', [ 'title' => $str, 'description' => $str, 'keyword' => $str, 'robots' => $list( 'e.g. ["noindex","follow"]', $str ) ] );
+		$section = $obj( 'A pattern section of a page.', [
+			'pattern'  => [ 'type' => 'string', 'description' => 'Pattern slug (list-patterns).' ],
+			'slots'    => [ 'type' => 'object', 'description' => 'Slot id => value (get-pattern lists the ids); "media:<key>" in an image slot is the imported image.' ],
+			'replace'  => [ 'type' => 'object', 'description' => 'Default text => new text.' ],
+			'markdown' => [ 'type' => 'string', 'description' => 'Text for the pattern\'s text area (service-body).' ],
+			'use'      => [ 'type' => 'string', 'description' => 'Key of a synced pattern to show instead.' ],
+		] );
+		$page = $obj( 'A page. Nest children, or name the parent by key or path.', [
+			'key'      => [ 'type' => 'string', 'description' => 'Stable id for re-runs (default page:<path>).' ],
+			'title'    => $str,
+			'slug'     => $str,
+			'parent'   => [ 'type' => 'string', 'description' => 'Key or path of the parent page (when not nested).' ],
+			'role'     => [ 'type' => 'string', 'enum' => Brief_Validate::PAGE_ROLES ],
+			'recipe'   => [ 'type' => 'string', 'description' => 'A page recipe (get-playbook lists them).' ],
+			'type'     => [ 'type' => 'string', 'enum' => array_keys( Content::TYPES ) ],
+			'sections' => $list( 'Patterns to build the page from (instead of the recipe).', $section ),
+			'markdown' => [ 'type' => 'string', 'description' => 'The page text; fills the recipe\'s text section.' ],
+			'replace'  => [ 'type' => 'object', 'description' => 'Default text => new text, for every section.' ],
+			'layout'   => [ 'type' => 'object' ],
+			'seo'      => $seo_page,
+			'status'   => [ 'type' => 'string', 'enum' => [ 'draft', 'publish', 'private' ] ],
+			'order'    => $int,
+			'front'    => $bool,
+			'content'  => [ 'type' => 'string', 'enum' => [ 'build', 'keep' ], 'description' => 'keep = leave the stored text alone.' ],
+			'category' => [ 'type' => 'string', 'description' => 'For role category: the service category slug.' ],
+			'children' => $list( 'Child pages.' ),
+		] );
+		$entry = [
+			'key'      => [ 'type' => 'string', 'description' => 'Stable id for re-runs.' ],
+			'title'    => $str,
+			'slug'     => $str,
+			'summary'  => [ 'type' => 'string', 'description' => 'One or two sentences (the excerpt).' ],
+			'markdown' => [ 'type' => 'string', 'description' => 'The entry text.' ],
+			'icon'     => [ 'type' => 'string', 'description' => 'Kadence icon name.' ],
+			'image'    => [ 'type' => 'string', 'description' => 'A media key or an image URL.' ],
+			'faqs'     => $list( '[{q, a}]', $obj( 'A question and its answer.', [ 'q' => $str, 'a' => $str ] ) ),
+			'seo'      => $seo_page,
+			'order'    => $int,
+			'status'   => [ 'type' => 'string', 'enum' => [ 'draft', 'publish' ] ],
+			'content'  => [ 'type' => 'string', 'enum' => [ 'build', 'keep' ] ],
+		];
+		$menu_item = $obj( 'A menu item: a page (key, path or slug), a url, or an auto list.', [
+			'label'    => $str,
+			'page'     => [ 'type' => 'string' ],
+			'url'      => $str,
+			'auto'     => [ 'type' => 'string', 'enum' => [ 'services', 'areas' ] ],
+			'category' => $str,
+			'parent'   => $str,
+			'limit'    => $int,
+			'children' => $list( 'Dropdown items.' ),
+		] );
 		$schema = [
 			'type'       => 'object',
 			'properties' => [
-				'business' => $section( 'Business Info: every Company field (see get-company).' ),
-				'brand'    => $section( 'palette or 2-3 colours, fonts {headings, body, weights}, logo, logo_inverse, site_icon, logo_width, style preset + tokens.' ),
-				'seo'      => $section( 'Title/description templates per role, per-page SEO, schema type, og image, enable_local_seo.' ),
-				'sitemap'  => $section( 'Pages tree with role, recipe/sections, markdown and slot values.' ),
-				'entries'  => $section( 'Services by category (summary, markdown, icon, image, faqs) and the areas tree with the services offered.' ),
-				'content'  => $section( 'testimonials, team, offers, guarantees, financing, badges, brands, faqs, stats, gallery, videos.' ),
-				'media'    => [ 'type' => 'array', 'description' => '[{key, url, alt, use}] sideloaded once, keyed by URL.', 'items' => [ 'type' => 'object' ] ],
-				'forms'    => $section( 'quote, contact, booking, careers, fallback.' ),
-				'menus'    => $section( 'main, footer, legal; auto items.' ),
-				'chrome'   => $section( 'Overrides of the chrome map (see Chrome::DEFAULT_MAP).' ),
-				'urls'     => $section( 'URL bases for services, areas and categories.' ),
-				'migrate'  => $section( 'old_sitemap_url, redirects.' ),
-				'legal'    => $section( 'privacy / terms: generate or markdown; sms_consent.' ),
-				'launch'   => $section( 'indexing (false while building).' ),
+				'version'  => [ 'type' => 'integer', 'description' => 'Brief format version (1).' ],
+				'business' => $obj( 'Business Info: every Company field (see get-company). name is required.', $business ),
+				'brand'    => $obj( 'Palette or 2-3 colours, fonts, logo, style.', [
+					'palette'      => [ 'type' => 'object', 'description' => 'palette1..palette9 => hex colour.' ],
+					'colors'       => $obj( 'Two or three brand colours (the palette is derived).', [ 'primary' => $str, 'accent' => $str, 'dark' => $str ] ),
+					'fonts'        => $obj( 'Font families.', [ 'headings' => [ 'type' => [ 'string', 'object' ] ], 'body' => [ 'type' => [ 'string', 'object' ] ], 'weights' => $list( 'e.g. [400, 700]', $int ) ] ),
+					'logo'         => [ 'type' => 'string', 'description' => 'A media key or an image URL.' ],
+					'logo_inverse' => [ 'type' => 'string', 'description' => 'Logo for dark backgrounds: a media key or URL.' ],
+					'site_icon'    => [ 'type' => 'string', 'description' => 'Site icon: a media key or URL.' ],
+					'logo_width'   => $int,
+					'style'        => [ 'type' => [ 'string', 'object' ], 'description' => 'A style preset (clean, bold, sharp, soft) or { preset, tokens } (see set-style).' ],
+					'buttons'      => [ 'type' => 'object', 'description' => 'See set-buttons.' ],
+					'nav'          => [ 'type' => 'object', 'description' => 'Menu and dropdown look (see set-nav-style).' ],
+					'page'         => [ 'type' => [ 'string', 'object' ], 'description' => 'Page banner style (see set-page-style).' ],
+				] ),
+				'seo'      => $obj( 'SEO.', [
+					'templates'        => [ 'type' => 'object', 'description' => 'role => { title, description } with Rank Math %variables% and %sep%.' ],
+					'pages'            => [ 'type' => 'object', 'description' => 'page key, path or slug => { title, description, keyword, robots }.' ],
+					'schema_type'      => [ 'type' => 'string', 'description' => 'A schema.org LocalBusiness type, e.g. Plumber.' ],
+					'og_image'         => [ 'type' => 'string', 'description' => 'A media key or an image URL.' ],
+					'enable_local_seo' => $bool,
+				] ),
+				'sitemap'  => $obj( 'The pages.', [ 'pages' => $list( 'Pages, nested through children.', $page ) ] ),
+				'entries'  => $obj( 'Service categories, services and areas.', [
+					'categories' => $list( '[{name, slug, page}]; categories used by services are created anyway.', $obj( 'A service category and its landing page.', [ 'name' => $str, 'slug' => $str, 'page' => [ 'type' => 'string', 'description' => 'Key or path of its landing page.' ] ] ) ),
+					'services'   => $list( 'Services, each with category or categories (or grouped: { category, items: [...] }).', $obj( 'A service.', $entry + [ 'category' => $str, 'categories' => $list( 'Category names or slugs.', $str ) ] ) ),
+					'areas'      => $list( 'Service areas, nested through children or named by parent (key or path).', $obj( 'A service area.', $entry + [ 'parent' => $str, 'services' => $list( 'Services offered (titles, slugs or keys); none listed = all.', $str ), 'children' => $list( 'Child areas.' ) ] ) ),
+				] ),
+				'content'  => $obj( 'testimonials, team, offers, guarantees, badges, brands, gallery, videos, financing, stats, faqs.global. Accepted and stored; pattern families read them as they take data.', [
+					'testimonials' => $list( 'Written testimonials.' ),
+					'team'         => $list( 'People.' ),
+					'offers'       => $list( 'Promotions (expires = end date).' ),
+					'guarantees'   => $list( 'Guarantees.' ),
+					'badges'       => $list( 'Trust badges.' ),
+					'brands'       => $list( 'Brands carried.' ),
+					'gallery'      => $list( 'Images.' ),
+					'videos'       => $list( 'Videos.' ),
+					'financing'    => [ 'type' => 'object' ],
+					'stats'        => [ 'type' => 'object' ],
+					'faqs'         => $obj( 'Questions.', [ 'global' => $list( '[{q, a}]' ) ] ),
+				] ),
+				'media'    => $list( '[{key, url, alt, use}]: each image is imported once (matched by URL); use = logo, logo_inverse, site_icon, og_image or featured:<page or entry key>.', $obj( 'An image.', [ 'key' => $str, 'url' => $str, 'alt' => $str, 'use' => $str ] ) ),
+				'forms'    => $obj( 'Form embeds (code or { embed, url }): quote, contact, booking, careers; fallback kadence|none.', [
+					'quote'    => [ 'type' => [ 'string', 'object' ] ],
+					'contact'  => [ 'type' => [ 'string', 'object' ] ],
+					'booking'  => [ 'type' => [ 'string', 'object' ] ],
+					'careers'  => [ 'type' => [ 'string', 'object' ] ],
+					'fallback' => [ 'type' => 'string', 'enum' => [ 'kadence', 'none' ] ],
+				] ),
+				'menus'    => $obj( 'Menus. Without main, the first build makes one from the sitemap.', [
+					'main'   => $list( 'The header menu.', $menu_item ),
+					'footer' => $list( 'A footer menu (kept as a navigation).', $menu_item ),
+					'legal'  => $list( 'A legal links menu (kept as a navigation).', $menu_item ),
+					'header' => [ 'type' => 'string', 'description' => 'Header pattern slug (default from the style and the menu length).' ],
+				] ),
+				'chrome'   => $obj( 'The chrome map (see set-chrome), optionally with mode auto|elements|patterns.', [ 'mode' => [ 'type' => 'string', 'enum' => [ 'auto', 'elements', 'patterns' ] ], 'map' => [ 'type' => 'object' ] ] ),
+				'urls'     => $obj( 'URL structure and redirects.', [ 'permastructures' => [ 'type' => 'object' ], 'redirects' => $list( '[{from, to, code}]' ), 'old_sitemap_url' => $str, 'settings' => [ 'type' => 'object' ] ] ),
+				'migrate'  => $obj( 'Moving from an old site.', [ 'old_sitemap_url' => $str, 'redirects' => $list( '[{from, to, code}]' ) ] ),
+				'legal'    => $obj( 'Legal pages: privacy, terms, accessibility ({ generate: true } or { markdown }, reviewed, title, slug) and sms_consent (true or { program, frequency, help }). Generated texts stay drafts until reviewed.', [
+					'privacy'       => [ 'type' => [ 'boolean', 'object' ] ],
+					'terms'         => [ 'type' => [ 'boolean', 'object' ] ],
+					'accessibility' => [ 'type' => [ 'boolean', 'object' ] ],
+					'sms_consent'   => [ 'type' => [ 'boolean', 'object' ] ],
+				] ),
+				'launch'   => $obj( 'Launch state.', [ 'indexing' => [ 'type' => 'boolean', 'description' => 'false keeps the site hidden from search engines and holds Instant Indexing back until go-live.' ] ] ),
 			],
+			'required'   => [ 'business' ],
 		];
 		foreach ( Plugin::modules( 'brief_schema' ) as $module ) {
 			$module::brief_schema( $schema );
 		}
 		return $schema;
+	}
+
+	/** The header pattern for a style preset and a menu of $items items with $label_len label characters. */
+	public static function default_header( string $preset, int $items, int $label_len ): string {
+		$map = [ 'bold' => 'bold', 'sharp' => 'bold', 'clean' => 'clean', 'soft' => 'soft' ];
+		$st = self::styles()[ $map[ $preset ] ?? 'clean' ];
+		return $items > 6 || $label_len > 64 ? 'header-phone' : $st['header']; // A long menu needs the two-row header.
+	}
+
+	/** Module hook: how to build a whole site from a brief. */
+	public static function playbook( array &$pb ): void {
+		$pb['brief'] = [
+			'use_it_first' => 'build-from-brief builds a whole site from ONE brief: business facts, brand, SEO, sitemap, entries, menus, chrome, legal pages and launch settings. Use it first; new-blueprint + build-site stay as the simple path for a quick starter site.',
+			'order'        => [
+				'1. get-playbook, site-state. Gather the client facts (name, phone, address, hours, licences, services by category, areas, colours, tone, existing site).',
+				'2. Write the brief (the schema is the brief property of build-from-brief) and call build-from-brief { brief } with the default dry_run true. Fix every error (each names its path in the brief), then read the plan and copy_needed.',
+				'3. Copy pass: write the text the plan says is missing into the brief: markdown for every page, service and area, summaries, slot values or replace per section, FAQs. A page or entry that still holds [[placeholders]] or unchanged pattern copy is created as a DRAFT and listed in copy_needed. Re-run the dry run until copy_needed is what you accept.',
+				'4. Build: build-from-brief { brief, dry_run: false }. While done is false call it again with the job id; each call does up to 25 objects or about 20 seconds. A snapshot is taken before the first write (restore-snapshot undoes it).',
+				'5. Check: audit-site (fix errors), inspect-page per role, preview-urls for screenshots. export-brief writes the site back as a brief to keep or diff.',
+				'6. go-live: refuses on audit errors (force overrides), then makes the site public and refreshes the sitemap.',
+			],
+			'rules'        => [
+				'Give every page and entry a key when its slug may change: the key is how a re-run finds it (the old URL then redirects).',
+				'Re-running is safe: unchanged objects are kept, objects an admin edited since the last build are kept, an admin-drafted page is not republished. force overwrites; prune drafts what the brief no longer lists.',
+				'Never put business facts in copy: use Business Info (business) and tokens such as {{lb.phone}}.',
+				'Legal pages: legal.privacy / terms / accessibility generate token-filled texts that carry a "client must review" notice and stay drafts until reviewed; sms_consent adds the text message consent wording.',
+				'launch.indexing false keeps the site hidden from search engines and holds Instant Indexing back until go-live.',
+			],
+		];
+		$pb['tools_by_job']['Whole site'] = 'build-from-brief (dry run first), export-brief, go-live';
 	}
 
 	/* ------------------------------------------------------------------ new-blueprint */
@@ -75,7 +241,8 @@ final class Brief {
 
 	private static function styles(): array {
 		return [
-			'bold'  => [ 'header' => 'header-utility', 'footer' => 'footer-licensing',
+			// Every style defaults to a main-row-only header; header-utility has a top bar.
+			'bold'  => [ 'header' => 'header-basic', 'footer' => 'footer-licensing',
 				'buttons' => [ 'primary' => [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => 'palette9', 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true, 'shadow' => 'soft' ], 'secondary' => [ 'background' => 'palette3', 'color' => 'palette9', 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true ], 'outline' => [ 'color' => 'palette1', 'border_color' => 'palette1', 'border_width' => 2, 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true ] ],
 				'dropdown' => [ 'background' => 'palette9', 'hover_background' => 'palette8', 'color' => 'palette3', 'hover_color' => 'palette1', 'width' => 280, 'radius' => 14, 'shadow' => 'strong', 'reveal' => 'fade-up', 'divider' => true, 'padding' => [ 13, 22 ], 'spacing' => 8 ], 'links' => [ 'color' => 'palette3', 'hover' => 'palette1', 'active' => 'palette1', 'style' => 'underline', 'weight' => 700 ], 'banner' => 220 ],
 			'clean' => [ 'header' => 'header-minimal', 'footer' => 'footer-dark',

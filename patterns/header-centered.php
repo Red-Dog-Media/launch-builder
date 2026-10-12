@@ -5,6 +5,7 @@
  * Description: Centered logo with the menu on its own row beneath it.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette9"},"_kad_header_isSticky":"0"}
  */

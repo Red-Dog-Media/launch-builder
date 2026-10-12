@@ -17,8 +17,17 @@ final class Patterns {
 	public static function define_tools(): void {
 		$ro = [ 'readonly' => true ];
 
-		Abilities::add( 'list-patterns', 'List patterns', 'List Launch Builder patterns (optionally by category: heroes, services, areas, maps, cta, footers, proof).',
-			[ 'properties' => [ 'category' => [ 'type' => 'string' ] ] ], [ __CLASS__, 'list_patterns' ], 'edit_pages', $ro );
+		Abilities::add( 'list-patterns', 'List patterns', 'List Launch Builder patterns as compact rows (slug, title, category, description, and roles/slot/variant_of/style when set), 100 per page. Filter by category (heroes, services, areas, maps, cta, footers, proof, faq, process, offers, trust, templates, ...), role (a page role: the designs made for it), slot (a chrome slot: header, hero, crumbs, template, footer, ...), style (preset) or variant_of (a pattern and its variations). with_slots adds each pattern\'s editable slot count (slower). Page with offset/next_offset.',
+			[ 'properties' => [
+				'category'   => [ 'type' => 'string' ],
+				'role'       => [ 'type' => 'string', 'description' => 'A page role (see get-roles): home, page, legal, services_hub, areas_hub, category, service, area, conversion, thanks, post, blog, search, notfound.' ],
+				'slot'       => [ 'type' => 'string', 'description' => 'A chrome slot: header, notice, hero, crumbs, template, notfound_body, before_footer, footer, sticky_bar, conversion.' ],
+				'style'      => [ 'type' => 'string', 'description' => 'A style preset: clean, bold, sharp, soft.' ],
+				'variant_of' => [ 'type' => 'string', 'description' => 'A pattern slug: returns it and the patterns that are its variations.' ],
+				'with_slots' => [ 'type' => 'boolean' ],
+				'limit'      => [ 'type' => 'integer', 'description' => 'Rows per page, 1-200 (default 100).' ],
+				'offset'     => [ 'type' => 'integer' ],
+			] ], [ __CLASS__, 'list_patterns' ], 'edit_pages', $ro );
 
 		Abilities::add( 'get-pattern', 'Describe a pattern', 'Return a pattern\'s editable slots (text, links, images, numbers) with ids, and optionally its block markup.',
 			[ 'properties' => [ 'slug' => [ 'type' => 'string' ], 'include_content' => [ 'type' => 'boolean' ] ], 'required' => [ 'slug' ] ], [ __CLASS__, 'get_pattern' ], 'edit_pages', $ro );
@@ -45,19 +54,26 @@ final class Patterns {
 
 	/* ------------------------------------------------------------------ registry */
 
-		/** @var array|null per-request cache of patterns(); reset when custom patterns change. */
+	/** @var array|null per-request index(); reset when custom patterns change. */
+	private static $icache = null;
+
+	/** @var array|null per-request all() (with content); reset when custom patterns change. */
 	private static $pcache = null;
 
-	/** Every pattern by slug: the registered launch-builder/* patterns plus this site's custom ones (per-request cache). */
-	public static function all(): array {
-		if ( null !== self::$pcache ) {
-			return self::$pcache;
+	/**
+	 * Every usable pattern by slug WITHOUT reading pattern files: the built-in launch-builder/* patterns whose required
+	 * plugins are active (Plugin::pattern_index(), from the header cache) plus this site's custom ones. Rows: slug, name,
+	 * title, description, categories[], keywords[], inserter, roles[], slot, variant_of, style, transparent, requires,
+	 * custom (+ post_id and content for custom patterns). Use content( $slug ) for the markup.
+	 */
+	public static function index(): array {
+		if ( null !== self::$icache ) {
+			return self::$icache;
 		}
-		Plugin::register_patterns(); // Idempotent: public page views skip it, tools need it.
 		$out = [];
-		foreach ( \WP_Block_Patterns_Registry::get_instance()->get_all_registered() as $p ) {
-			if ( 0 === strpos( $p['name'], 'launch-builder/' ) ) {
-				$out[ substr( $p['name'], 15 ) ] = $p;
+		foreach ( Plugin::pattern_index() as $slug => $row ) {
+			if ( ! empty( $row['available'] ) ) {
+				$out[ $slug ] = $row + [ 'custom' => false ];
 			}
 		}
 		// Per-site custom patterns (saved with save-pattern): unsynced wp_block posts carrying _lb_custom_slug.
@@ -67,47 +83,155 @@ final class Patterns {
 				continue;
 			}
 			$cat = (string) get_post_meta( $post->ID, '_lb_custom_category', true ) ?: 'custom';
-			$out[ $slug ] = [ 'name' => 'launch-builder/' . $slug, 'title' => $post->post_title, 'description' => (string) get_post_meta( $post->ID, '_lb_custom_desc', true ), 'categories' => [ 'launch-builder-' . $cat ], 'keywords' => [ 'custom' ], 'content' => $post->post_content, 'custom' => true, 'post_id' => $post->ID ];
+			$out[ $slug ] = [
+				'slug'        => $slug,
+				'name'        => 'launch-builder/' . $slug,
+				'title'       => $post->post_title,
+				'description' => (string) get_post_meta( $post->ID, '_lb_custom_desc', true ),
+				'categories'  => [ 'launch-builder-' . $cat ],
+				'keywords'    => [ 'custom' ],
+				'inserter'    => true,
+				'roles'       => [],
+				'slot'        => '',
+				'variant_of'  => '',
+				'style'       => '',
+				'transparent' => false,
+				'requires'    => '',
+				'custom'      => true,
+				'post_id'     => $post->ID,
+				'content'     => $post->post_content,
+			];
+		}
+		self::$icache = $out;
+		return $out;
+	}
+
+	/** A pattern's markup (reads only that pattern's file), or null when there is no such pattern. */
+	public static function content( string $slug ): ?string {
+		$index = self::index();
+		if ( ! isset( $index[ $slug ] ) ) {
+			return null;
+		}
+		if ( ! empty( $index[ $slug ]['custom'] ) ) {
+			return (string) $index[ $slug ]['content'];
+		}
+		Plugin::register_patterns(); // Idempotent: public page views skip it, tools need it.
+		$p = \WP_Block_Patterns_Registry::get_instance()->get_registered( 'launch-builder/' . $slug );
+		return $p ? (string) $p['content'] : null;
+	}
+
+	/**
+	 * Every pattern with its content: index() rows plus 'content' (reads every pattern file; prefer index() and
+	 * content() in new code). Kept for callers that need the markup of all patterns.
+	 */
+	public static function all(): array {
+		if ( null !== self::$pcache ) {
+			return self::$pcache;
+		}
+		$out = [];
+		foreach ( self::index() as $slug => $row ) {
+			$row['content'] = self::content( $slug ) ?? '';
+			$out[ $slug ] = $row;
 		}
 		self::$pcache = $out;
 		return $out;
 	}
 
-	public static function list_patterns( $input = [] ): array {
-		$want = isset( $input['category'] ) ? sanitize_key( $input['category'] ) : '';
-		$items = [];
-		foreach ( self::all() as $slug => $p ) {
-			$cats = array_values( array_filter( array_map( static function ( $c ) { return preg_replace( '/^launch-builder-?/', '', $c ); }, (array) ( $p['categories'] ?? [] ) ) ) );
-			if ( $want && ! in_array( $want, $cats, true ) ) {
+	/** The categories of a pattern without the launch-builder prefix, the primary one first ('launch-builder' itself dropped). */
+	private static function short_categories( array $p ): array {
+		return array_values( array_filter( array_map( static function ( $c ) { return preg_replace( '/^launch-builder-?/', '', (string) $c ); }, (array) ( $p['categories'] ?? [] ) ) ) );
+	}
+
+	/** The role the admin preview renders a pattern as: a valid $override, else the first of its Roles: header, else ''. */
+	public static function preview_role( string $slug, string $override = '' ): string {
+		if ( '' !== $override && isset( Roles::ROLES[ $override ] ) ) {
+			return $override;
+		}
+		$roles = (array) ( self::index()[ $slug ]['roles'] ?? [] );
+		return (string) ( $roles[0] ?? '' );
+	}
+
+	/** @return array|\WP_Error */
+	public static function list_patterns( $input = [] ) {
+		$input = (array) $input;
+		$want = [];
+		foreach ( [ 'category', 'role', 'slot', 'style', 'variant_of' ] as $k ) {
+			$want[ $k ] = isset( $input[ $k ] ) && is_scalar( $input[ $k ] ) ? sanitize_key( (string) $input[ $k ] ) : '';
+		}
+		if ( '' !== $want['role'] && ! isset( Roles::ROLES[ $want['role'] ] ) ) {
+			return new \WP_Error( 'lb_bad_role', 'Unknown role. Roles: ' . implode( ', ', array_keys( Roles::ROLES ) ) . '.', [ 'status' => 400 ] );
+		}
+		if ( '' !== $want['slot'] && ! isset( Chrome::SLOTS[ $want['slot'] ] ) && 'conversion' !== $want['slot'] ) {
+			return new \WP_Error( 'lb_bad_slot', 'Unknown slot. Slots: ' . implode( ', ', array_keys( Chrome::SLOTS ) ) . ', conversion.', [ 'status' => 400 ] );
+		}
+		$limit = isset( $input['limit'] ) ? max( 1, min( 200, (int) $input['limit'] ) ) : 100;
+		$offset = isset( $input['offset'] ) ? max( 0, (int) $input['offset'] ) : 0;
+		$index = self::index();
+		$match = [];
+		foreach ( $index as $slug => $p ) {
+			$cats = self::short_categories( $p );
+			if ( ( '' !== $want['category'] && ! in_array( $want['category'], $cats, true ) )
+				|| ( '' !== $want['role'] && ! in_array( $want['role'], (array) $p['roles'], true ) )
+				|| ( '' !== $want['slot'] && $want['slot'] !== $p['slot'] )
+				|| ( '' !== $want['style'] && $want['style'] !== $p['style'] )
+				|| ( '' !== $want['variant_of'] && $want['variant_of'] !== $p['variant_of'] && $want['variant_of'] !== $slug ) ) {
 				continue;
 			}
-			$items[] = [
-				'slug'        => $slug,
-				'title'       => $p['title'],
-				'description' => $p['description'] ?? '',
-				'category'    => $cats[0] ?? '',
-				'keywords'    => $p['keywords'] ?? [],
-				'slots'       => count( self::slots( parse_blocks( $p['content'] ) ) ),
-				'custom'      => ! empty( $p['custom'] ),
-			];
+			$match[] = $slug;
 		}
-		$out = [ 'count' => count( $items ), 'patterns' => $items ];
-		if ( Plugin::unavailable() ) {
+		$items = [];
+		foreach ( array_slice( $match, $offset, $limit ) as $slug ) {
+			$p = $index[ $slug ];
+			$row = [ 'slug' => $slug, 'title' => $p['title'], 'category' => self::short_categories( $p )[0] ?? '', 'description' => $p['description'] ];
+			foreach ( [ 'roles', 'slot', 'variant_of', 'style' ] as $k ) {
+				if ( ! empty( $p[ $k ] ) ) {
+					$row[ $k ] = $p[ $k ];
+				}
+			}
+			if ( ! empty( $p['transparent'] ) ) {
+				$row['transparent'] = true;
+			}
+			if ( empty( $p['inserter'] ) ) {
+				$row['inserter'] = false;
+			}
+			if ( ! empty( $p['custom'] ) ) {
+				$row['custom'] = true;
+			}
+			if ( ! empty( $input['with_slots'] ) ) {
+				$row['slots'] = count( self::slots( parse_blocks( (string) self::content( $slug ) ) ) );
+			}
+			$items[] = $row;
+		}
+		$next = $offset + count( $items );
+		$out = [ 'count' => count( $items ), 'total' => count( $match ), 'offset' => $offset, 'next_offset' => $next < count( $match ) ? $next : null, 'patterns' => $items ];
+		if ( 0 === $offset && Plugin::unavailable() ) {
 			$out['unavailable'] = Plugin::unavailable(); // Exist in the plugin but need a companion plugin (e.g. Kadence Blocks Pro).
 		}
 		return $out;
 	}
 
 	public static function get_pattern( $input ) {
-		$all = self::all();
+		$index = self::index();
 		$slug = sanitize_key( $input['slug'] ?? '' );
-		if ( ! isset( $all[ $slug ] ) ) {
+		if ( ! isset( $index[ $slug ] ) ) {
 			return new \WP_Error( 'lb_no_pattern', 'Unknown pattern: ' . $slug . '. Use list-patterns.', [ 'status' => 404 ] );
 		}
-		$blocks = parse_blocks( $all[ $slug ]['content'] );
-		$out = [ 'slug' => $slug, 'title' => $all[ $slug ]['title'], 'description' => $all[ $slug ]['description'] ?? '', 'slots' => self::slots( $blocks ) ];
+		$p = $index[ $slug ];
+		$content = (string) self::content( $slug );
+		$out = [
+			'slug'        => $slug,
+			'title'       => $p['title'],
+			'description' => $p['description'] ?? '',
+			'category'    => self::short_categories( $p )[0] ?? '',
+			'roles'       => (array) $p['roles'],
+			'slot'        => $p['slot'],
+			'variant_of'  => $p['variant_of'],
+			'style'       => $p['style'],
+			'transparent' => ! empty( $p['transparent'] ),
+			'slots'       => self::slots( parse_blocks( $content ) ),
+		];
 		if ( ! empty( $input['include_content'] ) ) {
-			$out['content'] = $all[ $slug ]['content'];
+			$out['content'] = $content;
 		}
 		return $out;
 	}
@@ -279,8 +403,7 @@ final class Patterns {
 
 	/** Markup of a built-in or custom pattern by slug, or null. */
 	public static function pattern_content( string $slug ): ?string {
-		$all = self::all();
-		return isset( $all[ $slug ] ) ? (string) $all[ $slug ]['content'] : null;
+		return self::content( $slug );
 	}
 
 	/** Set the visible text of a block that has a "text" slot (list item, heading, button...). */
@@ -361,7 +484,7 @@ final class Patterns {
 	 * @return array|\WP_Error {content, applied, warnings}
 	 */
 	public static function build_pattern( string $slug, array $slots = [], array $replace = [], array $vars = [], string $markdown = '', array $opts = [] ) {
-		$all = self::all();
+		$all = self::index();
 		if ( ! isset( $all[ $slug ] ) ) {
 			return new \WP_Error( 'lb_no_pattern', 'Unknown pattern: ' . $slug . '. Use list-patterns.', [ 'status' => 404 ] );
 		}
@@ -371,7 +494,7 @@ final class Patterns {
 		if ( empty( $all[ $slug ]['custom'] ) && ! Plugin::kadence_blocks_active() ) {
 			return new \WP_Error( 'lb_no_kadence', 'Kadence Blocks is not active; these patterns need it.', [ 'status' => 412 ] );
 		}
-		$blocks = parse_blocks( $all[ $slug ]['content'] );
+		$blocks = parse_blocks( (string) self::content( $slug ) );
 		$ent = isset( $slots['@entries'] ) ? (array) $slots['@entries'] : []; // Attribute overrides for the live lists (launch/entries) in the pattern.
 		$hero_directive = ! isset( $opts['no_hero'] ) || $opts['no_hero'];
 		$no_hero = $hero_directive && ! empty( $slots['@no_hero'] ); // Elements mode: the shared hero element is the page hero, so patterns drop their own.
@@ -390,11 +513,16 @@ final class Patterns {
 		if ( '' !== trim( $markdown ) && ! Content::inject_markdown( $blocks, $markdown ) ) {
 			$warnings[] = 'This pattern has no text area for markdown (use service-body, or add-text on the page).';
 		}
-		return [ 'content' => serialize_blocks( $blocks ), 'applied' => $applied, 'warnings' => $warnings ];
+		$content = serialize_blocks( $blocks );
+		if ( ! empty( $opts['target_id'] ) ) { // opts.target_id = the post the markup is written into: Kadence uniqueIDs become {target}_{h6} (Unique_Ids::rekey).
+			$rekeyed = Unique_Ids::rekey( $content, (int) $opts['target_id'], (string) ( $opts['salt'] ?? $slug ) ); // salt: slug + section index when one post gets several sections.
+			$content = is_wp_error( $rekeyed ) ? $content : $rekeyed;
+		}
+		return [ 'content' => $content, 'applied' => $applied, 'warnings' => $warnings ];
 	}
 
 	public static function apply_pattern( $input ) {
-		$all = self::all();
+		$all = self::index();
 		$slug = sanitize_key( $input['slug'] ?? '' );
 		if ( ! isset( $all[ $slug ] ) ) {
 			return new \WP_Error( 'lb_no_pattern', 'Unknown pattern: ' . $slug, [ 'status' => 404 ] );
@@ -453,6 +581,7 @@ final class Patterns {
 	/** Forget the per-request pattern cache (after a custom pattern is saved or deleted). */
 	public static function reset(): void {
 		self::$pcache = null;
+		self::$icache = null;
 	}
 
 	/* ------------------------------------------------------------------ custom patterns */
@@ -491,8 +620,7 @@ final class Patterns {
 		if ( '' === $slug ) {
 			return new \WP_Error( 'lb_slug', 'slug is required.', [ 'status' => 400 ] );
 		}
-		$builtin = self::all();
-		if ( isset( $builtin[ $slug ] ) && empty( $builtin[ $slug ]['custom'] ) ) {
+		if ( isset( Plugin::pattern_index()[ $slug ] ) ) { // Also the built-ins hidden because a companion plugin is off.
 			return new \WP_Error( 'lb_slug_taken', 'That slug belongs to a built-in pattern. Pick another.', [ 'status' => 409 ] );
 		}
 		$content = (string) ( $input['content'] ?? '' );
@@ -510,7 +638,6 @@ final class Patterns {
 		if ( is_wp_error( $ok ) ) {
 			return $ok;
 		}
-		self::$pcache = null;
 		$id = Abilities::upsert_post( 'wp_block', 'custom-' . $slug, sanitize_text_field( $input['title'] ?? $slug ), $content );
 		if ( is_wp_error( $id ) ) {
 			return $id;
@@ -519,12 +646,13 @@ final class Patterns {
 		update_post_meta( $id, '_lb_custom_slug', $slug );
 		update_post_meta( $id, '_lb_custom_category', sanitize_key( $input['category'] ?? 'custom' ) );
 		update_post_meta( $id, '_lb_custom_desc', sanitize_text_field( $input['description'] ?? '' ) );
+		self::reset();
 		return [ 'slug' => $slug, 'id' => $id, 'slots' => count( self::slots( parse_blocks( $content ) ) ) ];
 	}
 
 	public static function delete_pattern( $input ) {
 		$slug = sanitize_key( $input['slug'] ?? '' );
-		$all = self::all();
+		$all = self::index();
 		if ( empty( $all[ $slug ]['custom'] ) ) {
 			return new \WP_Error( 'lb_not_custom', 'Not a custom pattern.', [ 'status' => 404 ] );
 		}
@@ -532,7 +660,7 @@ final class Patterns {
 			return new \WP_Error( 'lb_forbidden', 'You cannot delete that.', [ 'status' => 403 ] );
 		}
 		wp_delete_post( (int) $all[ $slug ]['post_id'], true );
-		self::$pcache = null;
+		self::reset();
 		return [ 'deleted' => $slug ];
 	}
 }

@@ -40,6 +40,7 @@ final class Content {
 	 * @return string[] meta keys written
 	 */
 	public static function set_layout( int $post_id, array $l ): array {
+		$in = $l; // The caller's own keys go to the filter too, so chrome can tell an explicit title from a page type's.
 		$l = array_merge( isset( $l['type'], self::TYPES[ $l['type'] ] ) ? self::TYPES[ $l['type'] ] : [], array_filter( $l, static function ( $v, $k ) { return 'type' !== $k && null !== $v; }, ARRAY_FILTER_USE_BOTH ) );
 		$map = [
 			'title'   => [ '_kad_post_title', [ 'show', 'hide' ] ],
@@ -56,7 +57,7 @@ final class Content {
 		if ( isset( $l['transparent_header'] ) ) {
 			$meta['_kad_post_transparent'] = $l['transparent_header'] ? 'enable' : 'disable';
 		}
-		$meta = (array) apply_filters( 'launch_builder_layout_meta', $meta, $post_id, $l );
+		$meta = (array) apply_filters( 'launch_builder_layout_meta', $meta, $post_id, $l, $in );
 		foreach ( $meta as $key => $value ) {
 			update_post_meta( $post_id, (string) $key, $value );
 		}
@@ -288,6 +289,12 @@ final class Content {
 			'quote'            => [ 'type' => 'landing', 'sections' => [ 'hero-form' ], 'note' => 'Request-a-quote landing page built around the Business Info form embed.' ],
 			'faq'              => [ 'type' => 'wide', 'sections' => [ 'faq' ], 'note' => 'Accordion of questions.' ],
 			'reviews'          => [ 'type' => 'wide', 'sections' => [ 'reviewcards', 'testimonials' ], 'note' => 'Platform ratings and written testimonials.' ],
+			'thank-you'        => [ 'type' => 'text', 'sections' => [ 'text-steps', 'text-callout' ], 'note' => 'Shown after a form is sent: what happens next (numbered steps) and a call-out with the phone number. Role thanks: no breadcrumbs, noindex.' ],
+			'privacy'          => [ 'type' => 'text', 'sections' => [ '{markdown}' ], 'note' => 'Privacy policy. Pass markdown, or use get-legal-text (type privacy) or the legal section of a brief for a token-filled template. Role legal.' ],
+			'terms'            => [ 'type' => 'text', 'sections' => [ '{markdown}' ], 'note' => 'Terms of service. Pass markdown, or use get-legal-text (type terms) or the legal section of a brief. Role legal.' ],
+			'accessibility'    => [ 'type' => 'text', 'sections' => [ '{markdown}' ], 'note' => 'Accessibility statement. Pass markdown, or use get-legal-text (type accessibility) or the legal section of a brief. Role legal.' ],
+			'booking'          => [ 'type' => 'landing', 'sections' => [ 'contact-embed', 'checklist-cta' ], 'note' => 'Book an appointment: details beside the Business Info form embed, then the fast-response checklist. Role conversion: no breadcrumbs.' ],
+			'landing'          => [ 'type' => 'landing', 'sections' => [ 'hero-form', 'trust', 'checklist-cta', 'faq' ], 'note' => 'Campaign landing page: headline with the form, proof, checklist and FAQ. Role conversion: no breadcrumbs.' ],
 		];
 	}
 
@@ -312,10 +319,10 @@ final class Content {
 	public static function playbook(): array {
 		$pb = [
 			'model'   => 'PATTERNS are designs (a hero, a footer, a service template). ELEMENTS (Kadence Pro) are placements: where and when a design shows (all pages but the home page, every service entry, the footer, before the footer). With Pro, put each shared design in an element (set-element with a pattern, or build-site elements): hero + breadcrumb bar on replace_hero_header, entry templates on replace_single_content, the footer on replace_footer, the reviews/offers/areas stack on kadence_before_footer. Edit that one element and every targeted page follows. Without Pro the same designs are synced patterns shown through set-global-area. Services and service areas are ENTRIES (post types) and every list of them is a live query.',
-			'summary' => 'Build a client site in this order. Whatever repeats on every page is set once and inherited; pages hold only their own content. The fastest path: new-blueprint (client brief in, full blueprint out), rewrite the copy, build-site.',
+			'summary' => 'Build a client site in this order. Whatever repeats on every page is set once and inherited; pages hold only their own content. For a whole site use build-from-brief: ONE brief in (dry run, fix the errors, copy pass, build, audit, go-live; see the brief entry). The simple path for a quick starter site: new-blueprint (client brief in, full blueprint out), rewrite the copy, build-site.',
 			'order'   => [
 				'1. get-playbook (this), site-state, get-company.',
-				'2. new-blueprint with the client brief (name, city, industry, services grouped by category, service areas, brand colours, style). It returns a complete blueprint with the standard pages, menu, global stack and design. Rewrite every [[bracketed]] placeholder and the pattern copy to the client\'s voice, then build-site. Or write the blueprint yourself with the recipes below.',
+				'2. Whole site: build-from-brief with the full brief (business, brand, seo, sitemap, entries, menus, legal, launch). Call it with dry_run true first, fix the listed errors, write the copy the plan asks for, then build with dry_run false and repeat with the job id until done; then audit-site and go-live. The simple path: new-blueprint with the client brief (name, city, industry, services grouped by category, service areas, brand colours, style) returns a complete blueprint with the standard pages, menu, global stack and design. Rewrite every [[bracketed]] placeholder and the pattern copy to the client\'s voice, then build-site. Or write the blueprint yourself with the recipes below.',
 				'3. Business facts live in Business Info (company in the blueprint, or set-company): name, phone, email, address(es), hours, licences, quote page, button text/links, social links, form embed, plus industry/about/keywords/tone as your writing brief. Never type these into page copy: patterns read them (tokens such as {{lb.phone}}).',
 				'4. Look: set-brand (palette, fonts), set-buttons, set-nav-style (menu + dropdown), set-page-style, set-block-defaults. build-site applies blueprint.design.',
 				'5. Structure: set-header (menu children become the dropdown), the footer, and the global bottom stack (a synced stack of patterns above the footer on EVERY page). Optional theme sidebar: set-sidebar.',
@@ -351,7 +358,7 @@ final class Content {
 			'recipes'       => self::recipes(),
 			'pattern_guide' => self::pattern_guide(),
 			'tools_by_job'  => [
-				'Start'          => 'get-playbook, new-blueprint, build-site',
+				'Start'          => 'get-playbook, build-from-brief (a whole site from one brief), new-blueprint + build-site (the simple path)',
 				'Business facts' => 'get-company, set-company',
 				'Look'           => 'set-brand, set-buttons, set-nav-style, set-page-style, set-block-defaults',
 				'Structure'      => 'set-header, set-navigation, set-synced-pattern, set-global-area, set-sidebar, insert-synced, set-element (Kadence Pro), set-pro-modules',

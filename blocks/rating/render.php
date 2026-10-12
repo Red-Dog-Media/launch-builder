@@ -4,4 +4,4 @@
  */
 defined( 'ABSPATH' ) || exit;
 
-echo \LaunchBuilder\Rating::render( $attributes ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+echo \LaunchBuilder\Rating::render( $attributes, $block ?? null ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.

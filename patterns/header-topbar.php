@@ -5,6 +5,7 @@
  * Description: Slim top bar with phone, hours and email above a logo + menu + button row.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette9"},"_kad_header_isSticky":"0"}
  */

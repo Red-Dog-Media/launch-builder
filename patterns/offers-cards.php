@@ -3,7 +3,7 @@
  * Title: Offers: three promotion cards
  * Slug: launch-builder/offers-cards
  * Description: Special offers: a big price or discount, a title, a one-line description and a button.
- * Categories: launch-builder-cta, launch-builder
+ * Categories: launch-builder-offers, launch-builder
  * Keywords: offers, promotions, specials, coupons, cards
  */
 ?>

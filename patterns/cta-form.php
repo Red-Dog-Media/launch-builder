@@ -5,6 +5,7 @@
  * Description: Dark call-to-action band with the pitch on the left and your embedded form (from Business Info) on the right.
  * Categories: launch-builder-cta, launch-builder
  * Keywords: cta, form, lead, quote
+ * Roles: conversion
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_38aece-c9","tabletLayout":"row","colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

@@ -6,7 +6,7 @@
 	"category": "launch-builder",
 	"icon": "list-view",
 	"description": "A live list of your Services or Service Areas. Add or remove an entry and every list updates.",
-	"keywords": ["services", "service areas", "cities", "list", "dynamic", "query"],
+	"keywords": ["services", "service areas", "cities", "list", "dynamic", "query", "menu", "footer"],
 	"textdomain": "launch-builder",
 	"attributes": {
 		"type": { "type": "string", "default": "service" },
@@ -20,8 +20,13 @@
 		"excludeCurrent": { "type": "boolean", "default": false },
 		"related": { "type": "boolean", "default": false },
 		"orderby": { "type": "string", "default": "" },
-		"template": { "type": "string", "default": "" }
+		"template": { "type": "string", "default": "" },
+		"variant": { "type": "string", "default": "" },
+		"showIcon": { "type": "boolean", "default": false },
+		"inArea": { "type": "string", "default": "" },
+		"ids": { "type": ["string", "array"], "default": "" }
 	},
+	"usesContext": ["postId", "postType"],
 	"supports": { "html": false, "align": ["wide", "full"], "spacing": { "margin": true } },
 	"render": "file:./render.php",
 	"editorScript": "file:./edit.js",

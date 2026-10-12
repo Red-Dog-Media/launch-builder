@@ -3,7 +3,7 @@
  * Title: About: image and text
  * Slug: launch-builder/about
  * Description: Two columns: image on one side, story and button on the other.
- * Categories: launch-builder-services, launch-builder
+ * Categories: launch-builder-about, launch-builder
  * Keywords: about, split, image
  */
 ?>

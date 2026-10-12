@@ -5,6 +5,7 @@
  * Description: Full-width fading slider, three slides with headline, text and two buttons over a dark image overlay.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, slider, carousel, pro
+ * Roles: home
  * Requires: kadence-blocks-pro
  */
 ?>

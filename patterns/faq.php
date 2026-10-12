@@ -3,7 +3,7 @@
  * Title: FAQ: accordion
  * Slug: launch-builder/faq
  * Description: Section heading with an expandable question list.
- * Categories: launch-builder-proof, launch-builder
+ * Categories: launch-builder-faq, launch-builder
  * Keywords: faq, accordion, questions
  */
 ?>

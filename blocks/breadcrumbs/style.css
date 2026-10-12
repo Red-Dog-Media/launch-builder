@@ -1,10 +1,39 @@
-/* Breadcrumb trail. Colours from the Kadence palette. */
-.lb-crumbs ol{display:flex;flex-wrap:wrap;align-items:center;gap:0;list-style:none;margin:0;padding:0;font-size:.95rem}
-.lb-crumbs li{display:flex;align-items:center;margin:0;color:var(--global-palette4,#334155)}
-.lb-crumbs li+li:before{content:"\00bb";margin:0 .6em;color:var(--global-palette5,#64748b)}
-.lb-crumbs a{color:var(--global-palette1,#0f766e);text-decoration:underline}
+/* Breadcrumb trail (launch/breadcrumbs). Colours follow the Kadence palette; the variant is a class on the nav
+   (lb-crumbs--{variant}) and on the block wrapper (lb-crumbs-wrap--{variant}). */
+.lb-crumbs{--lb-crumb-gap:15px;--lb-crumb-sep-gap:8px;font-size:.95rem;line-height:1.45}
+.lb-crumbs ol{display:flex;flex-wrap:wrap;align-items:center;row-gap:4px;list-style:none;margin:0;padding:0}
+.lb-crumbs li{display:inline-flex;align-items:center;margin:0;padding:0;color:var(--global-palette4,#334155)}
+.lb-crumb-sep{margin:0 var(--lb-crumb-sep-gap);color:var(--global-palette5,#64748b)}
+.lb-crumbs a{color:var(--global-palette1,#0f766e);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.2em}
 .lb-crumbs a:hover{color:var(--global-palette2,#115e59)}
-.lb-crumb-home{display:inline-flex;align-items:center;color:var(--global-palette1,#0f766e);text-decoration:none!important}
-.lb-crumbs li:first-child{padding-right:.4em;border-right:1px solid var(--global-palette6,#cbd5e1);margin-right:.2em}
-.lb-crumbs li:first-child+li:before{content:none}
+.lb-crumbs a:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:2px}
 .lb-crumbs li[aria-current]{font-weight:600;color:var(--global-palette3,#0f172a)}
+.lb-crumb-home{display:inline-flex;align-items:center;color:var(--global-palette1,#0f766e);text-decoration:none!important}
+.lb-crumb-icon{display:block;width:20px;height:20px}
+
+/* Lead (contained): the accent home icon, then a thin divider (1px x 18px, currentColor at 20%), ~15px either side. */
+.lb-crumb-lead{color:var(--global-palette4,#334155)}
+.lb-crumb-lead::after{content:"";display:block;width:1px;height:18px;margin:0 var(--lb-crumb-gap);background:currentColor;opacity:.2}
+
+/* contained (default): the trail at container width, under the hero, with a soft bottom edge. */
+.lb-crumbs--contained{position:relative;box-sizing:border-box;max-width:var(--global-content-width,1290px);margin:0 auto;padding:17px var(--global-content-edge-padding,1.5rem)}
+.lb-crumbs--contained::after{content:"";position:absolute;left:var(--global-content-edge-padding,1.5rem);right:var(--global-content-edge-padding,1.5rem);bottom:0;height:1px;background:rgba(15,23,42,.08);box-shadow:0 3px 8px rgba(15,23,42,.07)}
+/* Inside a Kadence row the row already sets the width and the side padding. */
+.kt-inside-inner-col>.lb-crumbs-wrap>.lb-crumbs--contained,.kt-inside-inner-col>.lb-crumbs--contained{max-width:none;padding-left:0;padding-right:0}
+.kt-inside-inner-col>.lb-crumbs-wrap>.lb-crumbs--contained::after,.kt-inside-inner-col>.lb-crumbs--contained::after{left:0;right:0}
+
+/* bar: a full-width tinted band, trail at container width. */
+.lb-crumbs-wrap--bar{background:var(--global-palette8,#f1f5f9)}
+.lb-crumbs--bar{box-sizing:border-box;max-width:var(--global-content-width,1290px);margin:0 auto;padding:12px var(--global-content-edge-padding,1.5rem)}
+.kt-inside-inner-col>.lb-crumbs-wrap>.lb-crumbs--bar{padding-left:0;padding-right:0}
+
+/* pill: the trail in a rounded tint. */
+.lb-crumbs--pill ol{display:inline-flex;padding:6px 16px;border-radius:999px;background:var(--global-palette8,#f1f5f9)}
+
+/* underline: a hairline under the trail. */
+.lb-crumbs--underline{padding-bottom:10px;border-bottom:1px solid var(--global-palette7,#e2e8f0)}
+
+@media (max-width:767px){
+	.lb-crumbs{--lb-crumb-gap:14px;font-size:.9rem}
+	.lb-crumbs--contained{padding-top:16px;padding-bottom:16px}
+}

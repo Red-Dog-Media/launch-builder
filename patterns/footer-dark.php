@@ -5,6 +5,7 @@
  * Description: Brand and social, two link columns, and contact details on dark.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, dark, links, contact
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_d5911e-f5","columns":4,"tabletLayout":"two-grid","colLayout":"equal","bgColor":"palette3","align":"full","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

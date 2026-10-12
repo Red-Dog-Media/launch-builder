@@ -3,7 +3,7 @@
  * Title: Trust bar: rating badge
  * Slug: launch-builder/trust
  * Description: Slim bar with the rating badge. Add platform logos in the block settings.
- * Categories: launch-builder-proof, launch-builder
+ * Categories: launch-builder-trust, launch-builder
  * Keywords: reviews, trust, logos, rating
  */
 ?>

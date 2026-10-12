@@ -5,6 +5,7 @@
  * Description: Dark footer built for local SEO: brand and hours, services, service-area links, and contact with a call-to-action.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, service area, local seo, dark
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_fcefc7-dd","columns":4,"tabletLayout":"two-grid","colLayout":"equal","bgColor":"palette3","align":"full","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

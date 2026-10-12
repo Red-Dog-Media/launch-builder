@@ -5,6 +5,7 @@
  * Description: Text and check list on the left, image on the right. Alternate with media-left.
  * Categories: launch-builder-content, launch-builder
  * Keywords: media, text, image, split, right
+ * Variant-Of: media-left
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_dafb84-e4","tabletLayout":"row","colLayout":"equal","bgColor":"palette9","align":"full","verticalAlignment":"middle","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

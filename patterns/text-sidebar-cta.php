@@ -5,6 +5,7 @@
  * Description: A wide column of text with a contact card beside it (phone, hours, quote button). For long service pages.
  * Categories: launch-builder-content, launch-builder
  * Keywords: text, sidebar, cta, card, service page
+ * Roles: service
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_cf9a6b-68","tabletLayout":"row","colLayout":"left-golden","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

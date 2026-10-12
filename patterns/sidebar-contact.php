@@ -3,7 +3,7 @@
  * Title: Sidebar: contact card
  * Slug: launch-builder/sidebar-contact
  * Description: A compact card for the theme sidebar: phone, hours and the main button. Reads Business Info.
- * Categories: launch-builder-content, launch-builder
+ * Categories: launch-builder-templates, launch-builder
  * Keywords: sidebar, contact, card, phone, widget
  */
 ?>

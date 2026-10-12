@@ -5,6 +5,7 @@
  * Description: Contact details on one side and your embedded form (from Business Info) on the other.
  * Categories: launch-builder-maps, launch-builder
  * Keywords: contact, form, embed, details
+ * Roles: conversion
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_31074f-32","tabletLayout":"row","colLayout":"equal","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

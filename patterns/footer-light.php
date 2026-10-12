@@ -5,6 +5,8 @@
  * Description: Same layout on a light background.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, light, links, contact
+ * Slot: footer
+ * Variant-Of: footer-dark
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_40fbb2-5b","columns":4,"tabletLayout":"two-grid","colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

@@ -3,7 +3,7 @@
  * Title: Sidebar: booking form card
  * Slug: launch-builder/sidebar-form
  * Description: A booking-form card for the theme sidebar (your form embed from Business Info) with a phone line underneath.
- * Categories: launch-builder-content, launch-builder
+ * Categories: launch-builder-templates, launch-builder
  * Keywords: sidebar, form, booking, contact, widget
  */
 ?>

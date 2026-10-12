@@ -5,6 +5,8 @@
  * Description: The one hero every inner page and entry shares: the page title as the H1, your tagline from Business Info, the two buttons and the rating. Place it once with a Kadence Pro element (hook replace_hero_header) instead of repeating it on each page.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, shared, element, title, tagline, cta, inner page
+ * Roles: page, legal, services_hub, areas_hub, category, service, area
+ * Slot: hero
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"295_4c7a48-df","columns":1,"colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

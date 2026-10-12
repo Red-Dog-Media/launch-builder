@@ -5,6 +5,7 @@
  * Description: Edge-to-edge half image, half content hero built on the Split Content block.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, split, image, pro
+ * Roles: home
  * Requires: kadence-blocks-pro
  */
 ?>

@@ -5,6 +5,7 @@
  * Description: Dark footer for licensed trades: offices and hours, license numbers, quick links, a booking button and social icons, plus a legal links row.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, licensing, offices, hours, trades, dark
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_600b0e-2b","columns":4,"tabletLayout":"two-grid","colLayout":"equal","bgColor":"palette3","align":"full","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

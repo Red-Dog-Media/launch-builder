@@ -1,131 +1,169 @@
 ( function ( wp ) {
 	const { registerBlockType, getBlockType } = wp.blocks;
-	const { useBlockProps, InspectorControls, MediaUpload, MediaUploadCheck, PanelColorSettings } = wp.blockEditor;
-	const { PanelBody, RangeControl, ToggleControl, SelectControl, TextControl, Button } = wp.components;
+	const { useBlockProps, InspectorControls, MediaUpload, MediaUploadCheck } = wp.blockEditor;
+	const { PanelBody, RangeControl, ToggleControl, SelectControl, TextControl, Button, Notice, CheckboxControl } = wp.components;
 	const ServerSideRender = wp.serverSideRender;
-	const { __ } = wp.i18n;
+	const { __, sprintf } = wp.i18n;
 	const el = wp.element.createElement;
 
-	const WEIGHTS = [ [ '300', 'Light' ], [ '400', 'Regular' ], [ '500', 'Medium' ], [ '600', 'Semibold' ], [ '700', 'Bold' ], [ '800', 'Extra bold' ] ];
+	// Set by Rating::editor_data(): Business Info review numbers, the bundled platform logos, the legacy attribute names.
+	const DATA = Object.assign( { hasGlobal: false, rating: null, count: null, platforms: [], legacy: [], businessInfoUrl: '' }, window.lbRating || {} );
+	const SKIP = [ 'className', 'style', 'anchor', 'align', 'lock', 'metadata', 'backgroundColor', 'textColor', 'gradient', 'fontFamily', 'borderColor' ];
+	const same = ( x, y ) => JSON.stringify( x ) === JSON.stringify( y );
 
 	function Edit( { attributes: a, setAttributes: set, name } ) {
 		const blockProps = useBlockProps();
 		const defaults = getBlockType( name ).attributes;
-		const reset = ( key, v ) => ( v === undefined || v === null ? defaults[ key ].default : v );
+		const isDefault = ( k ) => a[ k ] === undefined || ( 'default' in ( defaults[ k ] || {} ) && same( a[ k ], defaults[ k ].default ) );
 
-		const range = ( key, label, min, max, step ) =>
-			el( RangeControl, { key, label, value: a[ key ], min, max, step: step || 1, allowReset: true, resetFallbackValue: defaults[ key ].default, onChange: ( v ) => set( { [ key ]: reset( key, v ) } ), __nextHasNoMarginBottom: true } );
-		const select = ( key, label, options ) =>
-			el( SelectControl, { key, label, value: a[ key ], options: options.map( ( o ) => ( { value: o[ 0 ], label: o[ 1 ] } ) ), onChange: ( v ) => set( { [ key ]: v } ), __nextHasNoMarginBottom: true } );
-		const toggle = ( key, label, help ) =>
-			el( ToggleControl, { key, label, help, checked: !! a[ key ], onChange: ( v ) => set( { [ key ]: v } ), __nextHasNoMarginBottom: true } );
-		const input = ( key, label, help, type ) =>
-			el( TextControl, { key, label, help, type: type || 'text', value: a[ key ] === undefined ? '' : a[ key ], onChange: ( v ) => set( { [ key ]: v } ), __nextHasNoMarginBottom: true } );
+		// What the block saves (defaults are never saved): the preview gets exactly that, so it renders like the front end.
+		const saved = {};
+		Object.keys( a ).forEach( ( k ) => {
+			if ( defaults[ k ] && SKIP.indexOf( k ) < 0 && ! isDefault( k ) ) {
+				saved[ k ] = a[ k ];
+			}
+		} );
+		const legacy = DATA.legacy.filter( ( k ) => ! isDefault( k ) );
+		const sourceRow = a.source ? DATA.platforms.find( ( p ) => p.key === a.source ) : null;
+		const hasNumbers = a.source ? !! ( sourceRow && sourceRow.inBusinessInfo ) : DATA.hasGlobal;
 
-		/* ---- logos ---- */
+		const select = ( key, label, options, help ) =>
+			el( SelectControl, { key, label, help, value: a[ key ], options: options.map( ( o ) => ( { value: o[ 0 ], label: o[ 1 ] } ) ), onChange: ( v ) => set( { [ key ]: v } ), __nextHasNoMarginBottom: true, __next40pxDefaultSize: true } );
+		const gap = ( h ) => el( 'div', { style: { height: h || 12 } } );
+
+		/* ---- rating + caption ---- */
+		const content = el( PanelBody, { title: __( 'Rating', 'launch-builder' ), initialOpen: true },
+			el( SelectControl, {
+				label: __( 'Layout', 'launch-builder' ),
+				value: 'stacked' === a.type ? 'card' : a.type,
+				options: [ [ 'badge', __( 'Badge', 'launch-builder' ) ], [ 'card', __( 'Card', 'launch-builder' ) ], [ 'pill', __( 'Pill', 'launch-builder' ) ], [ 'stars', __( 'Stars only', 'launch-builder' ) ] ].map( ( o ) => ( { value: o[ 0 ], label: o[ 1 ] } ) ),
+				onChange: ( v ) => set( { type: v } ),
+				__nextHasNoMarginBottom: true,
+				__next40pxDefaultSize: true,
+			} ),
+			gap(),
+			el( ToggleControl, {
+				label: __( 'Use Business Info', 'launch-builder' ),
+				help: __( 'Rating, review count and link come from Launch Builder → Business Info, so every widget updates together.', 'launch-builder' ),
+				checked: !! a.useGlobal,
+				onChange: ( v ) => set( { useGlobal: v, size: a.size || 'md' } ),
+				__nextHasNoMarginBottom: true,
+			} ),
+			a.useGlobal ? gap() : null,
+			a.useGlobal ? select( 'source', __( 'Numbers from', 'launch-builder' ), [ [ '', __( 'All review sites (overall)', 'launch-builder' ) ] ].concat( DATA.platforms.map( ( p ) => [ p.key, p.inBusinessInfo ? p.label : sprintf( __( '%s (not in Business Info yet)', 'launch-builder' ), p.label ) ] ) ) ) : null,
+			a.useGlobal && ! hasNumbers ? el( Notice, { status: 'warning', isDismissible: false, className: 'lb-rating-notice' },
+				__( 'Business Info has no review numbers for this yet, so the widget shows demo numbers. Add your review sites under Launch Builder → Business Info.', 'launch-builder' ),
+				DATA.businessInfoUrl ? el( 'p', null, el( 'a', { href: DATA.businessInfoUrl, target: '_blank', rel: 'noopener noreferrer' }, __( 'Open Business Info', 'launch-builder' ) ) ) : null
+			) : null,
+			gap(),
+			a.useGlobal ? el( ToggleControl, {
+				label: __( 'Type the rating by hand', 'launch-builder' ),
+				checked: ! isDefault( 'rating' ),
+				onChange: ( v ) => set( { rating: v ? ( null !== DATA.rating && DATA.rating !== defaults.rating.default ? DATA.rating : 5 ) : undefined } ),
+				__nextHasNoMarginBottom: true,
+			} ) : null,
+			! a.useGlobal || ! isDefault( 'rating' ) ? el( RangeControl, { label: __( 'Rating', 'launch-builder' ), value: a.rating, min: 0, max: a.starCount || 5, step: 0.1, onChange: ( v ) => set( { rating: undefined === v ? undefined : v } ), allowReset: true, __nextHasNoMarginBottom: true, __next40pxDefaultSize: true } ) : null,
+			'stars' !== a.type ? gap() : null,
+			'stars' !== a.type ? el( TextControl, {
+				label: __( 'Caption', 'launch-builder' ),
+				help: a.useGlobal ? __( 'Leave as is to use the review count from Business Info; anything you type here replaces it.', 'launch-builder' ) : __( 'e.g. “132+ Combined Reviews”. Empty = no caption.', 'launch-builder' ),
+				value: a.useGlobal && isDefault( 'text' ) ? '' : a.text,
+				placeholder: a.useGlobal && isDefault( 'text' ) ? __( 'From Business Info', 'launch-builder' ) : '',
+				onChange: ( v ) => set( { text: a.useGlobal && '' === v ? undefined : v } ),
+				__nextHasNoMarginBottom: true,
+				__next40pxDefaultSize: true,
+			} ) : null,
+			gap(),
+			el( TextControl, {
+				label: __( 'Link (optional)', 'launch-builder' ),
+				help: a.useGlobal && a.source ? __( 'Blank = the link of that review site in Business Info.', 'launch-builder' ) : __( 'Makes the score, stars and caption clickable.', 'launch-builder' ),
+				type: 'url',
+				value: a.link || '',
+				onChange: ( v ) => set( { link: v } ),
+				__nextHasNoMarginBottom: true,
+				__next40pxDefaultSize: true,
+			} )
+		);
+
+		/* ---- platform logos ---- */
+		const platforms = a.platforms || [];
+		const togglePlatform = ( key, on ) => set( { platforms: on ? platforms.concat( [ key ] ) : platforms.filter( ( k ) => k !== key ), size: a.size || 'md' } );
+		const platformsPanel = el( PanelBody, { title: __( 'Review site logos', 'launch-builder' ), initialOpen: false },
+			el( 'p', { className: 'description' }, __( 'Round logos shown before the score, overlapping, in the order you tick them.', 'launch-builder' ) ),
+			DATA.platforms.map( ( p ) =>
+				el( 'div', { key: p.key, style: { display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0' } },
+					el( 'img', { src: p.logo, alt: '', width: 22, height: 22, style: { flex: 'none' } } ),
+					el( CheckboxControl, { label: p.label, checked: platforms.indexOf( p.key ) >= 0, onChange: ( v ) => togglePlatform( p.key, v ), __nextHasNoMarginBottom: true } )
+				)
+			)
+		);
+
+		/* ---- size + alignment ---- */
+		const layoutPanel = el( PanelBody, { title: __( 'Size and alignment', 'launch-builder' ), initialOpen: false },
+			el( SelectControl, { label: __( 'Size', 'launch-builder' ), value: a.size || 'md', options: [ { value: 'sm', label: __( 'Small', 'launch-builder' ) }, { value: 'md', label: __( 'Medium', 'launch-builder' ) }, { value: 'lg', label: __( 'Large', 'launch-builder' ) } ], onChange: ( v ) => set( { size: v } ), __nextHasNoMarginBottom: true, __next40pxDefaultSize: true } ),
+			gap(),
+			select( 'contentAlign', __( 'Alignment', 'launch-builder' ), [ [ 'start', __( 'Left', 'launch-builder' ) ], [ 'center', __( 'Center', 'launch-builder' ) ], [ 'end', __( 'Right', 'launch-builder' ) ] ] )
+		);
+
+		/* ---- custom (media library) logos ---- */
 		const logos = a.logos || [];
 		const setLogos = ( l ) => set( { logos: l } );
 		const patchLogo = ( i, p ) => setLogos( logos.map( ( l, k ) => ( k === i ? Object.assign( {}, l, p ) : l ) ) );
 		const moveLogo = ( i, d ) => {
 			const j = i + d;
-			if ( j < 0 || j >= logos.length ) return;
+			if ( j < 0 || j >= logos.length ) {
+				return;
+			}
 			const c = logos.slice();
 			[ c[ i ], c[ j ] ] = [ c[ j ], c[ i ] ];
 			setLogos( c );
 		};
-
-		const logoRows = logos.map( ( l, i ) =>
-			el( 'div', { key: i, className: 'lb-logo-row', style: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid #e0e0e0' } },
-				el( 'img', { src: l.url, alt: '', style: { width: 48, height: 48, objectFit: 'contain', background: '#f6f6f6', borderRadius: 4, flex: 'none' } } ),
-				el( 'div', { style: { flex: 1, minWidth: 0 } },
-					el( TextControl, { label: __( 'Alt text', 'launch-builder' ), value: l.alt || '', onChange: ( v ) => patchLogo( i, { alt: v } ), __nextHasNoMarginBottom: true } ),
-					el( 'div', { style: { height: 6 } } ),
-					el( TextControl, { label: __( 'Link (optional)', 'launch-builder' ), type: 'url', value: l.link || '', onChange: ( v ) => patchLogo( i, { link: v } ), __nextHasNoMarginBottom: true } ),
-					el( 'div', { style: { marginTop: 8 } }, el( RangeControl, { label: __( 'Height of this logo (px)', 'launch-builder' ), value: l.height || a.logoHeight, min: 12, max: 160, allowReset: true, resetFallbackValue: undefined, onChange: ( v ) => patchLogo( i, { height: v === undefined ? '' : v } ), __nextHasNoMarginBottom: true } ) ),
-					i > 0 ? el( 'div', { style: { marginTop: 8 } }, el( RangeControl, { label: __( 'Space before this logo (px)', 'launch-builder' ), value: l.space === undefined || l.space === '' ? a.logoGap : l.space, min: -40, max: 60, allowReset: true, resetFallbackValue: undefined, onChange: ( v ) => patchLogo( i, { space: v === undefined ? '' : v } ), __nextHasNoMarginBottom: true } ) ) : null
-				),
-				el( 'div', { style: { display: 'flex', flexDirection: 'column', flex: 'none' } },
-					el( Button, { icon: 'arrow-up-alt2', label: __( 'Move up', 'launch-builder' ), size: 'small', disabled: i === 0, onClick: () => moveLogo( i, -1 ) } ),
-					el( Button, { icon: 'arrow-down-alt2', label: __( 'Move down', 'launch-builder' ), size: 'small', disabled: i === logos.length - 1, onClick: () => moveLogo( i, 1 ) } ),
-					el( Button, { icon: 'trash', label: __( 'Remove', 'launch-builder' ), size: 'small', isDestructive: true, onClick: () => setLogos( logos.filter( ( _, k ) => k !== i ) ) } )
+		const logosPanel = el( PanelBody, { title: __( 'Custom logos', 'launch-builder' ), initialOpen: false },
+			logos.map( ( l, i ) =>
+				el( 'div', { key: i, style: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid #e0e0e0' } },
+					el( 'img', { src: l.url, alt: '', style: { width: 48, height: 48, objectFit: 'contain', background: '#f6f6f6', borderRadius: 4, flex: 'none' } } ),
+					el( 'div', { style: { flex: 1, minWidth: 0 } },
+						el( TextControl, { label: __( 'Alt text', 'launch-builder' ), value: l.alt || '', onChange: ( v ) => patchLogo( i, { alt: v } ), __nextHasNoMarginBottom: true } ),
+						gap( 6 ),
+						el( TextControl, { label: __( 'Link (optional)', 'launch-builder' ), type: 'url', value: l.link || '', onChange: ( v ) => patchLogo( i, { link: v } ), __nextHasNoMarginBottom: true } )
+					),
+					el( 'div', { style: { display: 'flex', flexDirection: 'column', flex: 'none' } },
+						el( Button, { icon: 'arrow-up-alt2', label: __( 'Move up', 'launch-builder' ), size: 'small', disabled: 0 === i, onClick: () => moveLogo( i, -1 ) } ),
+						el( Button, { icon: 'arrow-down-alt2', label: __( 'Move down', 'launch-builder' ), size: 'small', disabled: i === logos.length - 1, onClick: () => moveLogo( i, 1 ) } ),
+						el( Button, { icon: 'trash', label: __( 'Remove', 'launch-builder' ), size: 'small', isDestructive: true, onClick: () => setLogos( logos.filter( ( _, k ) => k !== i ) ) } )
+					)
 				)
+			),
+			el( MediaUploadCheck, null,
+				el( MediaUpload, {
+					allowedTypes: [ 'image' ],
+					multiple: true,
+					value: logos.map( ( l ) => l.id ).filter( Boolean ),
+					onSelect: ( items ) => setLogos( logos.concat( ( Array.isArray( items ) ? items : [ items ] ).map( ( m ) => ( { id: m.id, url: m.url, alt: m.alt || '', link: '' } ) ) ) ),
+					render: ( { open } ) => el( Button, { variant: 'secondary', onClick: open, style: { marginTop: 12 } }, __( 'Add logos', 'launch-builder' ) ),
+				} )
 			)
 		);
 
-		const addLogos = el( MediaUploadCheck, { key: 'add' },
-			el( MediaUpload, {
-				allowedTypes: [ 'image' ],
-				multiple: true,
-				value: logos.map( ( l ) => l.id ).filter( Boolean ),
-				onSelect: ( items ) => setLogos( logos.concat( ( Array.isArray( items ) ? items : [ items ] ).map( ( m ) => ( { id: m.id, url: m.url, alt: m.alt || '', link: '' } ) ) ) ),
-				render: ( { open } ) => el( Button, { variant: 'secondary', onClick: open, style: { marginTop: 12 } }, __( 'Add logos', 'launch-builder' ) ),
-			} )
-		);
+		/* ---- legacy sizing: shown only when the block carries old per-block values ---- */
+		const legacyPanel = legacy.length ? el( PanelBody, { title: __( 'Legacy custom sizing', 'launch-builder' ), initialOpen: false },
+			el( 'p', null, sprintf( __( 'This widget was styled with the older settings (%s). They still apply. Reset them to follow the size above and the colours around it.', 'launch-builder' ), legacy.join( ', ' ) ) ),
+			el( Button, {
+				variant: 'secondary',
+				onClick: () => {
+					const reset = { size: a.size || 'md' };
+					legacy.forEach( ( k ) => {
+						reset[ k ] = undefined;
+					} );
+					set( reset );
+				},
+			}, __( 'Reset', 'launch-builder' ) )
+		) : null;
 
-		const inspector = el( InspectorControls, null,
-			el( PanelBody, { title: __( 'Content', 'launch-builder' ), initialOpen: true },
-				select( 'type', __( 'Layout', 'launch-builder' ), [ [ 'badge', 'Badge' ], [ 'card', 'Card' ], [ 'pill', 'Pill' ], [ 'stacked', 'Stacked' ] ] ),
-				range( 'rating', __( 'Rating', 'launch-builder' ), 0, a.starCount || 5, 0.1 ),
-				toggle( 'showRating', __( 'Show rating number', 'launch-builder' ) ),
-				input( 'text', __( 'Caption', 'launch-builder' ), __( 'e.g. “887+ Combined Reviews”', 'launch-builder' ) ),
-				input( 'link', __( 'Link (optional)', 'launch-builder' ), __( 'Makes the score, stars and caption clickable.', 'launch-builder' ), 'url' ),
-				a.link ? toggle( 'newTab', __( 'Open in new tab', 'launch-builder' ) ) : null
-			),
-			el( PanelBody, { title: __( 'Shape & spacing', 'launch-builder' ), initialOpen: false },
-				select( 'shape', __( 'Corners', 'launch-builder' ), [ [ 'sharp', 'Sharp' ], [ 'soft', 'Soft' ], [ 'round', 'Round' ] ] ),
-				select( 'density', __( 'Spacing', 'launch-builder' ), [ [ 'compact', 'Compact' ], [ 'default', 'Default' ], [ 'airy', 'Airy' ] ] ),
-				select( 'starStyle', __( 'Star shape', 'launch-builder' ), [ [ 'sharp', 'Sharp' ], [ 'rounded', 'Rounded' ] ] )
-			),
-			el( PanelBody, { title: __( 'Stars', 'launch-builder' ), initialOpen: false },
-				range( 'starCount', __( 'Number of stars', 'launch-builder' ), 1, 10 ),
-				range( 'starSize', __( 'Size (px)', 'launch-builder' ), 10, 80 ),
-				range( 'starGap', __( 'Gap (px)', 'launch-builder' ), 0, 24 )
-			),
-			el( PanelColorSettings, {
-				title: __( 'Star colors', 'launch-builder' ),
-				initialOpen: false,
-				colorSettings: [
-					{ label: __( 'Filled', 'launch-builder' ), value: a.starColor, onChange: ( v ) => set( { starColor: v || defaults.starColor.default } ) },
-					{ label: __( 'Empty', 'launch-builder' ), value: a.starEmpty, onChange: ( v ) => set( { starEmpty: v || defaults.starEmpty.default } ) },
-				],
-			} ),
-			el( PanelBody, { title: __( 'Logos', 'launch-builder' ), initialOpen: false },
-				logoRows,
-				addLogos,
-				el( 'div', { style: { height: 16 } } ),
-				select( 'logoPosition', __( 'Position', 'launch-builder' ), [ [ 'start', 'Before' ], [ 'end', 'After' ], [ 'top', 'Above' ], [ 'bottom', 'Below' ] ] ),
-				range( 'logoHeight', __( 'Height (px)', 'launch-builder' ), 12, 120 ),
-				range( 'logoGap', __( 'Space between logos (px, negative overlaps)', 'launch-builder' ), -40, 60 ),
-				select( 'logoStyle', __( 'Treatment', 'launch-builder' ), [ [ 'original', 'Original colors' ], [ 'grayscale', 'Grayscale' ], [ 'grayscale-hover', 'Grayscale, color on hover' ] ] ),
-				toggle( 'logoDivider', __( 'Divider after logos', 'launch-builder' ) )
-			),
-			el( PanelBody, { title: __( 'Typography', 'launch-builder' ), initialOpen: false },
-				range( 'ratingSize', __( 'Rating size (px)', 'launch-builder' ), 12, 100 ),
-				select( 'ratingWeight', __( 'Rating weight', 'launch-builder' ), WEIGHTS ),
-				range( 'textSize', __( 'Caption size (px)', 'launch-builder' ), 10, 40 ),
-				select( 'textWeight', __( 'Caption weight', 'launch-builder' ), WEIGHTS )
-			),
-			el( PanelColorSettings, {
-				title: __( 'Text colors', 'launch-builder' ),
-				initialOpen: false,
-				colorSettings: [
-					{ label: __( 'Rating', 'launch-builder' ), value: a.ratingColor, onChange: ( v ) => set( { ratingColor: v || defaults.ratingColor.default } ) },
-					{ label: __( 'Caption', 'launch-builder' ), value: a.textColor, onChange: ( v ) => set( { textColor: v || defaults.textColor.default } ) },
-				],
-			} ),
-			el( PanelBody, { title: __( 'Layout', 'launch-builder' ), initialOpen: false },
-				select( 'contentAlign', __( 'Alignment', 'launch-builder' ), [ [ 'start', 'Left' ], [ 'center', 'Center' ], [ 'end', 'Right' ] ] ),
-				range( 'gap', __( 'Gap between logos and score (px)', 'launch-builder' ), 0, 80 ),
-				range( 'maxWidth', __( 'Max width (px, 0 = auto)', 'launch-builder' ), 0, 1600, 10 )
-			),
-			el( PanelBody, { title: __( 'Responsive', 'launch-builder' ), initialOpen: false },
-				select( 'breakpoint', __( 'Switch when the widget is narrower than', 'launch-builder' ), [ [ '360', '360px' ], [ '480', '480px' ], [ '640', '640px' ], [ '768', '768px' ] ] ),
-				select( 'mobile', __( 'Behavior', 'launch-builder' ), [ [ 'stack', 'Stack logos above the score' ], [ 'hide-logos', 'Hide logos' ], [ 'keep', 'Keep layout, scale down' ] ] ),
-				range( 'mobileScale', __( 'Scale when narrow (%)', 'launch-builder' ), 40, 100 )
-			)
+		return el( 'div', blockProps,
+			el( InspectorControls, null, content, platformsPanel, layoutPanel, logosPanel, legacyPanel ),
+			el( ServerSideRender, { block: name, attributes: saved, skipBlockSupportAttributes: true } )
 		);
-
-		return el( 'div', blockProps, inspector, el( ServerSideRender, { block: name, attributes: a, skipBlockSupportAttributes: true } ) );
 	}
 
 	const star = ( x ) => el( 'path', { key: x, d: 'M' + x + ' 4.2l1.1 2.3 2.5.3-1.8 1.8.5 2.5-2.3-1.2-2.3 1.2.5-2.5-1.8-1.8 2.5-.3z' } );

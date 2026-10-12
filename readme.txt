@@ -4,7 +4,7 @@ Tags: kadence, block patterns, site builder, local business, mcp
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.9.0
+Stable tag: 0.10.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,6 +21,9 @@ Launch Builder turns a client brief into a finished local business website on th
 * **Services and service areas as content types.** Lists, menus and footers read them live: add, rename or remove an entry and every page follows.
 * **Page roles.** Every page knows what it is: home, service, area, category, conversion, thank-you, legal and more.
 * **Rating widget.** Score, stars and review logos in badge, card, pill and stacked layouts.
+* **A dashboard and a Design hub.** A launch runway, module switches that save as you click, and every page type's header, hero, breadcrumbs, footer and call bar shown live.
+* **Optional modules.** URLs and redirects, safe duplication, media hygiene, local avatars, login links, Kadence Conversions popups and client branding: each switches on and off on its own.
+* **One brief in, a whole site out.** Validate a brief, preview the changes, build in steps and export the site back as a brief.
 * **Safe automation.** Least-privilege tools, snapshots before every change and an activity log for everything an MCP client does.
 
 = Built on Kadence =
@@ -36,6 +39,46 @@ New versions are published as GitHub releases and arrive through the normal Word
 Launch Builder is made by [LaunchLocal Digital Marketing](https://golaunchlocal.com).
 
 == Changelog ==
+
+= 0.10.0 - 2026-10-12 =
+
+**Added**
+
+* A new Launch Builder dashboard: a launch runway that shows what is done and what comes next, the optional modules as switches that save as you click, the AI assistant connection, the site check, recent activity and the design in use. A dedicated Modules page with search and categories, a compact widget on the WordPress Dashboard, and one refreshed look across every Launch Builder screen (Business Info is now a set of cards with a save bar that stays in view).
+* Shared designs per page role: header, notice bar, hero, breadcrumbs, service and area templates, 404 body, before-footer stack, footer and a mobile call bar are placed once, through Kadence Elements or by the plugin, and every page of that role follows. One map to read and edit.
+* Breadcrumbs by role with a single BreadcrumbList for search engines, a contained default bar and calmer spacing.
+* A dynamic text engine: {{tokens}} for Business Info, site, page, entry, area, service and Meta Box values, with fallbacks. Empty social profiles disappear instead of leaving dead icons.
+* Rating widget v2: platform logos, a combined score and review count from Business Info, sizes and styles; blocks saved before keep rendering exactly as they did.
+* Style presets: radius, shadow, spacing, type, surfaces, buttons and the hero overlay as CSS variables, with on-dark button states and a contrast guard.
+* Live service and area menus: menu items follow the entries, including renamed categories and areas.
+* A site audit and page inspection (what a visitor and a search engine would see), preview links and a sync tool, plus module switches for the optional parts.
+* Compatibility for Rank Math, Yoast, Kadence, Meta Box and Perfmatters: SEO templates and variables, sitemap and schema settings, safe writes.
+* Kadence Conversions items (exit-intent popup, slide-in, banner) kept up to date by key and shown by page role.
+* URLs: custom URLs per page, entry and term, URL patterns per type, a lookup table and automatic redirects when a URL changes.
+* Media hygiene (off by default): removes GPS location and other metadata from uploads and imports without re-encoding.
+* Duplicate: safe copies of pages, posts, services, areas and synced patterns as drafts, from row actions, bulk actions, the admin bar and the editor.
+* Local avatars (off by default): profile photos from the Media Library instead of Gravatar.
+* Login links (off by default): expiring, revocable one-click sign-in links for client accounts.
+* Design hub (Launch Builder > Design hub): the header, notice bar, hero, breadcrumbs, page template, 404 content, before-footer sections, footer and mobile call bar of every page type, shown on a real page at desktop, tablet and phone widths. Each one says whether it is applied and where it lives, links to edit its Kadence Element or synced pattern and to the pattern in the library, and can be switched for another design with one click and undone right after. Kadence Conversions popups and banners are listed beside them. The pattern gallery (search, groups, widths) is the second tab.
+* Build a whole site from one brief: `build-from-brief` checks the brief and lists every problem with its path, shows a plan first, then builds in resumable steps that are safe to repeat. Pages and entries that still need copy are created as drafts. `export-brief` writes the site back as a brief.
+* `go-live` audits the site, refuses to launch while it reports errors, then makes the site visible to search engines. Rank Math Instant Indexing submissions are held back until then.
+* Privacy policy, terms and accessibility statement generated from Business Info, with the text message consent wording business texting requires. They stay drafts until the client has reviewed them.
+* `detokenize` bakes Business Info into the content before the plugin is removed. `convert-page-to-entry` turns a page into a service or service area and redirects its old URL.
+* Page recipes for thank-you, privacy, terms, accessibility, booking and landing pages.
+* Branding (off by default): a branded sign-in screen, a client-friendly Site Owner role with a simplified admin menu, a welcome panel, admin footer and email sender name taken from Business Info, and an opt-in bridge to Kadence White Label. Administrators are never restricted.
+* New designs generated for every page type: heroes for pages, services, areas, categories, hubs, conversion and thank-you pages, a mobile call bar, a notice bar, a 404 body, main-row-only headers (light, dark and transparent) and Kadence Conversions designs (exit-intent popup, slide-in and banner).
+
+**Changed**
+
+* "Pattern preview" is now the Pattern library tab of the Design hub. Existing links to it keep working.
+
+**Fixed**
+
+* Opening hours such as "9am" (without minutes) are understood.
+* Rating colours written as rgba() values are kept on current WordPress.
+* Adding or re-building service areas no longer creates a second copy of an area that already exists on current WordPress.
+* Service areas below a parent are found by their parent on current WordPress, so area lists, menus and templates follow the hierarchy.
+* Looking up service areas by slug and path works on WordPress 7.
 
 = 0.9.0 - 2026-10-08 =
 

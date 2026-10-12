@@ -5,6 +5,8 @@
  * Description: Dark full-width hero with light text, two buttons and a light rating pill.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, dark, header
+ * Roles: home
+ * Variant-Of: hero
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_dc890f-96","columns":1,"colLayout":"equal","bgColor":"palette3","align":"full","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["3xl","","3xl",""],"kbVersion":2} -->

@@ -38,7 +38,7 @@ final class Blueprint {
 		Abilities::add( 'set-global-area', 'Show a synced pattern on every page', 'Areas: above_header, below_header, above_footer, footer (footer replaces the theme footer). Pass key "" to clear an area.',
 			[ 'properties' => [ 'area' => [ 'type' => 'string', 'enum' => Globals::areas() ], 'key' => [ 'type' => 'string' ] ], 'required' => [ 'area', 'key' ] ], [ __CLASS__, 'set_area' ], 'edit_theme_options' );
 
-		Abilities::add( 'build-site', 'Build a whole site from a blueprint', 'One call to set up site identity, brand, header + menu, synced/global patterns, footer, pages (made of patterns with filled slots), SEO meta and the front page. Idempotent. Blueprint: {site:{title,tagline,permalink}, company:{name,phone,email,address,city,hours,quote_url,cta_label,cta_url,cta2_label,cta2_url,maps_url,form_html,facebook,instagram,google,youtube} (GLOBAL business info: patterns use tokens, so changing it later updates every page; see get-company), company_source:{option,map} (optional: read these from another settings option), business:{name,phone,email,address,hours,city,cities:[...]} (older name for the same facts; cities fills the city names in service-area patterns), brand:{palette,fonts,logo_url}, header:{pattern,slots,replace,nav:[{label,page|url,children}]}, synced:{key:{pattern,slots,replace} or {sections:[{pattern,replace}]} for a stack of several patterns}, areas:{above_footer:key,footer:key}, entries:{services:[{title,category,summary,markdown,order}], areas:[{title,parent,summary,markdown,order}], categories:[{name,slug,page}]} (SERVICES AND AREAS AS POST TYPES: the live lists and the per-entry pages come from these; add synced keys service_template and area_template), sidebar:"synced_key" (theme sidebar widget area; shown on pages with type "sidebar"), pro_modules:{elements:true,...}, elements:{key:{pattern|sections:[{pattern,replace}] (content built into the element) or synced,hook,pages:[slugs],post_types:["page","lb_service","lb_area"],hide_front,hide_pages,priority}}, chrome:"elements" (shared hero via Kadence Pro hook replace_hero_header + breadcrumb bar via kadence_before_content, placed once for every page and entry; needs Theme Kit Pro) or "patterns" (default: hero and breadcrumb patterns on each page) (Kadence Pro: per-page placement of a synced pattern), design:{buttons:{primary:{background,radius,...},secondary,outline}, nav:{links:{...},dropdown:{...}}, page:"banner"|{title,content,site}, block_defaults:false to skip} (the global look; see set-buttons, set-nav-style, set-page-style), pages:[{title,slug,front,parent,status,type:"landing"|"text"|"wide"|"sidebar",recipe,markdown,replace,seo:{title,description,keyword},sections:[{pattern,slots,replace,markdown?}|{use:key}|{markdown:"..."}]}]} (a pattern section may carry markdown for its text area: service-body). Page type: landing = full-width pattern pages (home, contact, quote); text = theme title banner + readable column with bare Markdown text (default for inner pages); wide = text plus media patterns; sidebar = text with the theme sidebar (the sidebar pattern) beside it. recipe (home, about, service-detail, location, contact, quote, faq, reviews...) supplies starting sections; get-playbook explains. Returns a report with page URLs.',
+		Abilities::add( 'build-site', 'Build a whole site from a blueprint', 'One call to set up site identity, brand, header + menu, synced/global patterns, footer, pages (made of patterns with filled slots), SEO meta and the front page. Idempotent. Blueprint: {site:{title,tagline,permalink}, company:{name,phone,email,address,city,hours,quote_url,cta_label,cta_url,cta2_label,cta2_url,maps_url,form_html,facebook,instagram,google,youtube} (GLOBAL business info: patterns use tokens, so changing it later updates every page; see get-company), company_source:{option,map} (optional: read these from another settings option), business:{name,phone,email,address,hours,city,cities:[...]} (older name for the same facts; cities fills the city names in service-area patterns), brand:{palette,fonts,logo_url}, header:{pattern,slots,replace,nav:[{label,page|url,children}]}, synced:{key:{pattern,slots,replace} or {sections:[{pattern,replace}]} for a stack of several patterns}, areas:{above_footer:key,footer:key}, entries:{services:[{title,category,summary,markdown,order}], areas:[{title,parent,summary,markdown,order}], categories:[{name,slug,page}]} (SERVICES AND AREAS AS POST TYPES: the live lists and the per-entry pages come from these; add synced keys service_template and area_template), sidebar:"synced_key" (theme sidebar widget area; shown on pages with type "sidebar"), pro_modules:{elements:true,...}, elements:{key:{pattern|sections:[{pattern,replace}] (content built into the element) or synced,hook,pages:[slugs],post_types:["page","lb_service","lb_area"],hide_front,hide_pages,priority}}, chrome:"elements" (shared hero via Kadence Pro hook replace_hero_header + breadcrumb bar via kadence_before_content, placed once for every page and entry; needs Theme Kit Pro) or "patterns" (default: hero and breadcrumb patterns on each page) (Kadence Pro: per-page placement of a synced pattern), design:{buttons:{primary:{background,radius,...},secondary,outline}, nav:{links:{...},dropdown:{...}}, page:"banner"|{title,content,site}, style:"clean"|"bold"|"sharp"|"soft"|{preset,tokens} (style DNA, see set-style), block_defaults:"standard" to also set Kadence block defaults} (the global look; see set-buttons, set-nav-style, set-page-style), pages:[{title,slug,front,parent,status,type:"landing"|"text"|"wide"|"sidebar",recipe,markdown,replace,seo:{title,description,keyword},sections:[{pattern,slots,replace,markdown?}|{use:key}|{markdown:"..."}]}]} (a pattern section may carry markdown for its text area: service-body). Page type: landing = full-width pattern pages (home, contact, quote); text = theme title banner + readable column with bare Markdown text (default for inner pages); wide = text plus media patterns; sidebar = text with the theme sidebar (the sidebar pattern) beside it. recipe (home, about, service-detail, location, contact, quote, faq, reviews...) supplies starting sections; get-playbook explains. Returns a report with page URLs.',
 			[ 'properties' => [ 'blueprint' => [ 'type' => 'object' ] ], 'required' => [ 'blueprint' ] ], [ __CLASS__, 'build' ], 'manage_options' );
 	}
 
@@ -220,7 +220,7 @@ final class Blueprint {
 	}
 
 	/** Map the placeholders every pattern uses for business facts to the real values. */
-	private static function business_vars( array $biz ): array {
+	public static function business_vars( array $biz ): array {
 		$v = [];
 		$name = sanitize_text_field( $biz['name'] ?? '' );
 		$phone = sanitize_text_field( $biz['phone'] ?? '' );
@@ -400,7 +400,7 @@ final class Blueprint {
 
 		// 2b. Design layer: block defaults, theme buttons, title banner / page layout. (The menu style runs after the header exists.)
 		$design = (array) ( $bp['design'] ?? [] );
-		if ( false !== ( $design['block_defaults'] ?? 'standard' ) ) {
+		if ( ! empty( $design['block_defaults'] ) ) { // Block defaults only when the blueprint asks.
 			$r = Design::set_block_defaults( [ 'preset' => 'standard' ] );
 			is_wp_error( $r ) ? $report['warnings'][] = 'block_defaults: ' . $r->get_error_message() : $report['design']['block_defaults'] = $r['blocks'];
 		}
@@ -419,8 +419,20 @@ final class Blueprint {
 		$ent_in = (array) ( $bp['entries'] ?? [] );
 		foreach ( [ 'services' => 'add_service', 'areas' => 'add_area' ] as $ek => $efn ) {
 			if ( ! empty( $ent_in[ $ek ] ) ) {
-				$er = Entries::$efn( [ 'items' => (array) $ent_in[ $ek ] ] );
-				is_wp_error( $er ) ? $report['warnings'][] = 'entries.' . $ek . ': ' . $er->get_error_message() : $report['entries'][ $ek ] = $er['count'];
+				// add-service/add-area take 100 items per call and return {count, remaining, next_offset, errors}.
+				$off = 0;
+				do {
+					$er = Entries::$efn( [ 'items' => array_values( (array) $ent_in[ $ek ] ), 'offset' => $off ] );
+					if ( is_wp_error( $er ) ) {
+						$report['warnings'][] = 'entries.' . $ek . ': ' . $er->get_error_message();
+						break;
+					}
+					$report['entries'][ $ek ] = ( $report['entries'][ $ek ] ?? 0 ) + (int) $er['count'];
+					foreach ( (array) ( $er['errors'] ?? [] ) as $ee ) {
+						$report['warnings'][] = 'entries.' . $ek . '[' . (int) $ee['index'] . ']: ' . $ee['error'];
+					}
+					$off = (int) ( $er['next_offset'] ?? 0 );
+				} while ( $off > 0 );
 			}
 		}
 
@@ -563,18 +575,7 @@ final class Blueprint {
 				continue;
 			}
 			Content::set_layout( $ids[ $slug ], $layout );
-			$seo = (array) ( $pg['seo'] ?? [] );
-			if ( ! empty( $seo['title'] ) ) {
-				update_post_meta( $ids[ $slug ], 'rank_math_title', sanitize_text_field( $seo['title'] ) );
-				update_post_meta( $ids[ $slug ], '_yoast_wpseo_title', sanitize_text_field( $seo['title'] ) );
-			}
-			if ( ! empty( $seo['description'] ) ) {
-				update_post_meta( $ids[ $slug ], 'rank_math_description', sanitize_text_field( $seo['description'] ) );
-				update_post_meta( $ids[ $slug ], '_yoast_wpseo_metadesc', sanitize_text_field( $seo['description'] ) );
-			}
-			if ( ! empty( $seo['keyword'] ) ) {
-				update_post_meta( $ids[ $slug ], 'rank_math_focus_keyword', sanitize_text_field( $seo['keyword'] ) );
-			}
+			Compat::write_seo_meta( $ids[ $slug ], (array) ( $pg['seo'] ?? [] ) ); // The active SEO plugin only; %variables% survive.
 			if ( ! empty( $pg['front'] ) ) {
 				update_option( 'show_on_front', 'page' );
 				update_option( 'page_on_front', $ids[ $slug ] );

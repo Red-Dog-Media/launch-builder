@@ -5,6 +5,7 @@
  * Description: Centered headline, subtext, two buttons and a rating pill.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, header, headline
+ * Roles: home
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_a7aa96-e5","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

@@ -5,6 +5,7 @@
  * Description: Brand name, tagline, link row, social icons and contact line, all centered on a light background.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, centered, simple, light
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_59ca40-41","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xl",""],"kbVersion":2} -->

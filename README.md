@@ -6,7 +6,7 @@ It is the site-building toolkit LaunchLocal uses for local service businesses: p
 IT providers and the like. Instead of rebuilding the same pages by hand for every client, a site starts from a proven
 structure, a curated pattern library and one set of business facts, and stays consistent as it grows.
 
-> Launch Builder is in active development. Version 0.9 is an early release for our own client builds.
+> Launch Builder is in active development. Version 0.10 is an early release for our own client builds.
 
 ## Why it exists
 
@@ -24,6 +24,14 @@ one place and lets every page follow.
 - **A design system, not a pile of layouts.** A library of premade Kadence sections (heroes, service grids, reviews,
   calls to action, maps, FAQs, footers and headers) shares one palette, one button style and one spacing rhythm, so a
   site can be restyled from a single place.
+- **A dashboard that shows where a site stands.** A launch runway (business facts, AI assistant, design, content, site
+  check, live), the optional modules as switches that save as you click, recent activity and the design in use, with a
+  Design hub that shows the header, hero, breadcrumbs, footer and call bar of every page type, live.
+- **Optional modules, off until you want them.** URLs and redirects, safe duplication, media hygiene, local avatars, login
+  links for client accounts, Kadence Conversions popups and a client-friendly Branding module each switch on and off on
+  their own, and a module that is off loads nothing.
+- **One brief in, a whole site out.** A brief can describe the business, brand, services, areas, pages, menus and SEO; the
+  builder checks it, shows what it would change, builds in bounded steps and can export the site back as a brief.
 - **Built for working with an AI assistant.** Launch Builder includes a secure connection for MCP-compatible AI
   assistants, so a full site, from brand colours and Business Info to pages, services and menus, can be planned, built
   and maintained through conversation, with every change logged and undoable.

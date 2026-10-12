@@ -5,6 +5,8 @@
  * Description: Brand banner for service and category pages: the page title as the H1, a one-line summary, two buttons and the rating pill.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, banner, inner page, service page, title, cta
+ * Roles: service, category, area
+ * Slot: hero
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"129_99904f-df","columns":1,"colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

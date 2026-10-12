@@ -5,6 +5,7 @@
  * Description: Brand-color call-to-action card sitting above the dark footer.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, cta, dark
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_7ac591-cc","columns":1,"colLayout":"equal","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xl","","xl",""],"kbVersion":2} -->

@@ -5,6 +5,7 @@
  * Description: Headline, bullet points and rating on the left; a quote form card on the right (your form embed from Business Info).
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, form, quote, lead
+ * Roles: home, conversion
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_9008af-32","tabletLayout":"row","colLayout":"equal","bgColor":"palette8","align":"full","verticalAlignment":"middle","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

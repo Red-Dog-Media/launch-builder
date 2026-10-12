@@ -3,7 +3,7 @@
  * Title: Stats: 4 counters
  * Slug: launch-builder/stats
  * Description: Animated count-up numbers in a row.
- * Categories: launch-builder-proof, launch-builder
+ * Categories: launch-builder-trust, launch-builder
  * Keywords: stats, numbers, counters
  */
 ?>

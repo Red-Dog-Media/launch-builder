@@ -5,6 +5,7 @@
  * Description: Image and text on a dark background with light type. Good to break up a long page.
  * Categories: launch-builder-content, launch-builder
  * Keywords: media, text, dark, split
+ * Variant-Of: media-left
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_880d89-65","tabletLayout":"row","colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

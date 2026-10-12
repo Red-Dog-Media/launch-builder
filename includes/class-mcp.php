@@ -9,7 +9,7 @@ defined( 'ABSPATH' ) || exit;
  *   https://site.com/wp-json/launch-builder/v1/mcp    (REST route; also accepts WP Application Passwords)
  *
  * Auth: "Authorization: Bearer <token>" (or X-Launch-Token), a Launch Builder token created under
- * Settings > Launch Builder. Only a SHA-256 hash is stored; the plaintext is shown once, in the response
+ * Launch Builder > Get started. Only a SHA-256 hash is stored; the plaintext is shown once, in the response
  * to the button click, and never written anywhere. Tokens expire after 180 days and act as the user who
  * created them. Tools are the registry in class-abilities.php; each tool re-checks the user's capability.
  */
@@ -20,6 +20,7 @@ final class Mcp {
 	private const PROTOCOL = '2025-06-18';
 	private const MAX_BODY = 1048576; // 1 MB.
 	private const MAX_BATCH = 20;
+	private const MAX_OUTPUT = 200000; // Bytes of JSON one tool result may return over MCP.
 	private const TOKEN_TTL = 15552000; // 180 days.
 
 	public static function boot(): void {
@@ -187,13 +188,13 @@ final class Mcp {
 			$tok = trim( (string) $header( 'x-launch-token' ) );
 		}
 		if ( '' === $tok ) {
-			return new \WP_Error( 'lb_auth', 'Unauthorized. Send "Authorization: Bearer <token>" (create one in Settings > Launch Builder).', [ 'status' => 401 ] );
+			return new \WP_Error( 'lb_auth', 'Unauthorized. Send "Authorization: Bearer <token>" (create one under Launch Builder > Get started in wp-admin).', [ 'status' => 401 ] );
 		}
 		// 2. A valid token always passes, even while someone else is being throttled.
 		$stored = get_option( self::OPT_TOKEN );
 		if ( is_array( $stored ) && ! empty( $stored['hash'] ) && hash_equals( $stored['hash'], hash( 'sha256', $tok ) ) ) {
 			if ( ! empty( $stored['expires'] ) && time() > (int) $stored['expires'] ) {
-				return new \WP_Error( 'lb_expired', 'This token has expired. Create a new one in Settings > Launch Builder.', [ 'status' => 401 ] );
+				return new \WP_Error( 'lb_expired', 'This token has expired. Create a new one under Launch Builder > Get started in wp-admin.', [ 'status' => 401 ] );
 			}
 			if ( get_userdata( (int) $stored['user'] ) ) {
 				wp_set_current_user( (int) $stored['user'] );
@@ -230,7 +231,7 @@ final class Mcp {
 					'protocolVersion' => in_array( $want, [ '2024-11-05', '2025-03-26', '2025-06-18' ], true ) ? $want : self::PROTOCOL,
 					'capabilities'    => [ 'tools' => [ 'listChanged' => false ] ],
 					'serverInfo'      => [ 'name' => 'launch-builder', 'title' => 'Launch Builder', 'version' => LB_VERSION ],
-					'instructions'    => 'Launch Builder builds Kadence sites from premade patterns. Call get-playbook FIRST: it explains the order of work, page types (landing, text, wide), bare Markdown text pages, and what is global (get-company/set-company business info, set-buttons, set-nav-style, set-page-style). Then site-state. To build a whole starter site in one call use build-site (blueprint: business facts, brand, header + menu, synced patterns, global areas, pages made of patterns, SEO). For finer control: list-patterns / get-pattern (editable slots) / apply-pattern; set-brand (palette, fonts, logo); set-header (header patterns + menu); set-synced-pattern + set-global-area (edit once, shows everywhere, e.g. footer CTA). Kadence palette is an option (use set-brand), fonts and header are theme mods. save-pattern stores a custom per-site pattern. rest-request reaches other WordPress REST routes (users, plugins, themes and core settings are off unless an admin enables power tools). Settings writes are snapshotted: restore-snapshot undoes them.',
+					'instructions'    => self::instructions(),
 				] );
 			case 'ping':
 				return $ok( new \stdClass() );
@@ -244,6 +245,33 @@ final class Mcp {
 				return $ok( [ 'prompts' => [] ] );
 		}
 		return $err( -32601, 'Method not found: ' . $method );
+	}
+
+	/**
+	 * The initialize instructions, generated from get-playbook (its summary and tools by job, which every module extends)
+	 * so they never fall behind the tools. A fixed fallback covers a playbook that fails to build.
+	 */
+	public static function instructions(): string {
+		$lines = [ 'Launch Builder builds and maintains Kadence sites for local service businesses from premade patterns. Call get-playbook FIRST (order of work, page roles, tokens, recipes, what is global), then site-state.' ];
+		try {
+			$pb = Content::playbook();
+		} catch ( \Throwable $e ) {
+			$pb = [];
+		}
+		if ( ! empty( $pb['summary'] ) && is_string( $pb['summary'] ) ) {
+			$lines[] = $pb['summary'];
+		}
+		$jobs = [];
+		foreach ( (array) ( $pb['tools_by_job'] ?? [] ) as $job => $tools ) {
+			$tools = is_array( $tools ) ? implode( ', ', array_map( 'strval', $tools ) ) : (string) $tools;
+			if ( '' !== $tools ) {
+				$jobs[] = $job . ': ' . $tools;
+			}
+		}
+		$lines[] = $jobs ? 'Tools by job. ' . implode( '. ', $jobs ) . '.' : 'Start with build-site (a whole site from a blueprint); look with set-brand, set-buttons, set-nav-style, set-page-style.';
+		$lines[] = 'Business facts live in Business Info (get-company / set-company) and pages read them through tokens such as {{lb.phone}}: never type them into copy.';
+		$lines[] = 'Settings writes are snapshotted and restore-snapshot undoes them. rest-request reads any route; writing through it is limited to content routes unless an administrator enables power tools. Results over 200 KB are refused, not cut: narrow the request (limit/offset, after_id).';
+		return mb_substr( implode( "\n", $lines ), 0, 6000 );
 	}
 
 	/** Make empty arrays serialize as JSON objects where a schema object is required. */
@@ -355,11 +383,15 @@ final class Mcp {
 		if ( is_wp_error( $r ) ) {
 			return self::text( $r->get_error_code() . ': ' . $r->get_error_message(), true );
 		}
-		$json = wp_json_encode( $r, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-		if ( strlen( (string) $json ) > 200000 ) {
-			$json = substr( (string) $json, 0, 200000 ) . "\n…(truncated at 200 KB; narrow the request)";
+		// Compact JSON (no pretty print: it costs the client tokens). A result over the cap is an error, never cut JSON.
+		$json = wp_json_encode( $r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		if ( false === $json ) {
+			return self::text( 'Error: the result of ' . $name . ' could not be encoded as JSON.', true );
 		}
-		return self::text( (string) $json, false );
+		if ( strlen( $json ) > self::MAX_OUTPUT ) {
+			return self::text( sprintf( 'Result too large: %1$s returned %2$d KB, over the %3$d KB limit. Nothing was cut; narrow the request (use limit/offset or after_id, a scope, or fewer items) and call again.', $name, (int) ceil( strlen( $json ) / 1024 ), (int) ( self::MAX_OUTPUT / 1000 ) ), true );
+		}
+		return self::text( $json, false );
 	}
 
 	private static function text( string $t, bool $error ): array {
@@ -382,31 +414,59 @@ final class Mcp {
 		return $plain;
 	}
 
-	/** Shows the new token in the response itself (never stored), with copy-paste connection commands. */
+	/**
+	 * Copy-paste connection settings for the common kinds of MCP client, described generically (no product names):
+	 * clients that take a remote (HTTP) server in their JSON config, clients that only start local commands (bridged
+	 * with the mcp-remote package through npx), and anything else (the URL and the header).
+	 *
+	 * @return array<int,array{id:string,label:string,help:string,code:string}>
+	 */
+	public static function client_configs( string $url, string $token ): array {
+		$auth = 'Bearer ' . $token;
+		$flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES;
+		return [
+			[
+				'id'    => 'http',
+				'label' => __( 'Remote server (JSON)', 'launch-builder' ),
+				'help'  => __( 'For AI assistants and editors that connect to remote MCP servers over HTTP: add this to the MCP servers section of their settings file (some name the key "servers" instead of "mcpServers").', 'launch-builder' ),
+				'code'  => (string) wp_json_encode( [ 'mcpServers' => [ 'launch-builder' => [ 'type' => 'http', 'url' => $url, 'headers' => [ 'Authorization' => $auth ] ] ] ], $flags ),
+			],
+			[
+				'id'    => 'bridge',
+				'label' => __( 'Local bridge (npx)', 'launch-builder' ),
+				'help'  => __( 'For desktop apps that only start local MCP servers: this runs the open-source mcp-remote bridge (needs Node.js). Add it to the app\'s MCP config file and restart the app.', 'launch-builder' ),
+				'code'  => (string) wp_json_encode( [ 'mcpServers' => [ 'launch-builder' => [ 'command' => 'npx', 'args' => [ '-y', 'mcp-remote', $url, '--header', 'Authorization: ' . $auth ] ] ] ], $flags ),
+			],
+			[
+				'id'    => 'raw',
+				'label' => __( 'URL and header', 'launch-builder' ),
+				'help'  => __( 'Any other MCP client that supports remote servers (Streamable HTTP):', 'launch-builder' ),
+				'code'  => 'URL: ' . $url . "\nHeader: Authorization: " . $auth,
+			],
+		];
+	}
+
+	/** Shows the new token in the response itself (never stored), with copy-paste connection settings. */
 	public static function make_token(): void {
 		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'lb_mcp_token' ) ) {
-			wp_die( 'Not allowed.', '', [ 'response' => 403 ] );
+			wp_die( esc_html__( 'Not allowed.', 'launch-builder' ), '', [ 'response' => 403 ] );
 		}
 		$plain = self::create_token( get_current_user_id() );
-		$url = home_url( '/mcp' );
-		$remote = wp_json_encode( [ 'mcpServers' => [ 'launch-builder' => [ 'type' => 'http', 'url' => $url, 'headers' => [ 'Authorization' => 'Bearer ' . $plain ] ] ] ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-		$desktop = wp_json_encode( [ 'mcpServers' => [ 'launch-builder' => [ 'command' => 'npx', 'args' => [ '-y', 'mcp-remote', $url, '--header', 'Authorization: Bearer ' . $plain ] ] ] ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
 		nocache_headers();
-		$pre = 'style="background:#f6f7f7;padding:12px;overflow:auto;white-space:pre-wrap"';
-		wp_die(
-			'<h1>Your Launch Builder token</h1><p><strong>Copy it now. It is shown once and cannot be recovered.</strong> (Valid 180 days.)</p>'
+		$pre = 'style="background:#f6f7f7;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-all"';
+		$html = '<h1>' . esc_html__( 'Your Launch Builder token', 'launch-builder' ) . '</h1><p><strong>' . esc_html__( 'Copy it now. It is shown once and cannot be recovered.', 'launch-builder' ) . '</strong> ' . esc_html__( '(Valid 180 days.)', 'launch-builder' ) . '</p>'
 			. '<p><code style="font-size:15px;user-select:all">' . esc_html( $plain ) . '</code></p>'
-			. '<p>Remote server (most MCP clients):</p><pre ' . $pre . '>' . esc_html( (string) $remote ) . '</pre>'
-			. '<p>Local bridge (mcp-remote, for clients that only run local servers):</p><pre ' . $pre . '>' . esc_html( (string) $desktop ) . '</pre>'
-			. '<p><a href="' . esc_url( Admin::url() ) . '">Back to Launch Builder settings</a></p>',
-			'Launch Builder token',
-			[ 'response' => 200 ]
-		);
+			. '<p>' . esc_html__( 'Connect your AI assistant with one of these (the token is filled in):', 'launch-builder' ) . '</p>';
+		foreach ( self::client_configs( home_url( '/mcp' ), $plain ) as $c ) {
+			$html .= '<h2 style="font-size:15px;margin:18px 0 4px">' . esc_html( $c['label'] ) . '</h2><p style="margin:0 0 6px">' . esc_html( $c['help'] ) . '</p><pre ' . $pre . '>' . esc_html( $c['code'] ) . '</pre>';
+		}
+		$html .= '<p><a href="' . esc_url( Admin::url() ) . '">' . esc_html__( 'Back to Launch Builder', 'launch-builder' ) . '</a></p>';
+		wp_die( $html, esc_html__( 'Launch Builder token', 'launch-builder' ), [ 'response' => 200 ] ); // phpcs:ignore -- built from escaped parts above.
 	}
 
 	public static function set_power(): void {
 		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'lb_mcp_power' ) ) {
-			wp_die( 'Not allowed.', '', [ 'response' => 403 ] );
+			wp_die( esc_html__( 'Not allowed.', 'launch-builder' ), '', [ 'response' => 403 ] );
 		}
 		update_option( 'launch_builder_power', ! empty( $_POST['power'] ) ? 1 : 0, false );
 		wp_safe_redirect( Admin::url( 'launch-builder-activity' ) );

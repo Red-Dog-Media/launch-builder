@@ -5,6 +5,7 @@
  * Description: Left-aligned headline, buttons and rating; image on the right.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, split, image
+ * Roles: home
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_5d0e73-08","tabletLayout":"row","colLayout":"equal","bgColor":"palette8","align":"full","verticalAlignment":"middle","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

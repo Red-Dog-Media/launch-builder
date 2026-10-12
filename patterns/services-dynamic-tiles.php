@@ -5,6 +5,7 @@
  * Description: A grid of tiles, one per published Service (optionally one category), each with a check icon and an uppercase label: the sub-services list under a category hero. Updates itself; edit it like any block.
  * Categories: launch-builder-services, launch-builder
  * Keywords: services, sub services, tiles, dynamic, live, post type
+ * Roles: category
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"295_c5a2a4-9b","columns":1,"colLayout":"equal","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xl","","xl",""],"kbVersion":2} -->

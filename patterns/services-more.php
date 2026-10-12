@@ -5,6 +5,7 @@
  * Description: Four compact service cards that link to related services; place near the end of a service page.
  * Categories: launch-builder-services, launch-builder
  * Keywords: services, related, more services, links, cards
+ * Roles: service
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"129_b9eb71-dd","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

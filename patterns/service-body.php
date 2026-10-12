@@ -5,6 +5,7 @@
  * Description: The standard service page layout: a wide column for the long text (filled from Markdown) beside a booking-form card (your Business Info form embed).
  * Categories: launch-builder-content, launch-builder
  * Keywords: service page, body, text, form, booking, two column, markdown
+ * Roles: service
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"129_2cfb43-89","tabletLayout":"row","colLayout":"left-golden","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

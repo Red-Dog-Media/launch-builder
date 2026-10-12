@@ -5,6 +5,7 @@
  * Description: Menu on the left, centered logo, phone number and call-to-action on the right. Slide-out menu on tablet/mobile.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette9"},"_kad_header_isSticky":"0"}
  */

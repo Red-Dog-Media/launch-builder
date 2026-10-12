@@ -5,6 +5,7 @@
  * Description: Brand-color bar with phone, email and address above a dark footer with brand and link columns.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, contact, bar, dark
+ * Slot: footer
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"223_01af3b-1c","columns":3,"colLayout":"equal","bgColor":"palette1","align":"full","textColor":"palette9","inheritMaxWidth":true,"padding":["xl","","xl",""],"kbVersion":2} -->

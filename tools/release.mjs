@@ -8,6 +8,8 @@
 //       from CHANGELOG.md, then commit ("Release <version>") and create the annotated tag v<version>. Refuses on a dirty
 //       tree, an existing tag, a version lower than the current one, an empty [Unreleased] section, or (for 1.0.0 and
 //       later stable versions, unless --skip-check) shipping files that fail `check`. --dry-run prints the plan only.
+//       <version> may equal the current version once (its first tag): when CHANGELOG.md already has its section, only
+//       the tag is created (no file changes, no commit).
 //   node tools/release.mjs verify [<tag>]
 //       Header Version == LB_VERSION == readme Stable tag (and the requirement headers agree); with a tag (v1.2.3 or
 //       refs/tags/v1.2.3) also tag == v + Version and a non-empty CHANGELOG section for it. Used by CI.
@@ -163,8 +165,7 @@ export function readmeChangelog(changelogText, max = 5) {
 		}).join('\n');
 		parts.push(`= ${s.name}${s.date ? ' - ' + s.date : ''} =\n\n${body.replace(/\n{3,}/g, '\n\n').trim()}`);
 	}
-	parts.push(`The full history is in CHANGELOG.md and on the [releases page](${REPO_URL}/releases).`);
-	return parts.join('\n\n');
+	return parts.join('\n\n'); // The updater's details modal adds the "All releases on GitHub" link itself.
 }
 
 function withReadmeChangelog(readme, changelogText) {
@@ -223,6 +224,13 @@ export function listingProblems(entries) {
 
 function verify(tagArg) {
 	const s = state();
+	const errors = verifyErrors(s, tagArg);
+	if (errors.length) die('verify failed:\n  ' + errors.join('\n  '));
+	say(`verify: OK (version ${s.version}${tagArg ? ', tag ' + String(tagArg).replace(/^refs\/tags\//, '') : ''}; LB_VERSION, readme Stable tag and requirements agree)`);
+}
+
+// What `verify [<tag>]` checks, as a list of problems ([] when everything agrees).
+function verifyErrors(s, tagArg) {
 	const errors = [];
 	if (!normalize(s.version)) errors.push(`plugin header Version "${s.version}" is not SemVer`);
 	if (s.constant !== s.version) errors.push(`LB_VERSION "${s.constant}" != header Version "${s.version}"`);
@@ -236,8 +244,7 @@ function verify(tagArg) {
 		const sec = sections(s.changelog).find((x) => x.name === s.version);
 		if (!sec || !sec.body) errors.push(`${FILES.changelog} has no notes under "## [${s.version}]"`);
 	}
-	if (errors.length) die('verify failed:\n  ' + errors.join('\n  '));
-	say(`verify: OK (version ${s.version}${tagArg ? ', tag ' + String(tagArg).replace(/^refs\/tags\//, '') : ''}; LB_VERSION, readme Stable tag and requirements agree)`);
+	return errors;
 }
 
 export function notesFor(version, s = state()) {
@@ -317,6 +324,22 @@ function bump(versionArg, { dryRun, date, skipCheck }) {
 		const where = [...new Set(findings.map((f) => f.file))].join(', ');
 		if (isStable(version) && !skipCheck) die(`${findings.length} hygiene finding(s) in shipping files (${where}); see node tools/release.mjs check (or pass --skip-check)`);
 		say(`warning: ${findings.length} hygiene finding(s) in shipping files (${where})${isStable(version) ? ' (--skip-check)' : ''}`);
+	}
+
+	// The current version with its CHANGELOG section already committed (notes moved by hand, or a release commit mirrored
+	// into another checkout): only the tag is missing, so nothing is written or committed.
+	const done = cmp === 0 && sections(s.changelog).find((x) => x.name === version && x.body);
+	if (done) {
+		const problems = verifyErrors(s, 'v' + version);
+		if (problems.length) die('verify failed:\n  ' + problems.join('\n  '));
+		const step = `git tag -a v${version} -m "Launch Builder ${version}" on HEAD (version strings and the "## [${version}]" notes are already committed; no file changes)`;
+		if (dryRun) {
+			say(`release ${version} (dry run, nothing written):\n  ${step}\n\nRelease notes:\n${notesFor(version, s)}`);
+			return;
+		}
+		git(['tag', '-a', `v${version}`, '-m', `Launch Builder ${version}`]);
+		say(`release ${version}: annotated tag v${version} created on ${git(['rev-parse', '--short', 'HEAD']).trim()} (no commit needed). Nothing was pushed.\nTo publish, push the tag yourself:\n  git push origin v${version}`);
+		return;
 	}
 
 	const changelog = releaseChangelog(s.changelog, version, date);

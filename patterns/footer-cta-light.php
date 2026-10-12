@@ -5,6 +5,8 @@
  * Description: Brand-color call-to-action card above a light four-column footer.
  * Categories: launch-builder-footers, launch-builder
  * Keywords: footer, cta, light
+ * Slot: footer
+ * Variant-Of: footer-cta-dark
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_2fa6d8-b1","columns":1,"colLayout":"equal","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xl","","xl",""],"kbVersion":2} -->

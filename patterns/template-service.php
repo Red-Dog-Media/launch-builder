@@ -3,8 +3,10 @@
  * Title: Template: service page (post type)
  * Slug: launch-builder/template-service
  * Description: The layout every Service entry uses: banner with its title and summary, its text beside a booking-form card, then related services (live). Saved as the synced pattern service_template.
- * Categories: launch-builder-content, launch-builder
+ * Categories: launch-builder-templates, launch-builder
  * Keywords: template, service, post type, entry
+ * Roles: service
+ * Slot: template
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"295_7578d4-f0","columns":1,"colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

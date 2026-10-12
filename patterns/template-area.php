@@ -3,8 +3,10 @@
  * Title: Template: service area page (post type)
  * Slug: launch-builder/template-area
  * Description: The layout every Service Area entry uses: banner, its text beside a booking-form card, the services (live) and the other areas (live). Saved as the synced pattern area_template.
- * Categories: launch-builder-content, launch-builder
+ * Categories: launch-builder-templates, launch-builder
  * Keywords: template, service area, post type, entry
+ * Roles: area
+ * Slot: template
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"295_e07d68-7c","columns":1,"colLayout":"equal","bgColor":"palette3","align":"full","verticalAlignment":"middle","textColor":"palette9","linkColor":"palette7","linkHoverColor":"palette9","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

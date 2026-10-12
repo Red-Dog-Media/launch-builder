@@ -5,6 +5,7 @@
  * Description: Brand-color promo line with a link above the logo, menu and call-to-action row.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette9"},"_kad_header_isSticky":"0"}
  */

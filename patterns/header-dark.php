@@ -5,6 +5,7 @@
  * Description: Dark header with light logo text, menu and button. Pair it with a dark hero.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu
+ * Slot: header
  * Inserter: no
  * Header-Meta: {"_kad_header_background":{"type":"normal","color":"palette3"},"_kad_header_linkColor":"palette9","_kad_header_linkHoverColor":"palette7","_kad_header_isSticky":"0"}
  * Header-Nav: {"links":{"color":"palette9","hover":"palette7","active":"palette9"}}

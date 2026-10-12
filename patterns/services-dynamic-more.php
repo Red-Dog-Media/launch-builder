@@ -5,6 +5,7 @@
  * Description: Four cards of other services in the same category as the page being viewed. Updates itself.
  * Categories: launch-builder-services, launch-builder
  * Keywords: services, related, dynamic, live, post type
+ * Roles: service
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"241_795e88-be","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->
