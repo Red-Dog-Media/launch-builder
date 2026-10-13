@@ -19,7 +19,9 @@ defined( 'ABSPATH' ) || exit;
  * first; otherwise steps run in registration order, i.e. module boot order). A step that returns a WP_Error or throws
  * stops the run (later steps wait for it); the error is kept in the state's 'failed' list (shown in site-state and as
  * an admin notice) until the step succeeds, and wp-admin page loads leave it alone for an hour (RETRY_AFTER) so a
- * broken step cannot slow down or break wp-admin. rerun( id ) runs a done step again (e.g. from a module's activate()).
+ * broken step cannot slow down or break wp-admin. An answer without a 'done' key counts as a failure too (it would be
+ * "not done" for ever), and a step that is not done but hands back the cursor it was given is paused until the next
+ * request instead of being called again at once. rerun( id ) runs a done step again (e.g. from a module's activate()).
  *
  * When it runs: on admin_init for a user with manage_options (never on front-end, AJAX or REST requests), from WP-CLI
  * (wp launch-builder migrate) and from tools that call run(). The option launch_builder_db_version holds the version
@@ -156,8 +158,14 @@ final class Migrate {
 						$state['failed'][ $id ] = [ 'time' => time(), 'error' => $errors[ $id ] ];
 						break 2;
 					}
-					unset( $state['failed'][ $id ] );
 					$r = (array) $r;
+					if ( ! array_key_exists( 'done', $r ) ) {
+						// Not the documented answer. Read as "not done" it would be called again for the whole time budget on every wp-admin page load, so it counts as a failure (retried after an hour).
+						$errors[ $id ] = 'The step did not say whether it is done (it must return [ \'done\' => bool, \'cursor\' => ..., \'report\' => ... ]).';
+						$state['failed'][ $id ] = [ 'time' => time(), 'error' => $errors[ $id ] ];
+						break 2;
+					}
+					unset( $state['failed'][ $id ] );
 					if ( isset( $r['report'] ) && '' !== $r['report'] && [] !== $r['report'] ) {
 						$ran[ $id ][] = $r['report'];
 					}
@@ -166,7 +174,15 @@ final class Migrate {
 						$state['done'][] = $key;
 						unset( $state['cursor'][ $key ] );
 					} else {
-						$state['cursor'][ $key ] = $r['cursor'] ?? null;
+						$next = $r['cursor'] ?? null;
+						if ( $next === ( $state['cursor'][ $key ] ?? null ) ) {
+							// Same cursor out as in: repeating the batch now would change nothing, so say so (retried after a while, listed in site-state).
+							$errors[ $id ] = 'The step made no progress (it returned the cursor it was given).';
+							$state['failed'][ $id ] = [ 'time' => time(), 'error' => $errors[ $id ] ];
+							update_option( self::OPT_STATE, $state, false );
+							break 2;
+						}
+						$state['cursor'][ $key ] = $next;
 					}
 					update_option( self::OPT_STATE, $state, false ); // Persist after every batch so a timeout loses nothing.
 				} while ( ! $done );

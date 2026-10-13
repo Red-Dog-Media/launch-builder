@@ -74,7 +74,7 @@ foreach ( (array) $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHER
 		delete_option( $opt ); // One by one, so a persistent object cache forgets them too.
 	}
 }
-$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\_transient\_lb\_mcp\_%' OR option_name LIKE '\_transient\_timeout\_lb\_mcp\_%' OR option_name LIKE '\_transient\_lb\_pv\_%' OR option_name LIKE '\_transient\_timeout\_lb\_pv\_%' OR option_name LIKE '\_transient\_lb\_check\_%' OR option_name LIKE '\_transient\_timeout\_lb\_check\_%'" ); // phpcs:ignore
+$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\_transient\_lb\_mcp\_%' OR option_name LIKE '\_transient\_timeout\_lb\_mcp\_%' OR option_name LIKE '\_transient\_lb\_pv\_%' OR option_name LIKE '\_transient\_timeout\_lb\_pv\_%' OR option_name LIKE '\_transient\_lb\_check\_%' OR option_name LIKE '\_transient\_timeout\_lb\_check\_%' OR option_name LIKE '\_transient\_lb\_company\_msg\_%' OR option_name LIKE '\_transient\_timeout\_lb\_company\_msg\_%'" ); // phpcs:ignore
 // Login links: one protected usermeta row per link (all sites) and the throttle/flash transients.
 $wpdb->query( "DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE '\_lb\_login\_link\_%'" ); // phpcs:ignore
 $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\_transient\_lb\_ll\_%' OR option_name LIKE '\_transient\_timeout\_lb\_ll\_%'" ); // phpcs:ignore

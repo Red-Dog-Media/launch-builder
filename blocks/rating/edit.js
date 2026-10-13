@@ -92,7 +92,10 @@
 			el( 'p', { className: 'description' }, __( 'Round logos shown before the score, overlapping, in the order you tick them.', 'launch-builder' ) ),
 			DATA.platforms.map( ( p ) =>
 				el( 'div', { key: p.key, style: { display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0' } },
-					el( 'img', { src: p.logo, alt: '', width: 22, height: 22, style: { flex: 'none' } } ),
+					// The same round white badge the widget shows (each logo file carries its own space around the mark).
+					el( 'span', { style: { flex: 'none', display: 'inline-flex', width: 28, height: 28, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 1px #dcdcde' } },
+						el( 'img', { src: p.logo, alt: '', width: 28, height: 28, style: { display: 'block' } } )
+					),
 					el( CheckboxControl, { label: p.label, checked: platforms.indexOf( p.key ) >= 0, onChange: ( v ) => togglePlatform( p.key, v ), __nextHasNoMarginBottom: true } )
 				)
 			)
@@ -102,7 +105,9 @@
 		const layoutPanel = el( PanelBody, { title: __( 'Size and alignment', 'launch-builder' ), initialOpen: false },
 			el( SelectControl, { label: __( 'Size', 'launch-builder' ), value: a.size || 'md', options: [ { value: 'sm', label: __( 'Small', 'launch-builder' ) }, { value: 'md', label: __( 'Medium', 'launch-builder' ) }, { value: 'lg', label: __( 'Large', 'launch-builder' ) } ], onChange: ( v ) => set( { size: v } ), __nextHasNoMarginBottom: true, __next40pxDefaultSize: true } ),
 			gap(),
-			select( 'contentAlign', __( 'Alignment', 'launch-builder' ), [ [ 'start', __( 'Left', 'launch-builder' ) ], [ 'center', __( 'Center', 'launch-builder' ) ], [ 'end', __( 'Right', 'launch-builder' ) ] ] )
+			select( 'contentAlign', __( 'Alignment', 'launch-builder' ), [ [ 'start', __( 'Left', 'launch-builder' ) ], [ 'center', __( 'Center', 'launch-builder' ) ], [ 'end', __( 'Right', 'launch-builder' ) ] ] ),
+			gap(),
+			select( 'phoneAlign', __( 'On phones', 'launch-builder' ), [ [ 'auto', __( 'Center the content', 'launch-builder' ) ], [ 'center', __( 'Center the whole widget', 'launch-builder' ) ], [ 'match', __( 'Same as above', 'launch-builder' ) ] ], __( 'On phones the logos, score, stars and text sit in the middle of the box. A widget without a box follows the alignment above, unless you center the whole widget.', 'launch-builder' ) )
 		);
 
 		/* ---- custom (media library) logos ---- */

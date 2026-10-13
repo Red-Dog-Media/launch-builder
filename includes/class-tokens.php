@@ -30,7 +30,8 @@ defined( 'ABSPATH' ) || exit;
  *     (Context::simulate() post in previews). SEO filters and seo_value() use the queried or an explicit object.
  *
  * Namespaces: lb (Business Info + computed), site, page, entry, area, service, meta (Meta Box fields registered for the
- * object's type, read with rwmb_meta and an explicit object ID; nothing without Meta Box). catalog() lists them all.
+ * object's type and allowed by Compat::mb_fields_for(), read with rwmb_meta and an explicit object ID; nothing without
+ * Meta Box). catalog() lists them all.
  */
 final class Tokens {
 
@@ -89,13 +90,16 @@ final class Tokens {
 	];
 
 	/** {{ns.key}} / {{ns.key|fallback}}: groups 1 ns, 2 key, 3 '|' when a fallback is given, 4 fallback. */
-	private const TOKEN = '\{\{\s*(lb|site|page|entry|area|service|meta)\.([A-Za-z0-9_-]+)\s*(?:(\|)([^{}]*?))?\s*\}\}';
+	private const TOKEN = '(?i:\{\{\s*(lb|site|page|entry|area|service|meta)\.([A-Za-z0-9_-]+)\s*(?:(\|)([^{}]*?))?\s*\}\})'; // Case does not matter: {{LB.Phone}} is {{lb.phone}}.
 
 	/** Percent-encoded form: groups 1 ns, 2 key, 3 '%7C' when a fallback is given, 4 encoded fallback. */
 	private const ENCODED = '%7B%7B(lb|site|page|entry|area|service|meta)\.([A-Za-z0-9_-]+)(?:(%7C)(.*?))?%7D%7D';
 
 	/** Marks an <a> tag whose social link is empty (removed with its content after the pass). */
 	private const RM = "\x01lb-rm\x01";
+
+	/** @var bool inside a non-block text filter (a token that reads a title must not resolve itself again). */
+	private static $busy = false;
 
 	/** @var array<int,\WP_Post|null> objects being rendered, innermost last. */
 	private static $stack = [];
@@ -116,6 +120,19 @@ final class Tokens {
 			add_filter( $hook, [ __CLASS__, 'seo' ], 20 );
 		}
 		add_filter( 'get_the_excerpt', [ __CLASS__, 'excerpt' ], 20, 2 );
+		// Text outside the blocks that visitors and crawlers read: titles, menus, widgets, image alt text. wp-admin keeps the raw tokens.
+		foreach ( [ 'the_title', 'widget_title', 'nav_menu_item_title' ] as $hook ) {
+			add_filter( $hook, [ __CLASS__, 'text_html' ], 20 );
+		}
+		foreach ( [ 'single_post_title', 'single_term_title', 'single_cat_title', 'single_tag_title' ] as $hook ) {
+			add_filter( $hook, [ __CLASS__, 'text_plain' ], 20 );
+		}
+		add_filter( 'document_title_parts', [ __CLASS__, 'title_parts' ], 20 );
+		add_filter( 'nav_menu_link_attributes', [ __CLASS__, 'menu_link_attributes' ], 20 );
+		foreach ( [ 'widget_text', 'widget_text_content', 'widget_custom_html_content' ] as $hook ) {
+			add_filter( $hook, [ __CLASS__, 'widget_html' ], 20 );
+		}
+		add_filter( 'wp_get_attachment_image_attributes', [ __CLASS__, 'image_attributes' ], 20 );
 		add_action( 'clean_post_cache', [ __CLASS__, 'reset' ] );
 		add_action( 'clean_term_cache', [ __CLASS__, 'reset' ] );
 	}
@@ -252,30 +269,42 @@ final class Tokens {
 	 * resolved against $obj (post/term or ID) when given, else against the current request.
 	 *
 	 * @param int|\WP_Post|\WP_Term|null $obj
-	 * @return array<int,array{token:string,ns:string,key:string,description:string,kind:string,contexts:string[],link_token:?string,available:bool,value:?string}>
+	 * @return array<int,array{token:string,ns:string,key:string,description:string,kind:string,contexts:string[],link_token:?string,advanced:bool,available:bool,value:?string}>
 	 */
 	public static function catalog( $obj = null ): array {
 		$ctx = null === $obj ? self::ctx() : self::ctx_for( self::object( $obj ) );
 		$rows = [];
+		$lb = [];
 		foreach ( Company::fields() as $k => $f ) {
-			$rows[] = self::row( 'lb', $k, $f[0] . ( '' !== $f[4] ? '. ' . $f[4] : '' ), $ctx );
+			$lb[ $k ] = self::row( 'lb', $k, $f[0] . ( '' !== $f[4] ? '. ' . $f[4] : '' ), $ctx );
 		}
 		foreach ( Company::computed() as $k => $label ) {
-			$rows[] = self::row( 'lb', $k, (string) $label, $ctx );
+			$lb[ $k ] = self::row( 'lb', $k, (string) $label, $ctx );
 		}
+		foreach ( Company::COMMON as $k ) { // The tokens people use most come first; the rest keep their order after them.
+			if ( isset( $lb[ $k ] ) ) {
+				$rows[] = $lb[ $k ];
+				unset( $lb[ $k ] );
+			}
+		}
+		$rows = array_merge( $rows, array_values( $lb ) );
 		foreach ( self::DESCRIPTIONS as $tok => $desc ) {
 			[ $ns, $k ] = explode( '.', $tok, 2 );
 			$rows[] = self::row( $ns, $k, $desc, $ctx );
 		}
 		$meta_obj = $ctx['entry'] ?: ( $ctx['page'] instanceof \WP_Post ? $ctx['page'] : null );
-		if ( $meta_obj && function_exists( 'rwmb_get_object_fields' ) ) {
-			foreach ( (array) rwmb_get_object_fields( $meta_obj->ID ) as $id => $field ) {
-				if ( is_string( $id ) && '' !== $id && '_' !== $id[0] ) {
-					$rows[] = self::row( 'meta', $id, 'Meta Box field: ' . (string) ( ( (array) $field )['name'] ?? $id ), $ctx );
+		$meta_rows = 0;
+		if ( $meta_obj && function_exists( 'rwmb_meta' ) ) { // Only what Compat::mb_fields_for() allows, the same list the tokens read.
+			foreach ( Compat::mb_fields_for( $meta_obj ) as $id => $field ) {
+				$id = (string) $id;
+				if ( '' !== $id && '_' !== $id[0] ) {
+					$rows[] = self::row( 'meta', $id, 'Meta Box field: ' . $field['name'], $ctx );
+					$meta_rows++;
 				}
 			}
-		} else {
-			$rows[] = [ 'token' => '{{meta.<field_id>}}', 'ns' => 'meta', 'key' => '<field_id>', 'description' => 'A Meta Box field registered for the post type of the object being rendered (nothing without Meta Box)', 'kind' => 'text', 'contexts' => [ 'html', 'attr', 'text' ], 'link_token' => null, 'available' => function_exists( 'rwmb_meta' ), 'value' => null ];
+		}
+		if ( ! $meta_rows ) { // Nothing to list for this object: still say how the token works.
+			$rows[] = [ 'token' => '{{meta.<field_id>}}', 'ns' => 'meta', 'key' => '<field_id>', 'description' => 'A Meta Box field registered for the post type of the object being rendered (nothing without Meta Box)', 'kind' => 'text', 'contexts' => [ 'html', 'attr', 'text' ], 'link_token' => null, 'advanced' => false, 'available' => function_exists( 'rwmb_meta' ), 'value' => null ];
 		}
 		return $rows;
 	}
@@ -343,6 +372,16 @@ final class Tokens {
 		return self::plain( $s, self::ctx_for( self::page_object() ) );
 	}
 
+	/** Every token in a plain-text value, resolved against one post (baking SEO fields). */
+	public static function plain_for( string $s, \WP_Post $p ): string {
+		return self::has( $s ) ? self::plain( $s, self::ctx_for( $p ) ) : $s;
+	}
+
+	/** A card's summary in a live list: its tokens resolve against that entry, not against the page the list is on. */
+	public static function for_entry( string $s, \WP_Post $p ): string {
+		return self::has( $s ) ? self::plain( $s, self::ctx_for( $p ), array_merge( self::SUMMARY_NAMESPACES, [ 'entry', 'page' ] ) ) : $s;
+	}
+
 	/** get_the_excerpt: summaries are plain text; only lb, site, area and service tokens resolve there. */
 	public static function excerpt( $excerpt, $post = null ) {
 		if ( ! is_string( $excerpt ) || false === strpos( $excerpt, '{{' ) && false === stripos( $excerpt, '%7B%7B' ) ) {
@@ -350,6 +389,71 @@ final class Tokens {
 		}
 		$p = get_post( $post );
 		return self::plain( $excerpt, self::ctx_for( $p ?: self::page_object() ), self::SUMMARY_NAMESPACES );
+	}
+
+	/** Titles, widget titles, menu labels: HTML text, so each value is escaped. Not in wp-admin (editors fix the raw token there). */
+	public static function text_html( $s ) {
+		if ( ! is_string( $s ) || self::$busy || is_admin() || ! self::has( $s ) ) {
+			return $s;
+		}
+		self::$busy = true; // {{page.title}} reads the title, which comes back through this filter.
+		try {
+			return self::plain( $s, self::ctx(), null, true );
+		} finally {
+			self::$busy = false;
+		}
+	}
+
+	/** The title of the page or archive for the <title> element and the like: plain text (WordPress escapes it where it prints it). */
+	public static function text_plain( $s ) {
+		if ( ! is_string( $s ) || self::$busy || is_admin() || ! self::has( $s ) ) {
+			return $s;
+		}
+		self::$busy = true;
+		try {
+			return self::plain( $s, self::ctx() );
+		} finally {
+			self::$busy = false;
+		}
+	}
+
+	/** document_title_parts: every part is plain text. */
+	public static function title_parts( $parts ) {
+		if ( ! is_array( $parts ) || is_admin() ) {
+			return $parts;
+		}
+		foreach ( $parts as $k => $v ) {
+			if ( is_string( $v ) ) {
+				$parts[ $k ] = self::text_plain( $v );
+			}
+		}
+		return $parts;
+	}
+
+	/** A classic menu item's link: #lb-phone_link and the other allow-listed hash links resolve (braces do not survive saving a menu URL). */
+	public static function menu_link_attributes( $atts ) {
+		if ( ! is_array( $atts ) || empty( $atts['href'] ) || ! is_string( $atts['href'] ) || is_admin() ) {
+			return $atts;
+		}
+		$atts['href'] = self::replace( $atts['href'], 'url' );
+		return $atts;
+	}
+
+	/** Legacy text and custom HTML widgets: block-style HTML. */
+	public static function widget_html( $html ) {
+		if ( ! is_string( $html ) || is_admin() || ! self::has( $html ) ) {
+			return $html;
+		}
+		return self::replace( $html );
+	}
+
+	/** wp_get_attachment_image_attributes: the alt text is plain text (core escapes it where it prints it). */
+	public static function image_attributes( $attr ) {
+		if ( ! is_array( $attr ) || empty( $attr['alt'] ) || ! is_string( $attr['alt'] ) || is_admin() ) {
+			return $attr;
+		}
+		$attr['alt'] = self::text_plain( $attr['alt'] );
+		return $attr;
 	}
 
 	/* ------------------------------------------------------------------ engine */
@@ -379,7 +483,7 @@ final class Tokens {
 
 	/** Prefilter: could $s hold a token? (strpos first; a short anchored regex only when the cheap test passes.) */
 	private static function has( string $s ): bool {
-		if ( false !== strpos( $s, '{{' ) && preg_match( '/\{\{\s*(?:lb|site|page|entry|area|service|meta)\./', $s ) ) {
+		if ( false !== strpos( $s, '{{' ) && preg_match( '/\{\{\s*(?:lb|site|page|entry|area|service|meta)\./i', $s ) ) {
 			return true;
 		}
 		if ( false !== stripos( $s, '%7B%7B' ) ) {
@@ -426,6 +530,18 @@ final class Tokens {
 
 	/** Block HTML: tags (attribute values, hash links) and text tokens in one pass, then percent-encoded tokens. */
 	private static function html_pass( string $html, array $ctx ): string {
+		if ( false !== stripos( $html, 'ld+json' ) ) { // Structured data is JSON, not HTML: an apostrophe must not come out as &#039;.
+			$json = (string) preg_replace_callback(
+				'#(<script\b[^>]*type=["\']application/ld\+json["\'][^>]*>)(.*?)(</script>)#is',
+				static function ( $m ) use ( $ctx ) {
+					return $m[1] . self::json_pass( $m[2], $ctx ) . $m[3];
+				},
+				$html
+			);
+			if ( '' !== $json ) {
+				$html = $json;
+			}
+		}
 		$remove = false;
 		$out = preg_replace_callback(
 			'/(<[a-zA-Z][^>]*>)|' . self::TOKEN . '/',
@@ -448,6 +564,21 @@ final class Tokens {
 			$out = self::encoded( $out, $ctx );
 		}
 		return $out;
+	}
+
+	/** Tokens inside a JSON-LD block: each value as the inside of a JSON string (quotes, slashes and tags escaped). */
+	private static function json_pass( string $json, array $ctx ): string {
+		if ( ! self::has( $json ) ) {
+			return $json;
+		}
+		return (string) preg_replace_callback(
+			'/' . self::TOKEN . '/',
+			static function ( $t ) use ( $ctx ) {
+				$v = self::token( $t[1], $t[2], ( $t[3] ?? '' ) === '|' ? (string) ( $t[4] ?? '' ) : null, 'plain', $ctx );
+				return substr( (string) wp_json_encode( $v, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE ), 1, -1 );
+			},
+			$json
+		);
 	}
 
 	/** Tokens and hash links inside one tag's quoted attribute values. */
@@ -539,26 +670,28 @@ final class Tokens {
 	}
 
 	/** Plain text (SEO strings, summaries): unescaped values, no markers. $allowed limits the namespaces. */
-	private static function plain( string $s, array $ctx, ?array $allowed = null ): string {
+	private static function plain( string $s, array $ctx, ?array $allowed = null, bool $esc = false ): string {
 		$s = (string) preg_replace_callback(
 			'/' . self::TOKEN . '/',
-			static function ( $t ) use ( $ctx, $allowed ) {
-				if ( $allowed && ! in_array( $t[1], $allowed, true ) ) {
+			static function ( $t ) use ( $ctx, $allowed, $esc ) {
+				if ( $allowed && ! in_array( strtolower( $t[1] ), $allowed, true ) ) {
 					return '';
 				}
-				return self::token( $t[1], $t[2], ( $t[3] ?? '' ) === '|' ? (string) ( $t[4] ?? '' ) : null, 'plain', $ctx );
+				$v = self::token( $t[1], $t[2], ( $t[3] ?? '' ) === '|' ? (string) ( $t[4] ?? '' ) : null, 'plain', $ctx );
+				return $esc ? esc_html( $v ) : $v;
 			},
 			$s
 		);
 		if ( false !== stripos( $s, '%7B%7B' ) ) {
 			$s = (string) preg_replace_callback(
 				'/' . self::ENCODED . '/i',
-				static function ( $m ) use ( $ctx, $allowed ) {
+				static function ( $m ) use ( $ctx, $allowed, $esc ) {
 					$ns = strtolower( $m[1] );
 					if ( $allowed && ! in_array( $ns, $allowed, true ) ) {
 						return '';
 					}
-					return self::token( $ns, 'meta' === $ns ? $m[2] : strtolower( $m[2] ), ( $m[3] ?? '' ) !== '' ? rawurldecode( (string) ( $m[4] ?? '' ) ) : null, 'plain', $ctx );
+					$v = self::token( $ns, 'meta' === $ns ? $m[2] : strtolower( $m[2] ), ( $m[3] ?? '' ) !== '' ? rawurldecode( (string) ( $m[4] ?? '' ) ) : null, 'plain', $ctx );
+					return $esc ? esc_html( $v ) : $v;
 				},
 				$s
 			);
@@ -567,6 +700,10 @@ final class Tokens {
 	}
 
 	private static function token( string $ns, string $key, ?string $fallback, string $out, array $ctx ): string {
+		$ns = strtolower( $ns );
+		if ( 'meta' !== $ns ) {
+			$key = strtolower( $key ); // Meta Box field ids keep their case; everything else is lower case.
+		}
 		return self::format( self::lookup( $ns, $key, $ctx ), $out, $fallback, $ns, $key );
 	}
 
@@ -594,7 +731,7 @@ final class Tokens {
 				return '';
 			}
 			if ( $r && 'html' === $r['kind'] && 'lb' === $ns ) { // The form embed: say where to paste it.
-				return '<div style="border:2px dashed #cbd5e1;border-radius:12px;padding:32px;text-align:center;color:#64748b;font-size:15px">' . esc_html__( 'Your form embed appears here. Paste it under Launch Builder → Business Info → Form embed.', 'launch-builder' ) . '</div>';
+				return '<div style="border:2px dashed #cbd5e1;border-radius:12px;padding:32px;text-align:center;color:#64748b;font-size:15px">' . esc_html__( 'Your form embed appears here. Paste it under Launch Builder → Business Info → More options → Form embed.', 'launch-builder' ) . '</div>';
 			}
 			$title = null === $r ? __( 'Unknown token: visitors see nothing here.', 'launch-builder' ) : __( 'Empty token: visitors see nothing here. Set the value, or give a fallback after a | sign.', 'launch-builder' );
 			return '<span class="lb-token-empty" title="' . esc_attr( $title ) . '" style="display:inline-block;padding:0 .3em;border:1px dashed currentColor;border-radius:3px;opacity:.65;font:500 .8em/1.4 ui-monospace,Menlo,Consolas,monospace">' . esc_html( $ns . '.' . $key ) . '</span>';
@@ -662,6 +799,10 @@ final class Tokens {
 	 * multi (line breaks) | lines (+ 'lines' parts: the _br tokens).
 	 */
 	private static function lookup( string $ns, string $key, array $ctx ): ?array {
+		$ns = strtolower( $ns );
+		if ( 'meta' !== $ns ) {
+			$key = strtolower( $key );
+		}
 		$id = static function ( $o ): string {
 			return $o instanceof \WP_Post ? 'p' . $o->ID : ( $o instanceof \WP_Term ? 't' . $o->term_id : '0' );
 		};
@@ -923,26 +1064,111 @@ final class Tokens {
 		return null;
 	}
 
-	/** meta.*: a Meta Box field registered for the object's post type, read with an explicit object ID. */
+	/**
+	 * meta.*: a Meta Box field registered for the object's post type, read with an explicit object ID. Only the fields in
+	 * Compat::mb_fields_for() resolve (no password or secret-looking ids, no groups): anything else is an unknown token.
+	 * What a value becomes: a picture gives its full-size address (a gallery or file list its first file), a post or
+	 * taxonomy field gives the published titles or the term names, rich text, maps and embeds give HTML that went through
+	 * kses, everything else gives plain text (a list joins with commas).
+	 */
 	private static function lookup_meta( string $key, array $ctx ): ?array {
 		$o = $ctx['entry'] ?: ( $ctx['page'] instanceof \WP_Post ? $ctx['page'] : null );
-		if ( ! $o || ! function_exists( 'rwmb_get_field_settings' ) || ! function_exists( 'rwmb_meta' ) ) {
+		if ( ! $o || ! function_exists( 'rwmb_meta' ) ) {
 			return null;
 		}
-		$field = rwmb_get_field_settings( $key, [], $o->ID );
-		if ( ! $field ) {
+		$allowed = Compat::mb_fields_for( $o );
+		if ( ! isset( $allowed[ $key ] ) ) {
 			return null;
+		}
+		$type = (string) $allowed[ $key ]['type'];
+		if ( 'wysiwyg' === $type ) { // The formatted text (paragraphs, shortcodes), not the stored source.
+			$html = function_exists( 'rwmb_the_value' ) ? rwmb_the_value( $key, [], $o->ID, false ) : rwmb_meta( $key, [], $o->ID );
+			return [ 'v' => self::kses_meta( is_scalar( $html ) ? (string) $html : '' ), 'kind' => 'html' ];
 		}
 		$v = rwmb_meta( $key, [], $o->ID );
-		$type = (string) ( ( (array) $field )['type'] ?? '' );
+		if ( in_array( $type, [ 'oembed', 'map', 'osm' ], true ) ) { // rwmb_meta() already returns the finished HTML for these.
+			return [ 'v' => self::kses_meta( is_scalar( $v ) ? (string) $v : '', 'oembed' === $type ), 'kind' => 'html' ];
+		}
+		if ( in_array( $type, [ 'url', 'file_input', 'single_image', 'image_advanced', 'image', 'image_upload', 'file_advanced', 'file', 'file_upload', 'video' ], true ) ) {
+			return [ 'v' => self::first_url( $v ), 'kind' => 'url' ];
+		}
+		if ( 'post' === $type ) {
+			return [ 'v' => implode( ', ', self::post_titles( $v ) ), 'kind' => 'text' ];
+		}
+		if ( in_array( $type, [ 'taxonomy', 'taxonomy_advanced' ], true ) ) {
+			return [ 'v' => implode( ', ', self::term_names( $v ) ), 'kind' => 'text' ];
+		}
+		if ( 'user' === $type ) { // A person's details are not site content: nothing prints.
+			return [ 'v' => '', 'kind' => 'text' ];
+		}
 		if ( is_array( $v ) ) {
-			if ( isset( $v['url'] ) && is_string( $v['url'] ) ) {
-				return [ 'v' => $v['url'], 'kind' => 'url' ];
-			}
 			$v = implode( ', ', array_filter( array_map( static function ( $x ) { return is_scalar( $x ) ? (string) $x : ''; }, $v ), 'strlen' ) );
 		}
-		$kind = in_array( $type, [ 'url', 'oembed', 'file_input', 'single_image', 'image' ], true ) ? 'url' : ( 'textarea' === $type ? 'multi' : 'text' );
-		return is_scalar( $v ) ? [ 'v' => (string) $v, 'kind' => $kind ] : [ 'v' => '', 'kind' => $kind ];
+		return is_scalar( $v ) ? [ 'v' => (string) $v, 'kind' => 'textarea' === $type ? 'multi' : 'text' ] : [ 'v' => '', 'kind' => 'text' ];
+	}
+
+	/** HTML from a Meta Box field through kses: the post tags, plus an iframe for an embed. */
+	private static function kses_meta( string $html, bool $embed = false ): string {
+		$html = trim( $html );
+		if ( '' === $html ) {
+			return '';
+		}
+		$allowed = wp_kses_allowed_html( 'post' );
+		if ( $embed ) {
+			$allowed['iframe'] = [ 'src' => true, 'width' => true, 'height' => true, 'title' => true, 'frameborder' => true, 'allowfullscreen' => true, 'allow' => true, 'loading' => true, 'referrerpolicy' => true, 'class' => true, 'style' => true ];
+		}
+		return wp_kses( $html, $allowed );
+	}
+
+	/** The address of a Meta Box file value: a string as it is, a picture's full size, else the first file's address. */
+	private static function first_url( $v ): string {
+		if ( is_string( $v ) ) {
+			return trim( $v );
+		}
+		if ( is_array( $v ) ) {
+			foreach ( [ 'full_url', 'url', 'src' ] as $k ) {
+				if ( isset( $v[ $k ] ) && is_string( $v[ $k ] ) && '' !== $v[ $k ] ) {
+					return $v[ $k ];
+				}
+			}
+			foreach ( $v as $item ) { // A gallery or file list: the first one that has an address.
+				if ( is_array( $item ) || is_string( $item ) ) {
+					$u = self::first_url( $item );
+					if ( '' !== $u ) {
+						return $u;
+					}
+				}
+			}
+		}
+		return '';
+	}
+
+	/** Titles of the published, unprotected posts a Meta Box post field points at (ids, numeric strings, posts or a list of them). */
+	private static function post_titles( $v ): array {
+		$out = [];
+		foreach ( is_array( $v ) ? $v : [ $v ] as $item ) {
+			$id = $item instanceof \WP_Post ? $item->ID : ( is_scalar( $item ) && ctype_digit( (string) $item ) ? (int) $item : 0 );
+			$p = $id ? get_post( $id ) : null;
+			if ( $p && 'publish' === $p->post_status && '' === $p->post_password && is_post_type_viewable( $p->post_type ) ) {
+				$out[] = wp_strip_all_tags( get_the_title( $p ) );
+			}
+		}
+		return array_values( array_filter( $out, 'strlen' ) );
+	}
+
+	/** Names of the terms a Meta Box taxonomy field holds (term objects, ids or a list of them), public taxonomies only. */
+	private static function term_names( $v ): array {
+		$out = [];
+		foreach ( is_array( $v ) ? $v : [ $v ] as $item ) {
+			$t = $item instanceof \WP_Term ? $item : ( is_scalar( $item ) && ctype_digit( (string) $item ) ? get_term( (int) $item ) : null );
+			if ( $t instanceof \WP_Term ) {
+				$tax = get_taxonomy( $t->taxonomy );
+				if ( $tax && $tax->public ) {
+					$out[] = $t->name;
+				}
+			}
+		}
+		return array_values( array_filter( $out, 'strlen' ) );
 	}
 
 	/** One catalog row. */
@@ -972,6 +1198,7 @@ final class Tokens {
 			'kind'        => $kind,
 			'contexts'    => $contexts,
 			'link_token'  => $link,
+			'advanced'    => 'lb' === $ns && Company::is_advanced( $key ), // Rarely typed by hand; still works everywhere.
 			'available'   => null !== $r,
 			'value'       => null === $value ? null : mb_substr( $value, 0, 160 ),
 		];
@@ -980,8 +1207,8 @@ final class Tokens {
 	/* ------------------------------------------------------------------ module hooks */
 
 	public static function define_tools(): void {
-		Abilities::add( 'get-tokens', 'List the dynamic text tokens', 'Every token patterns and text can use, with what it means, where it may be used (contexts: html = block text, attr = attribute, url = link target, text = SEO titles/descriptions, summary = inside summaries and Business Info text) and its current value. Syntax: {{ns.key}}, {{ns.key|fallback}}; link fields also as href="#lb-cta_url"; context links #entry-url, #page-url, #page-parent_url, #area-url, #service-category_url, #site-url. Namespaces: lb (Business Info), site, page (page being viewed), entry (each item of a live list, else the current post), area, service, meta (Meta Box fields). post_id resolves the values for that page or entry; ns filters.',
-			[ 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Resolve values for this post (page, service, area).' ], 'ns' => [ 'type' => 'string', 'enum' => array_keys( self::NAMESPACES ) ] ] ], [ __CLASS__, 'tokens_tool' ], 'edit_pages', [ 'readonly' => true ] );
+		Abilities::add( 'get-tokens', 'List the dynamic text tokens', 'Every token patterns and text can use, with what it means, where it may be used (contexts: html = block text, attr = attribute, url = link target, text = SEO titles/descriptions, summary = inside summaries and Business Info text) and its current value. Syntax: {{ns.key}}, {{ns.key|fallback}}; link fields also as href="#lb-cta_url"; context links #entry-url, #page-url, #page-parent_url, #area-url, #service-category_url, #site-url. Namespaces: lb (Business Info), site, page (page being viewed), entry (each item of a live list, else the current post), area, service, meta (Meta Box fields). Business Info tokens come common ones first; each carries advanced: true when people rarely type it by hand (it still works everywhere), and common_only leaves those out. post_id resolves the values for that page or entry; ns filters.',
+			[ 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Resolve values for this post (page, service, area).' ], 'ns' => [ 'type' => 'string', 'enum' => array_keys( self::NAMESPACES ) ], 'common_only' => [ 'type' => 'boolean', 'description' => 'Leave out the advanced Business Info tokens (they still work); the common ones are listed first either way.' ] ] ], [ __CLASS__, 'tokens_tool' ], 'edit_pages', [ 'readonly' => true ] );
 	}
 
 	public static function tokens_tool( $input = [] ) {
@@ -994,7 +1221,12 @@ final class Tokens {
 		if ( '' !== $ns ) {
 			$rows = array_values( array_filter( $rows, static function ( $r ) use ( $ns ) { return $ns === $r['ns']; } ) );
 		}
+		$advanced = count( array_filter( $rows, static function ( $r ) { return ! empty( $r['advanced'] ); } ) );
+		if ( ! empty( $input['common_only'] ) ) {
+			$rows = array_values( array_filter( $rows, static function ( $r ) { return empty( $r['advanced'] ); } ) );
+		}
 		return [
+			'advanced_count' => $advanced,
 			'syntax'     => '{{ns.key}} or {{ns.key|fallback}} in text and attributes; %7B%7Bns.key%7D%7D inside encoded URLs; href="#lb-key" for link fields; empty or unknown tokens print the fallback, else nothing (editors see a dashed marker).',
 			'hash_links' => self::HASH_LINKS,
 			'summary_namespaces' => self::SUMMARY_NAMESPACES,
@@ -1003,7 +1235,7 @@ final class Tokens {
 	}
 
 	public static function playbook( array &$pb ): void {
-		$pb['tokens'] = 'Dynamic text: {{lb.*}} Business Info (phone, name, address, hours, cta_label, review_count_line, review_line, service_count...), {{site.name}}, {{page.title}}/{{page.summary}}/{{page.parent}} (page being viewed), {{entry.title}}/{{entry.summary}}/{{entry.url}}/{{entry.image}}/{{entry.category}} (each item of a live list template, else the current post), {{area.name}} (current area, else the Business Info city), {{service.name}} (current service, the category on category pages, else the industry). Fallbacks: {{lb.years|10}}. Links: href="#lb-cta_url", "#lb-phone_link", "#entry-url", "#page-url". Summaries and Business Info text may only use lb, site, area and service tokens. Titles and descriptions in Rank Math/Yoast resolve tokens too. An empty social profile hides its icon. get-tokens lists every token with its current value.';
+		$pb['tokens'] = 'Dynamic text: {{lb.*}} Business Info (phone, name, address, hours, cta_label, review_count_line, review_line, service_count...), {{site.name}}, {{page.title}}/{{page.summary}}/{{page.parent}} (page being viewed), {{entry.title}}/{{entry.summary}}/{{entry.url}}/{{entry.image}}/{{entry.category}} (each item of a live list template, else the current post), {{area.name}} (current area, else the Business Info city), {{service.name}} (current service, the category on category pages, else the industry). Fallbacks: {{lb.years|10}}. Links: href="#lb-cta_url", "#lb-phone_link", "#entry-url", "#page-url". Summaries and Business Info text may only use lb, site, area and service tokens. Titles and descriptions in Rank Math/Yoast resolve tokens too. An empty social profile hides its icon. get-tokens lists every token with its current value. Where tokens work: block text, buttons and link fields, SEO titles and descriptions, and (resolved on the server for visitors and search engines) page titles, classic menu labels, #lb- menu links, legacy text widgets and image alt text. Case does not matter. A blank Business Info field prints nothing once the site is public (demo text shows only while search engines are asked to stay away). go-live fetches the home page and one page, service and area, and refuses while unresolved tokens or placeholders are printed. detokenize bakes post content, designs and SEO fields (including typed tokens) with their fallbacks; titles, excerpts, menus and widgets keep their tokens, so replace those by hand before removing the plugin.';
 		$pb['tools_by_job']['Dynamic text'] = 'get-tokens, get-company, set-company';
 	}
 
@@ -1030,14 +1262,18 @@ final class Tokens {
 			$bad = [];
 			if ( preg_match_all( '/' . self::TOKEN . '/', (string) $row->post_content, $m, PREG_SET_ORDER ) ) {
 				foreach ( $m as $t ) {
-					if ( null === self::lookup( $t[1], $t[2], $ctx ) && ! ( 'meta' === $t[1] && ! function_exists( 'rwmb_meta' ) ) ) {
+					if ( 'meta' === strtolower( $t[1] ) && ! function_exists( 'rwmb_meta' ) ) { // Meta Box is off: the value is gone, only a fallback shows.
+						if ( '|' !== ( $t[3] ?? '' ) ) {
+							$bad[ $t[0] ] = 'Meta Box is not active';
+						}
+					} elseif ( null === self::lookup( $t[1], $t[2], $ctx ) ) {
 						$bad[ $t[0] ] = 'unknown';
 					}
 				}
 			}
 			if ( preg_match_all( '/' . self::TOKEN . '/', (string) $row->post_excerpt, $m, PREG_SET_ORDER ) ) {
 				foreach ( $m as $t ) {
-					if ( ! in_array( $t[1], self::SUMMARY_NAMESPACES, true ) || null === self::lookup( $t[1], $t[2], $ctx ) ) {
+					if ( ! in_array( strtolower( $t[1] ), self::SUMMARY_NAMESPACES, true ) || null === self::lookup( $t[1], $t[2], $ctx ) ) {
 						$bad[ $t[0] ] = 'not allowed in a summary';
 					}
 				}
@@ -1049,12 +1285,34 @@ final class Tokens {
 					}
 				}
 			}
+			// Anything shaped like a token that is not one (a mistyped namespace, a stray tag inside the braces) prints as it is.
+			foreach ( [ 'the body' => (string) $row->post_content, 'the summary' => (string) $row->post_excerpt, 'the title' => (string) $row->post_title ] as $where => $text ) {
+				if ( false === strpos( $text, '{{' ) ) {
+					continue;
+				}
+				$rest = (string) preg_replace( '/' . self::TOKEN . '/', '', $text );
+				if ( preg_match_all( '/\{\{\s*[A-Za-z_]+\.[^{}]{1,80}\}\}/', $rest, $m2 ) ) {
+					foreach ( array_unique( $m2[0] ) as $raw ) {
+						$bad[ $raw ] = 'not a token, so it prints as typed (' . $where . ')';
+					}
+				}
+			}
+			// The title and the SEO title and description go through the same tokens.
+			foreach ( [ 'the title' => (string) $row->post_title, 'the SEO title' => (string) get_post_meta( $last, 'rank_math_title', true ) . ' ' . (string) get_post_meta( $last, '_yoast_wpseo_title', true ), 'the SEO description' => (string) get_post_meta( $last, 'rank_math_description', true ) . ' ' . (string) get_post_meta( $last, '_yoast_wpseo_metadesc', true ) ] as $where => $text ) {
+				if ( false !== strpos( $text, '{{' ) && preg_match_all( '/' . self::TOKEN . '/', $text, $mt, PREG_SET_ORDER ) ) {
+					foreach ( $mt as $t ) {
+						if ( null === self::lookup( $t[1], $t[2], $ctx ) && '|' !== ( $t[3] ?? '' ) ) {
+							$bad[ $t[0] ] = 'unknown (' . $where . ')';
+						}
+					}
+				}
+			}
 			if ( $bad ) {
 				$list = [];
 				foreach ( $bad as $tok => $why ) {
 					$list[] = $tok . ' (' . $why . ')';
 				}
-				$findings[] = [ 'severity' => 'warning', 'object_type' => $row->post_type, 'id' => $last, 'url' => 'publish' === get_post_status( $last ) ? (string) get_permalink( $last ) : '', 'message' => '"' . $row->post_title . '" has tokens that print nothing: ' . implode( ', ', array_slice( $list, 0, 10 ) ), 'fix' => 'Use a key listed by get-tokens, or give a fallback {{ns.key|text}}.' ];
+				$findings[] = [ 'severity' => 'warning', 'object_type' => $row->post_type, 'id' => $last, 'url' => 'publish' === get_post_status( $last ) ? (string) get_permalink( $last ) : '', 'message' => '"' . $row->post_title . '" has tokens that print nothing: ' . implode( ', ', array_slice( $list, 0, 10 ) ), 'fix' => 'Use a key listed by get-tokens, give a fallback {{ns.key|text}}, or turn Meta Box on for {{meta.*}} tokens.' ];
 			}
 		}
 		return [ 'findings' => $findings, 'next_after_id' => count( (array) $rows ) === $limit ? $last : null ];
@@ -1068,6 +1326,6 @@ final class Tokens {
 		if ( ! $demo ) {
 			return [];
 		}
-		return [ [ 'severity' => 'error', 'object_type' => 'option', 'id' => 0, 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => 'Business Info still shows demo values for: ' . implode( ', ', $demo ) . '.', 'fix' => 'set-company with the real values (or a source option).' ] ];
+		return [ [ 'severity' => 'error', 'object_type' => 'option', 'id' => 0, 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => Company::setup_mode() ? 'Business Info still shows demo values for: ' . implode( ', ', $demo ) . '.' : 'Business Info is blank for: ' . implode( ', ', $demo ) . ' (the site is public, so visitors see nothing there).', 'fix' => 'set-company with the real values (or a source option).' ] ];
 	}
 }

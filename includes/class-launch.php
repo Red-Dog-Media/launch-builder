@@ -129,8 +129,10 @@ final class Launch {
 				return [ 'live' => false, 'done' => false, 'after_id' => $after, 'audited_pages' => $run['pages'], 'totals' => $run['totals'], 'note' => 'The audit is not finished: call go-live again with after_id ' . $after . '.' ];
 			}
 			delete_option( self::OPT_RUN );
-			$errors = (int) $run['totals']['error'];
-			$report = [ 'live' => false, 'done' => true, 'forced' => false, 'audit' => [ 'totals' => $run['totals'], 'by_code' => $run['by_code'], 'pages' => $run['pages'] ] ];
+			$render = self::rendered_check(); // The front end as a visitor gets it, not only what is stored.
+			$run['errors'] = array_merge( (array) $run['errors'], $render['problems'] );
+			$errors = (int) $run['totals']['error'] + count( $render['problems'] );
+			$report = [ 'live' => false, 'done' => true, 'forced' => false, 'audit' => [ 'totals' => $run['totals'], 'by_code' => $run['by_code'], 'pages' => $run['pages'] ], 'rendered' => [ 'pages_checked' => $render['checked'], 'problems' => count( $render['problems'] ) ] ];
 			if ( $errors > 0 && ! $force ) {
 				$report['refused'] = true;
 				$report['errors'] = $run['errors'];
@@ -309,6 +311,40 @@ final class Launch {
 
 	/* ------------------------------------------------------------------ detokenize */
 
+	/**
+	 * The pages a visitor sees, fetched and read for unresolved tokens and copy placeholders: the home page and the first
+	 * published page, service and service area. A page that cannot be fetched is skipped (the audit covers what is stored).
+	 *
+	 * @return array{checked:int,problems:array<int,array>}
+	 */
+	private static function rendered_check(): array {
+		$urls = [ home_url( '/' ) ];
+		foreach ( [ 'page', Entries::SERVICE, Entries::AREA ] as $pt ) {
+			$ids = get_posts( [ 'post_type' => $pt, 'post_status' => 'publish', 'numberposts' => 1, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids', 'suppress_filters' => true ] );
+			if ( $ids ) {
+				$urls[] = (string) get_permalink( (int) $ids[0] );
+			}
+		}
+		$problems = [];
+		$checked = 0;
+		foreach ( array_values( array_unique( array_filter( $urls ) ) ) as $u ) {
+			$o = Inspect::inspect( $u, [ 'check_links' => false ] );
+			if ( ! is_array( $o ) || empty( $o['text'] ) ) {
+				continue;
+			}
+			$checked++;
+			$tok = (array) ( $o['text']['tokens'] ?? [] );
+			$ph = (array) ( $o['text']['placeholders'] ?? [] );
+			if ( $tok ) {
+				$problems[] = [ 'code' => 'rendered_token', 'title' => '', 'id' => null, 'url' => $u, 'message' => 'Unresolved tokens are printed on this page: ' . implode( ', ', array_slice( $tok, 0, 5 ) ) ];
+			}
+			if ( $ph ) {
+				$problems[] = [ 'code' => 'rendered_placeholder', 'title' => '', 'id' => null, 'url' => $u, 'message' => 'Copy placeholders are printed on this page: ' . implode( ', ', array_slice( $ph, 0, 5 ) ) ];
+			}
+		}
+		return [ 'checked' => $checked, 'problems' => $problems ];
+	}
+
 	/** detokenize. */
 	public static function detokenize( $input = [] ) {
 		$input = (array) $input;
@@ -364,7 +400,7 @@ final class Launch {
 			if ( $do_seo && ! $is_design ) {
 				foreach ( self::SEO_META as $mk ) {
 					$v = get_post_meta( $p->ID, $mk, true );
-					if ( is_string( $v ) && '' !== $v && false !== strpos( $v, 'lb_' ) ) {
+					if ( is_string( $v ) && '' !== $v && ( false !== strpos( $v, 'lb_' ) || false !== strpos( $v, '{{' ) ) ) {
 						$nv = self::bake_seo( $v, $p );
 						if ( $nv !== $v ) {
 							$plan['new_meta'][ $mk ] = $nv;
@@ -426,6 +462,9 @@ final class Launch {
 	/** Business Info keys whose current value is the demo value (they are never baked). */
 	private static function demo_keys(): array {
 		$out = [];
+		if ( ! Company::setup_mode() ) {
+			return $out; // A public site prints nothing for a blank field, so that is what gets baked (or its fallback).
+		}
 		foreach ( Company::resolve() as $k => $row ) {
 			if ( 'default' === ( $row['from'] ?? '' ) ) {
 				$out[] = (string) $k;
@@ -553,12 +592,13 @@ final class Launch {
 	/** %lb_x% / %%lb_x%% variables in an SEO string, replaced with their current value. */
 	private static function bake_seo( string $v, \WP_Post $p ): string {
 		$vars = Compat::seo_vars();
-		return (string) preg_replace_callback( '/%{1,2}(lb_[A-Za-z0-9_-]+)%{1,2}/', static function ( $m ) use ( $vars, $p ) {
+		$v = (string) preg_replace_callback( '/%{1,2}(lb_[A-Za-z0-9_-]+)%{1,2}/', static function ( $m ) use ( $vars, $p ) {
 			if ( ! isset( $vars[ $m[1] ] ) ) {
 				return $m[0];
 			}
 			$val = Compat::var_value( $vars[ $m[1] ]['key'], $p );
 			return '' !== $val ? $val : $m[0];
 		}, $v );
+		return Tokens::plain_for( $v, $p ); // Tokens typed by hand into the SEO field.
 	}
 }

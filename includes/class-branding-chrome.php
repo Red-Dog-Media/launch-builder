@@ -207,9 +207,10 @@ final class Branding_Chrome {
 		} else {
 			$css .= $P . ' h1 a{background-image:none;text-indent:0;overflow:visible;width:auto;height:auto;font-size:24px;line-height:1.3;font-weight:600;color:var(--lbb-name);text-decoration:none;margin:0 auto 20px}';
 		}
-		$css .= $P . ' form{background:var(--lbb-form);color:var(--lbb-text);border:0;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}';
+		$mock = 'body.login' !== $scope; // the preview mock is a div (a form inside the settings form would close it)
+		$css .= $P . ' form' . ( $mock ? ',' . $P . ' .lbb-mock-form' : '' ) . '{background:var(--lbb-form);color:var(--lbb-text);border:0;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.18)}';
 		$css .= $P . ' label{color:var(--lbb-text)}';
-		$css .= $P . ' form input:focus{border-color:var(--lbb-btn);box-shadow:0 0 0 1px var(--lbb-btn)}';
+		$css .= $P . ' form input:focus' . ( $mock ? ',' . $P . ' .lbb-mock-form input:focus' : '' ) . '{border-color:var(--lbb-btn);box-shadow:0 0 0 1px var(--lbb-btn)}';
 		$css .= $P . ' .button-primary{background:var(--lbb-btn);border-color:var(--lbb-btn);color:var(--lbb-btn-text);text-shadow:none;box-shadow:none}';
 		$css .= $P . ' .button-primary:hover,' . $P . ' .button-primary:focus{background:var(--lbb-hover);border-color:var(--lbb-hover);color:var(--lbb-hover-text)}';
 		$css .= $P . ' .button-primary:focus{box-shadow:0 0 0 1px var(--lbb-form),0 0 0 3px var(--lbb-btn)}';

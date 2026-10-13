@@ -1215,40 +1215,61 @@ final class Duplicate {
 		}
 		$s = self::settings();
 		$on = self::ui_types();
-		echo '<div class="wrap"><h1>' . esc_html__( 'Duplicate', 'launch-builder' ) . '</h1>';
-		echo '<p>' . esc_html__( 'A "Duplicate" link on list rows, in the bulk actions, the admin bar and the block editor menu creates a draft copy. Copies keep content, layout, categories, featured image and template; they never keep the source\'s Launch Builder key, edit locks, old URLs or SEO canonical, and Kadence block IDs are renewed so styles never clash.', 'launch-builder' ) . '</p>';
+		echo '<div class="wrap lb-wrap lb-set lb-dup">';
+		echo Dashboard::header( __( 'Duplicate', 'launch-builder' ), esc_html__( 'Adds a Duplicate link to your lists, the bulk actions, the admin bar and the block editor menu. Each copy is saved as a draft.', 'launch-builder' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
 		if ( isset( $_GET['updated'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- display only.
-			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'launch-builder' ) . '</p></div>';
+			echo '<div class="notice notice-success inline is-dismissible"><p>' . esc_html__( 'Settings saved.', 'launch-builder' ) . '</p></div>';
 		}
+
+		// What a copy keeps and what it leaves out.
+		$keeps = [ __( 'Content', 'launch-builder' ), __( 'Layout', 'launch-builder' ), __( 'Categories', 'launch-builder' ), __( 'Featured image', 'launch-builder' ), __( 'Template', 'launch-builder' ) ];
+		$drops = [ __( 'The Launch Builder key', 'launch-builder' ), __( 'Edit locks', 'launch-builder' ), __( 'Old URLs', 'launch-builder' ), __( 'The SEO canonical URL', 'launch-builder' ) ];
+		echo '<section class="lb-card"><h2>' . esc_html__( 'What a copy keeps', 'launch-builder' ) . '</h2><div class="lb-cols2">';
+		foreach ( [ [ __( 'Kept', 'launch-builder' ), 'yes', 'check', $keeps ], [ __( 'Left out', 'launch-builder' ), 'no', 'x', $drops ] ] as [ $head, $kind, $icon, $items ] ) {
+			echo '<div><h3>' . esc_html( $head ) . '</h3><ul class="lb-ticks lb-ticks--' . esc_attr( $kind ) . '">';
+			foreach ( $items as $item ) {
+				echo '<li>' . Dashboard::icon( $icon ) . esc_html( $item ) . '</li>'; // phpcs:ignore WordPress.Security.EscapeOutput -- the icon is static markup.
+			}
+			echo '</ul></div>';
+		}
+		echo '</div><p class="lb-hint">' . esc_html__( 'Kadence block IDs are renewed in every copy, so styles never clash.', 'launch-builder' ) . '</p></section>';
+
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_duplicate_settings">';
 		wp_nonce_field( 'lb_duplicate_settings' );
-		echo '<table class="form-table" role="presentation"><tbody>';
-		echo '<tr><th scope="row">' . esc_html__( 'Post types', 'launch-builder' ) . '</th><td><fieldset>';
+
+		// Where the link shows up.
+		echo '<section class="lb-card"><h2>' . esc_html__( 'Where Duplicate shows up', 'launch-builder' ) . '</h2><div class="lb-rows">';
+		echo '<div class="lb-row" role="group" aria-labelledby="lb-dup-types"><div class="lb-row__label" id="lb-dup-types">' . esc_html__( 'Post types', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-checks">';
 		foreach ( self::candidate_types() as $name => $pto ) {
-			printf( '<label style="display:inline-block;min-width:220px;margin:0 12px 6px 0"><input type="checkbox" name="types[]" value="%s" %s> %s <code>%s</code></label>', esc_attr( $name ), checked( in_array( $name, $on, true ), true, false ), esc_html( $pto->labels->name ), esc_html( $name ) );
+			printf( '<label class="lb-check"><input type="checkbox" name="types[]" value="%s" %s> <span>%s</span> <code>%s</code></label>', esc_attr( $name ), checked( in_array( $name, $on, true ), true, false ), esc_html( $pto->labels->name ), esc_html( $name ) );
 		}
-		echo '<p class="description">' . esc_html__( 'Kadence Elements, Advanced Pages and Conversions keep their own Duplicate link; Launch Builder removes its identity keys from those copies and renews their block IDs.', 'launch-builder' ) . '</p></fieldset></td></tr>';
-		printf( '<tr><th scope="row"><label for="lb-dup-suffix">%s</label></th><td><input id="lb-dup-suffix" name="suffix" type="text" class="regular-text" value="%s" placeholder="%s"><p class="description">%s</p></td></tr>', esc_html__( 'Title suffix', 'launch-builder' ), esc_attr( null === $s['suffix'] ? __( '(Copy)', 'launch-builder' ) : $s['suffix'] ), esc_attr__( '(Copy)', 'launch-builder' ), esc_html__( 'Added to the title of every copy. Leave it empty for no suffix.', 'launch-builder' ) );
-		echo '<tr><th scope="row">' . esc_html__( 'SEO of copies', 'launch-builder' ) . '</th><td><fieldset>';
-		printf( '<label><input type="radio" name="seo" value="reset" %s> %s</label><br>', checked( 'reset', $s['seo'], false ), esc_html__( 'Reset: no SEO title, description or focus keyword (the post-type templates apply). Recommended.', 'launch-builder' ) );
-		printf( '<label><input type="radio" name="seo" value="keep" %s> %s</label>', checked( 'keep', $s['seo'], false ), esc_html__( 'Keep them (the canonical URL and scores are always left out).', 'launch-builder' ) );
-		echo '</fieldset></td></tr>';
-		printf( '<tr><th scope="row"><label for="lb-dup-exclude">%s</label></th><td><textarea id="lb-dup-exclude" name="exclude" rows="4" class="large-text code">%s</textarea><p class="description">%s</p></td></tr>', esc_html__( 'Also leave out', 'launch-builder' ), esc_textarea( implode( "\n", $s['exclude'] ) ), esc_html__( 'Meta keys never copied, one per line. End a line with * to match a prefix (for example _my_plugin_*).', 'launch-builder' ) );
-		echo '<tr><th scope="row">' . esc_html__( 'After duplicating', 'launch-builder' ) . '</th><td><fieldset>';
-		printf( '<label><input type="radio" name="redirect" value="edit" %s> %s</label><br>', checked( 'edit', $s['redirect'], false ), esc_html__( 'Open the copy in the editor', 'launch-builder' ) );
-		printf( '<label><input type="radio" name="redirect" value="list" %s> %s</label>', checked( 'list', $s['redirect'], false ), esc_html__( 'Stay on the list', 'launch-builder' ) );
-		echo '</fieldset></td></tr>';
-		printf( '<tr><th scope="row">%s</th><td><label><input type="checkbox" name="admin_bar" value="1" %s> %s</label></td></tr>', esc_html__( 'Admin bar', 'launch-builder' ), checked( $s['admin_bar'], true, false ), esc_html__( 'Show "Duplicate" under Edit in the admin bar', 'launch-builder' ) );
-		echo '</tbody></table>';
-		submit_button();
+		echo '</div><p class="lb-hint">' . esc_html__( 'Kadence Elements, Advanced Pages and Conversions keep their own Duplicate link. Launch Builder removes its identity keys from those copies and renews their block IDs.', 'launch-builder' ) . '</p></div></div>';
+		printf( '<div class="lb-row" role="group" aria-labelledby="lb-dup-bar"><div class="lb-row__label" id="lb-dup-bar">%s</div><div class="lb-row__control"><div class="lb-choices"><label class="lb-check"><input type="checkbox" name="admin_bar" value="1" %s> <span>%s</span></label></div></div></div>', esc_html__( 'Admin bar', 'launch-builder' ), checked( $s['admin_bar'], true, false ), esc_html__( 'Show "Duplicate" under Edit in the admin bar', 'launch-builder' ) );
+		echo '</div></section>';
+
+		// What a copy gets.
+		echo '<section class="lb-card"><h2>' . esc_html__( 'What a copy gets', 'launch-builder' ) . '</h2><div class="lb-rows">';
+		printf( '<div class="lb-row"><div class="lb-row__label"><label for="lb-dup-suffix">%s</label></div><div class="lb-row__control"><input id="lb-dup-suffix" name="suffix" type="text" class="regular-text" value="%s" placeholder="%s"><p class="lb-hint">%s</p></div></div>', esc_html__( 'Title suffix', 'launch-builder' ), esc_attr( null === $s['suffix'] ? __( '(Copy)', 'launch-builder' ) : $s['suffix'] ), esc_attr__( '(Copy)', 'launch-builder' ), esc_html__( 'Added to the title of every copy. Leave it empty for no suffix.', 'launch-builder' ) );
+		echo '<div class="lb-row" role="group" aria-labelledby="lb-dup-seo"><div class="lb-row__label" id="lb-dup-seo">' . esc_html__( 'SEO of copies', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-choices">';
+		printf( '<label class="lb-choice"><input type="radio" name="seo" value="reset" %s><span class="lb-choice__body"><b>%s<span class="lb-chip lb-chip--ok">%s</span></b><small>%s</small></span></label>', checked( 'reset', $s['seo'], false ), esc_html__( 'Start fresh', 'launch-builder' ), esc_html__( 'Recommended', 'launch-builder' ), esc_html__( 'No SEO title, description or focus keyword. The post-type templates apply.', 'launch-builder' ) );
+		printf( '<label class="lb-choice"><input type="radio" name="seo" value="keep" %s><span class="lb-choice__body"><b>%s</b><small>%s</small></span></label>', checked( 'keep', $s['seo'], false ), esc_html__( 'Keep them', 'launch-builder' ), esc_html__( 'The canonical URL and scores are always left out.', 'launch-builder' ) );
+		echo '</div></div></div>';
+		printf( '<div class="lb-row"><div class="lb-row__label"><label for="lb-dup-exclude">%s</label></div><div class="lb-row__control"><textarea id="lb-dup-exclude" name="exclude" rows="4" class="large-text code">%s</textarea><p class="lb-hint">%s</p></div></div>', esc_html__( 'Also leave out', 'launch-builder' ), esc_textarea( implode( "\n", $s['exclude'] ) ), esc_html__( 'Meta keys that are never copied, one per line. End a line with * to match a prefix, for example _my_plugin_*.', 'launch-builder' ) );
+		echo '<div class="lb-row" role="group" aria-labelledby="lb-dup-after"><div class="lb-row__label" id="lb-dup-after">' . esc_html__( 'After duplicating', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-choices">';
+		printf( '<label class="lb-choice"><input type="radio" name="redirect" value="edit" %s><span class="lb-choice__body"><b>%s</b></span></label>', checked( 'edit', $s['redirect'], false ), esc_html__( 'Open the copy in the editor', 'launch-builder' ) );
+		printf( '<label class="lb-choice"><input type="radio" name="redirect" value="list" %s><span class="lb-choice__body"><b>%s</b></span></label>', checked( 'list', $s['redirect'], false ), esc_html__( 'Stay on the list', 'launch-builder' ) );
+		echo '</div></div></div></div></section>';
+
+		echo '<div class="lb-savebar"><p>' . esc_html__( 'Changes apply as soon as you save.', 'launch-builder' ) . '</p><button type="submit" class="lb-btn lb-btn--primary">' . esc_html__( 'Save settings', 'launch-builder' ) . '</button></div>';
 		echo '</form>';
+
 		$c = self::conflicts();
 		if ( $c ) {
-			echo '<h2>' . esc_html__( 'Other duplicate plugins', 'launch-builder' ) . '</h2><ul>';
+			echo '<section class="lb-card"><h2>' . esc_html__( 'Other duplicate plugins', 'launch-builder' ) . '</h2><p class="lb-card__sub">' . esc_html__( 'While these are active, lists show more than one Duplicate link.', 'launch-builder' ) . '</p><ul class="lb-feed">';
 			foreach ( $c as $row ) {
-				echo '<li>' . esc_html( $row['name'] ) . ' <code>' . esc_html( $row['plugin'] ) . '</code></li>';
+				echo '<li><div><b>' . esc_html( $row['name'] ) . '</b><span><code>' . esc_html( $row['plugin'] ) . '</code></span></div></li>';
 			}
-			echo '</ul>';
+			echo '</ul></section>';
 		}
 		echo '</div>';
 	}

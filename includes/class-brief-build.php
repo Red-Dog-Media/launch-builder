@@ -1592,7 +1592,7 @@ final class Brief_Build {
 			}
 			$act = in_array( 'create', $acts, true ) ? 'create' : ( array_intersect( [ 'update', 'republish' ], $acts ) ? 'update' : ( in_array( 'kept_edits', $acts, true ) ? 'kept_edits' : 'keep' ) );
 			$changed += in_array( $act, [ 'create', 'update' ], true ) ? 1 : 0;
-			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => (string) ( $g['key'] ?? '' ), 'action' => $act, 'detail' => ( $g['slot'] ?? '' ) . ': ' . implode( ', ', (array) ( $g['roles'] ?? [] ) ) ] );
+			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => (string) ( $g['key'] ?? '' ), 'action' => $act, 'detail' => '' !== (string) ( $g['title'] ?? '' ) ? (string) $g['title'] : ( $g['slot'] ?? '' ) . ': ' . implode( ', ', (array) ( $g['roles'] ?? [] ) ) ] ); // The plain name; the key stays the group key.
 		}
 		foreach ( (array) ( $rep['compile_failed'] ?? [] ) as $f ) {
 			self::warn( $job, 'chrome ' . ( $f['slot'] ?? '' ) . ' (' . implode( ', ', (array) ( $f['roles'] ?? [] ) ) . '): ' . ( $f['error'] ?? 'compile failed' ) );

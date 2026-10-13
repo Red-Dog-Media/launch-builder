@@ -43,7 +43,7 @@
 .lb-br-mock .lbb-mock-box { max-width: 280px; margin: 0 auto; }
 .lb-br-mock h1 { margin: 0; padding: 0; text-align: center; font-size: 14px; }
 .lb-br-mock h1 a { display: block; overflow: hidden; text-indent: -9999px; background-repeat: no-repeat; text-decoration: none; margin: 0 auto 24px; width: 84px; height: 84px; background-size: 84px; pointer-events: none; }
-.lb-br-mock form { margin: 16px 0 0; padding: 20px; background: #fff; border: 1px solid #c3c4c7; }
+.lb-br-mock .lbb-mock-form { margin: 16px 0 0; padding: 20px; background: #fff; border: 1px solid #c3c4c7; }
 .lb-br-mock label { display: block; margin: 0 0 3px; font-size: 14px; }
 .lb-br-mock .input { width: 100%; box-sizing: border-box; font-size: 16px; padding: 4px 8px; margin: 0 0 12px; height: 36px; }
 .lb-br-mock .submit { text-align: right; margin: 0; }

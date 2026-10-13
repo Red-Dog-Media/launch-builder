@@ -1,4 +1,4 @@
-/* Launch Builder admin: module switches (saved as you click), search and filters, copy buttons, tabs.
+/* Launch Builder admin: module switches (saved as you click), search and filters, copy buttons, tabs, click feedback between screens.
    Plain JavaScript; window.lbAdmin ({ ajax, nonce, i18n }) is printed by the dashboard class. */
 (function () {
 	'use strict';
@@ -32,6 +32,9 @@
 		window.clearTimeout(toastTimer);
 		toastTimer = window.setTimeout(function () { toast.classList.remove('is-on'); }, opts.reload ? 9000 : 4200);
 	}
+
+	cfg.say = say; // Other screens' scripts show their messages the same way.
+	window.lbAdmin = cfg;
 
 	/* ---- module switches ---- */
 	function counts() {
@@ -140,6 +143,23 @@
 			g.querySelectorAll('.lb-pane').forEach(function (p) { p.classList.toggle('on', p.id === tab.getAttribute('data-lb-tab')); });
 		}
 	});
+
+	/* ---- links between Launch Builder screens: show at once that the next one is loading ---- */
+	var leavingTimer;
+	document.addEventListener('click', function (e) {
+		if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+		var a = e.target.closest ? e.target.closest('a[href]') : null;
+		if (!a || a.target === '_blank' || a.hasAttribute('download')) { return; }
+		var u;
+		try { u = new URL(a.href, window.location.href); } catch (x) { return; }
+		var here = window.location;
+		if (u.origin !== here.origin || !/\/admin\.php$/.test(u.pathname) || !/(^|&)page=(launch-builder|lb-)/.test(u.search.slice(1))) { return; }
+		if (u.pathname === here.pathname && u.search === here.search && u.hash) { return; } // A jump inside this screen.
+		document.body.classList.add('lb-leaving');
+		window.clearTimeout(leavingTimer);
+		leavingTimer = window.setTimeout(function () { document.body.classList.remove('lb-leaving'); }, 10000); // The visit was cancelled (for example "leave this page?"): carry on as before.
+	});
+	window.addEventListener('pageshow', function () { document.body.classList.remove('lb-leaving'); }); // Back to a kept copy of this screen.
 
 	counts();
 })();

@@ -21,14 +21,33 @@ defined( 'ABSPATH' ) || exit;
  * Structured fields feed the display strings: when the structured address is set, {{lb.address}} is built from it; when
  * opening hours (hours_spec) or 24/7 are set, {{lb.hours}} is built from them; the overall rating and review count are
  * computed from the review platforms (reviews[]) unless set explicitly.
+ *
+ * The screen (Company_Admin) shows a field up front only when people would show it on the site or it feeds structured
+ * data and Rank Math (see GROUPS); the rest sit under "More options", and OFF_SCREEN fields have no input at all. Every
+ * field keeps its token whatever the screen does: the engine never depends on where a field is shown.
  */
 final class Company {
 
 	const OPT     = 'launch_builder_company';
 	const OPT_SRC = 'launch_builder_company_source';
 
-	/** Admin groups, in screen order (index 5 of each field). */
-	const GROUPS = [ 'Basics', 'Address', 'Service area and licences', 'Hours', 'Reviews', 'Business details', 'Buttons and links', 'Promotions and financing', 'Social profiles', 'Logos', 'Form embed', 'Writing brief' ];
+	/**
+	 * Screen groups, in screen order (index 5 of each field). The first six are always visible; MORE_GROUPS sit under the
+	 * collapsed "More options"; OFF_SCREEN holds fields that only the tokens and the assistant tools use.
+	 */
+	const GROUPS = [ 'Basics', 'Address and hours', 'Reviews', 'Social profiles', 'Logos', 'Search engines', 'Form embed', 'Wording and links', 'Search engine details', 'Numbers and claims', 'Offers', 'Writing brief', 'Off screen' ];
+
+	/** The groups under "More options", in order. */
+	const MORE_GROUPS = [ 'Form embed', 'Wording and links', 'Search engine details', 'Numbers and claims', 'Offers', 'Writing brief' ];
+
+	/** The group of fields with no input on the screen: nothing a person would type or show on a page by hand. */
+	const OFF_SCREEN = 'Off screen';
+
+	/**
+	 * Tokens people type most often. get-tokens lists these first and marks every other Business Info token advanced
+	 * (they all keep working). New fields are advanced until added here.
+	 */
+	const COMMON = [ 'name', 'phone', 'phone_link', 'email', 'address', 'address_br', 'hours', 'hours_br', 'tagline', 'cta_label', 'cta_url', 'cta2_label', 'cta2_url', 'quote_url', 'city', 'year', 'facebook', 'instagram', 'google', 'youtube', 'maps_url', 'form_html', 'rating', 'review_count', 'review_line', 'review_count_line', 'review_url' ];
 
 	/**
 	 * The computed tokens published for the generator and the token catalog. All four are implemented and listed by
@@ -65,7 +84,7 @@ final class Company {
 	public static function boot(): void {
 		add_filter( 'render_block', [ __CLASS__, 'filter_block' ], 20, 2 );
 		add_shortcode( 'lb', [ __CLASS__, 'shortcode' ] );
-		add_action( 'admin_post_lb_company_save', [ __CLASS__, 'save' ] );
+		Company_Admin::boot();
 		// Edits made outside these tools (set-option, restore-snapshot, a Meta Box settings page used as the source) must
 		// show on cached pages too.
 		add_action( 'updated_option', [ __CLASS__, 'option_changed' ] );
@@ -83,69 +102,93 @@ final class Company {
 	 */
 	public static function fields(): array {
 		return [
-			'tagline'    => [ 'Tagline (under page titles)', 'text', 'Trusted local experts in Your City, ST', [ 'tagline', 'slogan', 'brand_tagline' ], 'The line shown under the title in the shared page hero.', 'Basics' ],
+			// Basics
 			'name'       => [ 'Business name', 'text', 'Your Business', [ 'business_name', 'company_name', 'name' ], '', 'Basics' ],
-			'phone'      => [ 'Phone number (as shown)', 'text', '(555) 555-0123', [ 'phone_number', 'phone', 'telephone' ], '', 'Basics' ],
-			'phone_link' => [ 'Phone link (tel:)', 'url', '', [ 'linked_phone_number', 'phone_link', 'tel_link' ], 'Leave blank to build it from the phone number.', 'Basics' ],
+			'phone'      => [ 'Phone number', 'text', '(555) 555-0123', [ 'phone_number', 'phone', 'telephone' ], 'As you want it to look on the site.', 'Basics' ],
 			'email'      => [ 'Email', 'email', 'hello@yourbusiness.com', [ 'email', 'email_address', 'business_email' ], '', 'Basics' ],
-			'address'    => [ 'Address (one line)', 'text', '123 Main Street, Your City, ST 00000', [ 'address', 'street_address', 'full_address' ], 'Street first, then city, state and zip. Built from the structured address when that is set.', 'Address' ],
-			'address2'   => [ 'Second office address', 'text', 'Second City, ST', [ 'address2', 'second_address', 'office_2' ], 'Optional, for footers that list two offices.', 'Address' ],
-			'license'    => [ 'License numbers', 'textarea', 'License # 00000', [ 'license', 'licenses', 'license_numbers', 'licensing' ], 'One per line, for example HVAC License # CAC123456.', 'Service area and licences' ],
-			'city'       => [ 'City / area served', 'text', 'Your City, ST', [ 'location', 'city', 'service_area' ], 'Blank = the city and state of the structured address.', 'Service area and licences' ],
-			'hours'      => [ 'Hours (one line)', 'text', 'Mon–Fri 8am–6pm · Sat 9am–2pm', [ 'hours', 'business_hours', 'opening_hours' ], 'Separate lines with a dot or semicolon. Built from the opening hours when those are set.', 'Hours' ],
-			'quote_url'  => [ 'Quote / contact page', 'url', '', [ 'quote_page', 'quote_url', 'quote_link', 'contact_page' ], '', 'Buttons and links' ],
-			'cta_label'  => [ 'Main button text', 'text', 'Get a Free Quote', [ 'cta_label', 'cta_text', 'button_text' ], 'Every main call-to-action button.', 'Buttons and links' ],
-			'cta_url'    => [ 'Main button link', 'url', '', [ 'cta_url', 'cta_link', 'button_url' ], 'Blank = the quote page.', 'Buttons and links' ],
-			'cta2_label' => [ 'Second button text', 'text', 'Call Us Today', [ 'cta2_label', 'cta_secondary_label' ], '', 'Buttons and links' ],
-			'cta2_url'   => [ 'Second button link', 'url', '', [ 'cta2_url', 'cta_secondary_url' ], 'Blank = the phone link.', 'Buttons and links' ],
-			'maps_url'   => [ 'Directions link', 'url', '', [ 'maps_url', 'directions_url', 'google_maps_link' ], 'Blank = a Google Maps search for the address.', 'Address' ],
-			'industry'   => [ 'Industry / what you do', 'text', '', [ 'industry', 'business_type', 'niche' ], 'For whoever writes the copy, e.g. residential plumbing.', 'Writing brief' ],
-			'about'      => [ 'About the business', 'textarea', '', [ 'about', 'description', 'business_description', 'mission' ], 'Two or three sentences: who you serve, what makes you different.', 'Writing brief' ],
-			'keywords'   => [ 'Keywords', 'text', '', [ 'keywords', 'seo_keywords' ], 'Comma-separated phrases to work into copy.', 'Writing brief' ],
-			'tone'       => [ 'Tone of voice', 'text', '', [ 'tone', 'tone_of_voice', 'voice' ], 'e.g. friendly, direct, professional.', 'Writing brief' ],
-			'form_html'  => [ 'Form embed (HTML)', 'html', '', [ 'site_form', 'form_embed', 'form', 'contact_form' ], 'Paste the embed code (iframe and script). Used by the form patterns.', 'Form embed' ],
-			'facebook'   => [ 'Facebook URL', 'url', '', [ 'facebook_url', 'facebook' ], 'Blank = no Facebook link anywhere.', 'Social profiles' ],
-			'instagram'  => [ 'Instagram URL', 'url', '', [ 'instagram_url', 'instagram' ], '', 'Social profiles' ],
-			'google'     => [ 'Google profile URL', 'url', '', [ 'google_url', 'google_business_profile', 'google' ], '', 'Social profiles' ],
-			'youtube'    => [ 'YouTube URL', 'url', '', [ 'youtube_url', 'youtube' ], '', 'Social profiles' ],
+			'tagline'    => [ 'Tagline', 'text', 'Trusted local experts in Your City, ST', [ 'tagline', 'slogan', 'brand_tagline' ], 'The line shown under the title in the page banner.', 'Basics' ],
+			'about'      => [ 'Short description', 'textarea', '', [ 'about', 'description', 'business_description', 'mission' ], 'Two or three sentences: who you serve and what makes you different. Search engines can show it too.', 'Basics' ],
+			'cta_label'  => [ 'Main button text', 'text', 'Get a Free Quote', [ 'cta_label', 'cta_text', 'button_text' ], 'Every main call-to-action button.', 'Basics' ],
+			'cta_url'    => [ 'Main button link', 'url', '', [ 'cta_url', 'cta_link', 'button_url' ], 'Leave blank to use the quote or contact page.', 'Basics' ],
+			'cta2_label' => [ 'Second button text', 'text', 'Call Us Today', [ 'cta2_label', 'cta_secondary_label' ], '', 'Basics' ],
+			'cta2_url'   => [ 'Second button link', 'url', '', [ 'cta2_url', 'cta_secondary_url' ], 'Leave blank to call the phone number.', 'Basics' ],
+			'quote_url'  => [ 'Quote or contact page', 'url', '', [ 'quote_page', 'quote_url', 'quote_link', 'contact_page' ], 'Where the main button goes when it has no link of its own.', 'Basics' ],
 
-			'emergency_phone' => [ 'Emergency / after-hours phone', 'text', '', [ 'emergency_phone', 'after_hours_phone' ], '', 'Basics' ],
-			'street'          => [ 'Street address', 'text', '', [ 'street', 'address_line_1', 'street_line' ], 'When the structured address is set, the one-line address is built from it.', 'Address' ],
-			'locality'        => [ 'City (locality)', 'text', '', [ 'locality', 'address_city', 'city_name' ], '', 'Address' ],
-			'region'          => [ 'State / region', 'text', '', [ 'region', 'state', 'address_state', 'province' ], 'e.g. TX', 'Address' ],
-			'postal_code'     => [ 'ZIP / postal code', 'text', '', [ 'postal_code', 'zip', 'zip_code', 'postcode' ], '', 'Address' ],
-			'country'         => [ 'Country', 'text', '', [ 'country', 'country_code' ], 'Two-letter code, e.g. US.', 'Address' ],
-			'lat'             => [ 'Latitude', 'number', '', [ 'lat', 'latitude' ], '', 'Address' ],
-			'lng'             => [ 'Longitude', 'number', '', [ 'lng', 'lon', 'longitude' ], '', 'Address' ],
-			'areas_served'    => [ 'Areas served', 'list', '', [ 'areas_served' ], 'Cities or regions, one per line (schema areaServed).', 'Service area and licences' ],
-			'hours_spec'      => [ 'Opening hours', 'list', '', [ 'hours_spec', 'opening_hours_spec' ], '[{days:["Mo","Tu"], opens:"08:00", closes:"18:00"}]. When set, the one-line hours are built from it.', 'Hours' ],
-			'holiday_hours'   => [ 'Holiday hours', 'list', '', [ 'holiday_hours', 'special_hours' ], '[{date:"2026-12-25", closed:true} or {date, opens, closes}]', 'Hours' ],
-			'is_24_7'         => [ 'Open 24/7', 'bool', '', [ 'is_24_7', 'open_24_7', 'always_open' ], 'The one-line hours then read "Open 24/7".', 'Hours' ],
-			'price_range'     => [ 'Price range', 'text', '', [ 'price_range' ], 'One to four dollar signs.', 'Business details' ],
-			'business_type'   => [ 'Business type (schema)', 'text', '', [ 'schema_business_type', 'local_business_type' ], 'A schema.org LocalBusiness type, e.g. Plumber, HVACBusiness, Electrician.', 'Business details' ],
-			'years'           => [ 'Years in business', 'number', '', [ 'years', 'years_in_business' ], 'Leave blank rather than guess.', 'Business details' ],
-			'jobs'            => [ 'Jobs completed', 'number', '', [ 'jobs', 'jobs_completed' ], 'Leave blank rather than guess.', 'Business details' ],
-			'techs'           => [ 'Technicians', 'number', '', [ 'techs', 'technicians', 'team_size' ], 'Leave blank rather than guess.', 'Business details' ],
-			'reviews'         => [ 'Review platforms', 'list', '', [ 'reviews' ], '[{platform:"google", rating:4.9, count:887, url}]', 'Reviews' ],
-			'rating'          => [ 'Overall rating', 'number', '', [ 'rating', 'overall_rating', 'google_rating' ], 'e.g. 4.9. Blank = computed from the review platforms (weighted by review count). Never invented.', 'Reviews' ],
-			'review_count'    => [ 'Review count', 'number', '', [ 'review_count', 'reviews_count', 'number_of_reviews' ], 'Blank = the sum of the review platforms.', 'Reviews' ],
-			'review_url'      => [ 'Leave-a-review link', 'url', '', [ 'review_url', 'review_link' ], '', 'Reviews' ],
-			'gbp_place_id'    => [ 'Google Business Profile place ID', 'text', '', [ 'gbp_place_id', 'place_id', 'google_place_id' ], '', 'Reviews' ],
-			'promo_text'      => [ 'Promotion text', 'text', '', [ 'promo_text', 'promotion', 'offer_text' ], 'e.g. 50 dollars off any repair this month.', 'Promotions and financing' ],
-			'promo_url'       => [ 'Promotion link', 'url', '', [ 'promo_url', 'promotion_url', 'offer_url' ], '', 'Promotions and financing' ],
-			'promo_expires'   => [ 'Promotion ends', 'date', '', [ 'promo_expires', 'promotion_expires', 'offer_expires' ], 'The promotion text and link stop showing after this day.', 'Promotions and financing' ],
-			'financing_url'   => [ 'Financing link', 'url', '', [ 'financing_url', 'financing_link' ], '', 'Promotions and financing' ],
-			'financing_text'  => [ 'Financing text', 'text', '', [ 'financing_text', 'financing' ], 'e.g. 0% financing for 12 months.', 'Promotions and financing' ],
-			'yelp'            => [ 'Yelp URL', 'url', '', [ 'yelp_url', 'yelp' ], '', 'Social profiles' ],
-			'tiktok'          => [ 'TikTok URL', 'url', '', [ 'tiktok_url', 'tiktok' ], '', 'Social profiles' ],
-			'linkedin'        => [ 'LinkedIn URL', 'url', '', [ 'linkedin_url', 'linkedin' ], '', 'Social profiles' ],
-			'x'               => [ 'X (Twitter) URL', 'url', '', [ 'x_url', 'twitter_url', 'twitter' ], '', 'Social profiles' ],
-			'nextdoor'        => [ 'Nextdoor URL', 'url', '', [ 'nextdoor_url', 'nextdoor' ], '', 'Social profiles' ],
-			'bbb'             => [ 'BBB profile URL', 'url', '', [ 'bbb_url', 'bbb' ], '', 'Social profiles' ],
-			'angi'            => [ 'Angi profile URL', 'url', '', [ 'angi_url', 'angi', 'angies_list' ], '', 'Social profiles' ],
-			'houzz'           => [ 'Houzz profile URL', 'url', '', [ 'houzz_url', 'houzz' ], '', 'Social profiles' ],
-			'logo_inverse'    => [ 'Logo for dark backgrounds', 'image', '', [ 'logo_inverse', 'logo_light', 'logo_white' ], 'Attachment ID or URL.', 'Logos' ],
-			'site_icon'       => [ 'Site icon', 'image', '', [ 'site_icon', 'favicon' ], 'Attachment ID or URL (square, 512px).', 'Logos' ],
+			// Address and hours
+			'street'      => [ 'Street address', 'text', '', [ 'street', 'address_line_1', 'street_line' ], '', 'Address and hours' ],
+			'locality'    => [ 'City', 'text', '', [ 'locality', 'address_city', 'city_name' ], '', 'Address and hours' ],
+			'region'      => [ 'State', 'text', '', [ 'region', 'state', 'address_state', 'province' ], 'For example TX.', 'Address and hours' ],
+			'postal_code' => [ 'ZIP code', 'text', '', [ 'postal_code', 'zip', 'zip_code', 'postcode' ], '', 'Address and hours' ],
+			'country'     => [ 'Country', 'text', '', [ 'country', 'country_code' ], 'Two-letter code, for example US.', 'Address and hours' ],
+			'hours_spec'  => [ 'Opening hours', 'list', '', [ 'hours_spec', 'opening_hours_spec' ], '[{days:["Mo","Tu"], opens:"08:00", closes:"18:00"}]. When set, the one-line hours are built from it.', 'Address and hours' ],
+			'is_24_7'     => [ 'Open 24/7', 'bool', '', [ 'is_24_7', 'open_24_7', 'always_open' ], 'The one-line hours then read "Open 24/7".', 'Address and hours' ],
+
+			// Reviews
+			'reviews'    => [ 'Review sites', 'list', '', [ 'reviews' ], '[{platform:"google", rating:4.9, count:887, url}]', 'Reviews' ],
+			'review_url' => [ 'Leave-a-review link', 'url', '', [ 'review_url', 'review_link' ], 'Where happy customers go to write a review.', 'Reviews' ],
+
+			// Social profiles (an empty one is left out wherever it would show)
+			'facebook'  => [ 'Facebook', 'url', '', [ 'facebook_url', 'facebook' ], 'Leave blank and no Facebook link shows anywhere.', 'Social profiles' ],
+			'instagram' => [ 'Instagram', 'url', '', [ 'instagram_url', 'instagram' ], '', 'Social profiles' ],
+			'google'    => [ 'Google Business Profile', 'url', '', [ 'google_url', 'google_business_profile', 'google' ], '', 'Social profiles' ],
+			'youtube'   => [ 'YouTube', 'url', '', [ 'youtube_url', 'youtube' ], '', 'Social profiles' ],
+			'yelp'      => [ 'Yelp', 'url', '', [ 'yelp_url', 'yelp' ], '', 'Social profiles' ],
+			'tiktok'    => [ 'TikTok', 'url', '', [ 'tiktok_url', 'tiktok' ], '', 'Social profiles' ],
+			'linkedin'  => [ 'LinkedIn', 'url', '', [ 'linkedin_url', 'linkedin' ], '', 'Social profiles' ],
+			'x'         => [ 'X (Twitter)', 'url', '', [ 'x_url', 'twitter_url', 'twitter' ], '', 'Social profiles' ],
+			'nextdoor'  => [ 'Nextdoor', 'url', '', [ 'nextdoor_url', 'nextdoor' ], '', 'Social profiles' ],
+			'bbb'       => [ 'Better Business Bureau', 'url', '', [ 'bbb_url', 'bbb' ], '', 'Social profiles' ],
+			'angi'      => [ 'Angi', 'url', '', [ 'angi_url', 'angi', 'angies_list' ], '', 'Social profiles' ],
+			'houzz'     => [ 'Houzz', 'url', '', [ 'houzz_url', 'houzz' ], '', 'Social profiles' ],
+
+			// Logos
+			'logo_inverse' => [ 'Logo for dark backgrounds', 'image', '', [ 'logo_inverse', 'logo_light', 'logo_white' ], 'Used where the logo sits on a dark band.', 'Logos' ],
+			'site_icon'    => [ 'Site icon', 'image', '', [ 'site_icon', 'favicon' ], 'A square image, at least 512 pixels wide.', 'Logos' ],
+
+			// Search engines
+			'business_type' => [ 'Business type', 'text', '', [ 'schema_business_type', 'local_business_type' ], 'The closest match, for example Plumber, HVACBusiness or Electrician. Search engines use it.', 'Search engines' ],
+			'price_range'   => [ 'Price range', 'text', '', [ 'price_range' ], 'One to four dollar signs.', 'Search engines' ],
+
+			// More options: the contact form
+			'form_html' => [ 'Form embed code', 'html', '', [ 'site_form', 'form_embed', 'form', 'contact_form' ], 'Paste the embed code (iframe and script). The form patterns show it.', 'Form embed' ],
+
+			// More options: wording and links (each one has a sensible fallback)
+			'phone_link' => [ 'Phone link', 'url', '', [ 'linked_phone_number', 'phone_link', 'tel_link' ], 'Leave blank to build it from the phone number.', 'Wording and links' ],
+			'address'    => [ 'Address on one line', 'text', '123 Main Street, Your City, ST 00000', [ 'address', 'street_address', 'full_address' ], 'Street first, then city, state and zip. Built from the address fields when those are filled in.', 'Wording and links' ],
+			'address2'   => [ 'Second office address', 'text', 'Second City, ST', [ 'address2', 'second_address', 'office_2' ], 'For footers that list two offices.', 'Wording and links' ],
+			'city'       => [ 'Main city or area', 'text', 'Your City, ST', [ 'location', 'city', 'service_area' ], 'Leave blank to use the city and state of the address.', 'Wording and links' ],
+			'hours'      => [ 'Hours on one line', 'text', 'Mon–Fri 8am–6pm · Sat 9am–2pm', [ 'hours', 'business_hours', 'opening_hours' ], 'Separate lines with a dot or semicolon. Built from the opening hours when those are filled in.', 'Wording and links' ],
+			'maps_url'   => [ 'Directions link', 'url', '', [ 'maps_url', 'directions_url', 'google_maps_link' ], 'Leave blank for a Google Maps search of the address.', 'Wording and links' ],
+			'license'    => [ 'License numbers', 'textarea', 'License # 00000', [ 'license', 'licenses', 'license_numbers', 'licensing' ], 'One per line, for example HVAC License # CAC123456.', 'Wording and links' ],
+
+			// More options: details only search engines read
+			'emergency_phone' => [ 'Emergency or after-hours phone', 'text', '', [ 'emergency_phone', 'after_hours_phone' ], 'Search engines list it as your emergency number.', 'Search engine details' ],
+			'areas_served'    => [ 'Areas served', 'list', '', [ 'areas_served' ], 'Cities or regions, one per line. Used for search engines when you have no service area pages.', 'Search engine details' ],
+			'lat'             => [ 'Latitude', 'number', '', [ 'lat', 'latitude' ], 'With the longitude, tells search engines where you are. Not shown on the site.', 'Search engine details' ],
+			'lng'             => [ 'Longitude', 'number', '', [ 'lng', 'lon', 'longitude' ], '', 'Search engine details' ],
+
+			// More options: numbers you can show
+			'rating'       => [ 'Overall rating', 'number', '', [ 'rating', 'overall_rating', 'google_rating' ], 'For example 4.9. Leave blank to work it out from the review sites. Never invented.', 'Numbers and claims' ],
+			'review_count' => [ 'Review count', 'number', '', [ 'review_count', 'reviews_count', 'number_of_reviews' ], 'Leave blank to add up the review sites.', 'Numbers and claims' ],
+			'years'        => [ 'Years in business', 'number', '', [ 'years', 'years_in_business' ], 'Leave blank rather than guess.', 'Numbers and claims' ],
+			'jobs'         => [ 'Jobs completed', 'number', '', [ 'jobs', 'jobs_completed' ], 'Leave blank rather than guess.', 'Numbers and claims' ],
+			'techs'        => [ 'Technicians', 'number', '', [ 'techs', 'technicians', 'team_size' ], 'Leave blank rather than guess.', 'Numbers and claims' ],
+
+			// More options: offers
+			'promo_text'     => [ 'Promotion text', 'text', '', [ 'promo_text', 'promotion', 'offer_text' ], 'For example 50 dollars off any repair this month.', 'Offers' ],
+			'promo_url'      => [ 'Promotion link', 'url', '', [ 'promo_url', 'promotion_url', 'offer_url' ], '', 'Offers' ],
+			'promo_expires'  => [ 'Promotion ends', 'date', '', [ 'promo_expires', 'promotion_expires', 'offer_expires' ], 'The promotion text and link stop showing after this day.', 'Offers' ],
+			'financing_url'  => [ 'Financing link', 'url', '', [ 'financing_url', 'financing_link' ], '', 'Offers' ],
+			'financing_text' => [ 'Financing text', 'text', '', [ 'financing_text', 'financing' ], 'For example 0% financing for 12 months.', 'Offers' ],
+
+			// More options: notes for the person or assistant writing the copy (not shown on the site)
+			'industry' => [ 'What you do', 'text', '', [ 'industry', 'business_type', 'niche' ], 'For example residential plumbing. Pages fall back to it where they name the service.', 'Writing brief' ],
+			'keywords' => [ 'Keywords', 'text', '', [ 'keywords', 'seo_keywords' ], 'Comma-separated phrases to work into copy.', 'Writing brief' ],
+			'tone'     => [ 'Tone of voice', 'text', '', [ 'tone', 'tone_of_voice', 'voice' ], 'For example friendly, direct, professional.', 'Writing brief' ],
+
+			// Off screen: still saved, read and used through tokens and the assistant tools
+			'holiday_hours' => [ 'Holiday hours', 'list', '', [ 'holiday_hours', 'special_hours' ], '[{date:"2026-12-25", closed:true} or {date, opens, closes}]', 'Off screen' ],
+			'gbp_place_id'  => [ 'Google Business Profile place ID', 'text', '', [ 'gbp_place_id', 'place_id', 'google_place_id' ], '', 'Off screen' ],
 		];
 	}
 
@@ -156,6 +199,17 @@ final class Company {
 			'hours_br'   => 'Hours, one line per entry',
 			'year'       => 'Current year (for copyright lines)',
 		] + self::COMPUTED_PLANNED;
+	}
+
+	/** Is this a token people rarely type by hand? get-tokens marks it advanced and lists it after the common ones; it keeps working. */
+	public static function is_advanced( string $key ): bool {
+		return ! in_array( $key, self::COMMON, true );
+	}
+
+	/** Does the Business Info screen have an input for this field? */
+	public static function on_screen( string $key ): bool {
+		$f = self::fields();
+		return isset( $f[ $key ] ) && self::OFF_SCREEN !== $f[ $key ][5];
 	}
 
 	/* ------------------------------------------------------------------ values */
@@ -316,6 +370,15 @@ final class Company {
 	 *
 	 * @return array<string,array{value:string,from:string}>
 	 */
+	/**
+	 * Is the site still being set up? While search engines are asked to stay away (Settings > Reading, or a brief that has not
+	 * gone live yet), a blank field shows a demo value so the design reads as finished. Once the site is public a blank field
+	 * prints nothing: demo text never reaches visitors or search engines. Filter launch_builder_company_demo overrides it.
+	 */
+	public static function setup_mode(): bool {
+		return (bool) apply_filters( 'launch_builder_company_demo', '0' === (string) get_option( 'blog_public', '1' ) );
+	}
+
 	public static function resolve(): array {
 		if ( null !== self::$resolved ) {
 			return self::$resolved;
@@ -331,7 +394,7 @@ final class Company {
 				$v = $own[ $k ];
 				$from = 'saved';
 			} else {
-				$v = 'list' === $f[1] ? [] : (string) $f[2];
+				$v = 'list' === $f[1] || ! self::setup_mode() ? ( 'list' === $f[1] ? [] : '' ) : (string) $f[2]; // A public site never prints a demo value.
 				$from = 'default';
 			}
 			if ( 'list' === $f[1] ) {
@@ -768,6 +831,9 @@ final class Company {
 				if ( 'rating' === $key ) {
 					return (string) round( max( 0, min( 5, (float) $v ) ), 2 );
 				}
+				if ( 'lat' === $key || 'lng' === $key ) { // A map position off the globe would make the search engine data invalid.
+					return abs( (float) $v ) <= ( 'lat' === $key ? 90 : 180 ) ? (string) ( 0 + $v ) : '';
+				}
 				if ( in_array( $key, [ 'review_count', 'years', 'jobs', 'techs' ], true ) ) {
 					return (string) max( 0, (int) $v );
 				}
@@ -829,6 +895,11 @@ final class Company {
 			$clean = self::clean( $k, $type, (string) $v );
 			if ( in_array( $type, [ 'text', 'textarea' ], true ) && preg_match( '/\{\{\s*(page|entry|meta)\./', $clean ) ) {
 				self::$rejected[ $k ] = 'Business Info values may use lb, site, area and service tokens only.';
+				continue;
+			}
+			if ( '' === $clean && '' !== trim( (string) $v ) && in_array( $type, [ 'number', 'email', 'date' ], true ) ) { // A typo never wipes the value that was saved.
+				$why = [ 'number' => 'Not a valid number.', 'email' => 'Not an email address.', 'date' => 'Not a date (use YYYY-MM-DD).' ][ $type ];
+				self::$rejected[ $k ] = in_array( $k, [ 'lat', 'lng' ], true ) && is_numeric( $v ) ? 'Latitude runs from -90 to 90 and longitude from -180 to 180.' : $why;
 				continue;
 			}
 			if ( (string) ( $own[ $k ] ?? '' ) !== $clean ) {
@@ -893,7 +964,7 @@ final class Company {
 
 	/** updated_option / added_option / update_site_option: Business Info or its source option changed. */
 	public static function option_changed( $option ): void {
-		if ( self::OPT === $option || self::OPT_SRC === $option ) {
+		if ( self::OPT === $option || self::OPT_SRC === $option || 'blog_public' === $option ) { // blog_public decides whether blank fields show demo values
 			self::flush();
 			return;
 		}
@@ -906,7 +977,7 @@ final class Company {
 	/* ------------------------------------------------------------------ tools */
 
 	public static function define_tools(): void {
-		Abilities::add( 'get-company', 'Read the global business info', 'Business facts used by every pattern through tokens ({{lb.phone}} in text, #lb-cta_url in link fields): name, phone, email, structured address and opening hours, review platforms, button text and links, promotions, form embed, social links. Shows the saved value, the value in effect and where it comes from (source, saved, default, derived, computed, expired); source_skipped lists source-option values that could not be used. Patterns show a visible demo value for contact fields until set; ratings, counts and social links never have one.',
+		Abilities::add( 'get-company', 'Read the global business info', 'Business facts used by every pattern through tokens ({{lb.phone}} in text, #lb-cta_url in link fields): name, phone, email, structured address and opening hours, review platforms, button text and links, promotions, form embed, social links. Shows the saved value, the value in effect and where it comes from (source, saved, default, derived, computed, expired); source_skipped lists source-option values that could not be used. Patterns show a visible demo value for contact fields until set; ratings, counts and social links never have one. Each field carries its screen group, advanced (rarely typed by hand; the token still works), on_screen (false = no input on the Business Info screen) and rank_math (the Rank Math settings it feeds; fill-rank-math previews and fills them).',
 			[ 'properties' => new \stdClass() ], [ __CLASS__, 'get_tool' ], 'edit_pages', [ 'readonly' => true ] );
 
 		Abilities::add( 'set-company', 'Set the global business info', 'Change business facts once and every page, header and footer updates. values: any get-company key, e.g. {name, phone, email, street, locality, region, postal_code, country, hours_spec:[{days:["Mo","Tu","We","Th","Fr"], opens:"08:00", closes:"18:00"}], is_24_7, reviews:[{platform:"google", rating:4.9, count:887, url}], review_url, cta_label, quote_url, promo_text, promo_expires, facebook...}. List fields take arrays ([] clears). Blank link fields fall back (cta_url = quote page, cta2_url = phone link); address/hours are built from the structured fields and rating/review_count from reviews when those are set. Never invent ratings or counts. Text values may use {{lb.*}}, {{site.*}}, {{area.*}}, {{service.*}} tokens only. source (optional): read from another settings option instead, for example a Meta Box settings page: {option:"company_information", map:{phone:"phone_number"}, network:false}; unmapped keys are matched by common names and values are converted by field type. {option:""} clears it. Use find-options to locate the option.',
@@ -927,6 +998,7 @@ final class Company {
 		$own = (array) get_option( self::OPT, [] );
 		$res = self::resolve();
 		$rows = [];
+		$feeds = Compat::business_feeds();
 		foreach ( self::fields() as $k => $f ) {
 			$eff = 'list' === $f[1] ? $res[ $k ]['data'] : $res[ $k ]['value'];
 			$saved = $own[ $k ] ?? ( 'list' === $f[1] ? [] : '' );
@@ -936,6 +1008,10 @@ final class Company {
 				'type'       => $f[1],
 				'token'      => '{{lb.' . $k . '}}',
 				'link_token' => 'url' === $f[1] && self::is_link_key( $k ) ? '#lb-' . $k : null,
+				'group'      => $f[5],
+				'advanced'   => self::is_advanced( $k ),
+				'on_screen'  => self::on_screen( $k ),
+				'rank_math'  => $feeds[ $k ] ?? [],
 				'saved'      => 'html' === $f[1] ? mb_substr( (string) $saved, 0, 80 ) : $saved,
 				'effective'  => 'html' === $f[1] ? mb_substr( (string) $eff, 0, 80 ) : $eff,
 				'from'       => $res[ $k ]['from'],
@@ -990,252 +1066,8 @@ final class Company {
 
 	/* ------------------------------------------------------------------ admin page */
 
-	public static function save(): void {
-		if ( ! current_user_can( 'manage_options' ) || ! check_admin_referer( 'lb_company_save' ) ) {
-			wp_die( esc_html__( 'Not allowed.', 'launch-builder' ), '', [ 'response' => 403 ] );
-		}
-		$post = wp_unslash( $_POST ); // phpcs:ignore -- nonce verified above; every value is sanitised in update()/set_source().
-		$values = (array) ( $post['lb'] ?? [] );
-		foreach ( (array) ( $post['lb_lists'] ?? [] ) as $list ) { // Lists shown on the screen whose rows were all removed.
-			$list = sanitize_key( (string) $list );
-			if ( ! isset( $values[ $list ] ) ) {
-				$values[ $list ] = [];
-			}
-		}
-		self::update( $values );
-		$rejected = self::rejected();
-		$map = [];
-		foreach ( preg_split( '/\r\n|\r|\n/', (string) ( $post['lb_map'] ?? '' ) ) as $line ) {
-			if ( false !== strpos( $line, '=' ) ) {
-				[ $k, $v ] = array_map( 'trim', explode( '=', $line, 2 ) );
-				$map[ $k ] = $v;
-			}
-		}
-		$r = self::set_source( (string) ( $post['lb_source'] ?? '' ), $map, ! empty( $post['lb_source_network'] ) );
-		Cache::flush(); // Before the redirect, so header-based purges still go out.
-		$state = is_wp_error( $r ) ? 'source-refused' : ( $rejected ? 'rejected' : '1' );
-		wp_safe_redirect( add_query_arg( [ 'page' => 'launch-builder-business', 'saved' => $state, 'lb_rejected' => implode( ',', array_keys( $rejected ) ) ], admin_url( 'admin.php' ) ) );
-		exit;
-	}
-
-	/** One labelled input row of the Business Info screen. */
-	private static function field_row( string $k, array $f, array $own, array $res ): string {
-		$name = 'lb[' . $k . ']';
-		$id = 'lb-' . $k;
-		$val = (string) ( $own[ $k ] ?? '' );
-		$type = $f[1];
-		$h = '<tr><th scope="row"><label for="' . esc_attr( $id ) . '">' . esc_html( $f[0] ) . '</label></th><td>';
-		switch ( $type ) {
-			case 'html':
-			case 'textarea':
-				$h .= '<textarea id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" rows="' . ( 'html' === $type ? 6 : 3 ) . '" class="large-text' . ( 'html' === $type ? ' code' : '' ) . '" placeholder="' . esc_attr( 'html' === $type ? '' : (string) $f[2] ) . '">' . esc_textarea( $val ) . '</textarea>';
-				break;
-			case 'bool':
-				$h .= '<input type="hidden" name="' . esc_attr( $name ) . '" value=""><label><input id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" type="checkbox" value="1"' . checked( '1', $val, false ) . '> ' . esc_html__( 'Yes', 'launch-builder' ) . '</label>';
-				break;
-			case 'number':
-				$step = in_array( $k, [ 'lat', 'lng' ], true ) ? 'any' : ( 'rating' === $k ? '0.1' : '1' );
-				$h .= '<input id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" type="number" step="' . esc_attr( $step ) . '"' . ( 'rating' === $k ? ' min="0" max="5"' : '' ) . ' class="regular-text" style="max-width:200px" value="' . esc_attr( $val ) . '">';
-				break;
-			case 'date':
-				$h .= '<input id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" type="date" value="' . esc_attr( $val ) . '">';
-				break;
-			case 'list': // areas_served: one per line.
-				$h .= '<textarea id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" rows="4" class="large-text">' . esc_textarea( implode( "\n", (array) ( $own[ $k ] ?? [] ) ) ) . '</textarea>';
-				break;
-			default:
-				$h .= '<input id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" type="' . ( 'email' === $type ? 'email' : 'text' ) . '" class="regular-text" style="width:100%;max-width:520px" value="' . esc_attr( $val ) . '" placeholder="' . esc_attr( (string) $f[2] ) . '">';
-				if ( 'image' === $type && '' !== $res[ $k ]['value'] ) {
-					$h .= '<br><img src="' . esc_url( $res[ $k ]['value'] ) . '" alt="" style="max-height:48px;margin-top:8px;background:#1d2327;padding:6px;border-radius:4px">';
-				}
-		}
-		$tok = '<code>{{lb.' . esc_html( $k ) . '}}</code>' . ( self::is_link_key( $k ) && 'url' === $type ? ' <code>#lb-' . esc_html( $k ) . '</code>' : '' );
-		$from = $res[ $k ]['from'];
-		$now = '' !== $res[ $k ]['value'] ? '<code>' . esc_html( mb_substr( $res[ $k ]['value'], 0, 90 ) ) . '</code>' : '';
-		$notes = [
-			'source'   => '<strong>' . esc_html__( 'Value currently comes from the source option below.', 'launch-builder' ) . '</strong>',
-			'derived'  => $now ? esc_html__( 'Currently:', 'launch-builder' ) . ' ' . $now : '',
-			'computed' => $now ? esc_html__( 'Built from the fields above:', 'launch-builder' ) . ' ' . $now : '',
-			'expired'  => '<strong>' . esc_html__( 'The promotion has ended, so this shows nothing.', 'launch-builder' ) . '</strong>',
-		];
-		$help = $f[4] ? ' ' . esc_html( $f[4] ) : '';
-		$h .= '<p class="description">' . $tok . $help . ( isset( $notes[ $from ] ) && '' !== $notes[ $from ] ? ' ' . $notes[ $from ] : '' ) . '</p></td></tr>';
-		return $h;
-	}
-
-	/** A repeater table (reviews, hours_spec, holiday_hours): rows, an empty template row, an add button. */
-	private static function repeater( string $k, array $rows ): string {
-		$cols = [
-			'reviews'       => [ __( 'Platform', 'launch-builder' ), __( 'Rating (0–5)', 'launch-builder' ), __( 'Number of reviews', 'launch-builder' ), __( 'Profile or reviews link', 'launch-builder' ) ],
-			'hours_spec'    => [ __( 'Days', 'launch-builder' ), __( 'Opens', 'launch-builder' ), __( 'Closes', 'launch-builder' ) ],
-			'holiday_hours' => [ __( 'Date', 'launch-builder' ), __( 'Opens', 'launch-builder' ), __( 'Closes', 'launch-builder' ), __( 'Closed all day', 'launch-builder' ) ],
-		][ $k ];
-		$add = [ 'reviews' => __( 'Add a platform', 'launch-builder' ), 'hours_spec' => __( 'Add opening hours', 'launch-builder' ), 'holiday_hours' => __( 'Add a holiday', 'launch-builder' ) ][ $k ];
-		$h = '<input type="hidden" name="lb_lists[]" value="' . esc_attr( $k ) . '"><table class="widefat striped lb-rep" data-lb-rep="' . esc_attr( $k ) . '"><thead><tr>';
-		foreach ( $cols as $c ) {
-			$h .= '<th>' . esc_html( $c ) . '</th>';
-		}
-		$h .= '<th class="lb-rep-x"><span class="screen-reader-text">' . esc_html__( 'Remove', 'launch-builder' ) . '</span></th></tr></thead><tbody>';
-		$i = 0;
-		foreach ( $rows as $row ) {
-			$h .= self::repeater_row( $k, (string) $i++, (array) $row );
-		}
-		$h .= '</tbody></table><template id="lb-tpl-' . esc_attr( $k ) . '">' . self::repeater_row( $k, '__i__', [] ) . '</template>';
-		$h .= '<p><button type="button" class="button" data-lb-add="' . esc_attr( $k ) . '">' . esc_html( $add ) . '</button></p>';
-		return $h;
-	}
-
-	private static function repeater_row( string $k, string $i, array $row ): string {
-		$n = static function ( string $sub ) use ( $k, $i ): string {
-			return esc_attr( 'lb[' . $k . '][' . $i . '][' . $sub . ']' );
-		};
-		$cell = static function ( string $html ): string {
-			return '<td>' . $html . '</td>';
-		};
-		$h = '<tr>';
-		if ( 'reviews' === $k ) {
-			$cur = (string) ( $row['platform'] ?? '' );
-			$opts = '<option value="">' . esc_html__( 'Choose…', 'launch-builder' ) . '</option>';
-			$known = self::PLATFORMS + ( '' !== $cur && ! isset( self::PLATFORMS[ $cur ] ) ? [ $cur => self::platform_label( $cur ) ] : [] );
-			foreach ( $known as $key => $label ) {
-				$opts .= '<option value="' . esc_attr( $key ) . '"' . selected( $cur, $key, false ) . '>' . esc_html( $label ) . '</option>';
-			}
-			$h .= $cell( '<select name="' . $n( 'platform' ) . '" aria-label="' . esc_attr__( 'Platform', 'launch-builder' ) . '">' . $opts . '</select>' );
-			$h .= $cell( '<input type="number" step="0.1" min="0" max="5" style="width:90px" name="' . $n( 'rating' ) . '" value="' . esc_attr( null !== ( $row['rating'] ?? null ) ? (string) $row['rating'] : '' ) . '" aria-label="' . esc_attr__( 'Rating', 'launch-builder' ) . '">' );
-			$h .= $cell( '<input type="number" step="1" min="0" style="width:110px" name="' . $n( 'count' ) . '" value="' . esc_attr( null !== ( $row['count'] ?? null ) ? (string) $row['count'] : '' ) . '" aria-label="' . esc_attr__( 'Number of reviews', 'launch-builder' ) . '">' );
-			$h .= $cell( '<input type="text" class="regular-text" name="' . $n( 'url' ) . '" value="' . esc_attr( (string) ( $row['url'] ?? '' ) ) . '" placeholder="https://" aria-label="' . esc_attr__( 'Link', 'launch-builder' ) . '">' );
-		} elseif ( 'hours_spec' === $k ) {
-			global $wp_locale;
-			$days = '';
-			foreach ( self::DAYS as $pos => $d ) {
-				$label = $wp_locale ? $wp_locale->get_weekday_abbrev( $wp_locale->get_weekday( ( $pos + 1 ) % 7 ) ) : $d;
-				$days .= '<label class="lb-day"><input type="checkbox" name="' . esc_attr( 'lb[' . $k . '][' . $i . '][days][]' ) . '" value="' . esc_attr( $d ) . '"' . checked( in_array( $d, (array) ( $row['days'] ?? [] ), true ), true, false ) . '> ' . esc_html( $label ) . '</label>';
-			}
-			$h .= $cell( $days );
-			$h .= $cell( '<input type="time" name="' . $n( 'opens' ) . '" value="' . esc_attr( (string) ( $row['opens'] ?? '' ) ) . '" aria-label="' . esc_attr__( 'Opens', 'launch-builder' ) . '">' );
-			$h .= $cell( '<input type="time" name="' . $n( 'closes' ) . '" value="' . esc_attr( (string) ( $row['closes'] ?? '' ) ) . '" aria-label="' . esc_attr__( 'Closes', 'launch-builder' ) . '">' );
-		} else {
-			$h .= $cell( '<input type="date" name="' . $n( 'date' ) . '" value="' . esc_attr( (string) ( $row['date'] ?? '' ) ) . '" aria-label="' . esc_attr__( 'Date', 'launch-builder' ) . '">' );
-			$h .= $cell( '<input type="time" name="' . $n( 'opens' ) . '" value="' . esc_attr( (string) ( $row['opens'] ?? '' ) ) . '" aria-label="' . esc_attr__( 'Opens', 'launch-builder' ) . '">' );
-			$h .= $cell( '<input type="time" name="' . $n( 'closes' ) . '" value="' . esc_attr( (string) ( $row['closes'] ?? '' ) ) . '" aria-label="' . esc_attr__( 'Closes', 'launch-builder' ) . '">' );
-			$h .= $cell( '<label><input type="checkbox" name="' . $n( 'closed' ) . '" value="1"' . checked( ! empty( $row['closed'] ), true, false ) . '> ' . esc_html__( 'Closed', 'launch-builder' ) . '</label>' );
-		}
-		return $h . '<td class="lb-rep-x"><button type="button" class="button-link button-link-delete" data-lb-remove aria-label="' . esc_attr__( 'Remove this row', 'launch-builder' ) . '">' . esc_html__( 'Remove', 'launch-builder' ) . '</button></td></tr>';
-	}
-
+	/** The Business Info screen (the Admin menu points here; the screen itself is Company_Admin). */
 	public static function page(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-		$own = (array) get_option( self::OPT, [] );
-		$res = self::resolve();
-		$src = (array) get_option( self::OPT_SRC, [] );
-		$read = self::source();
-		$lines = [];
-		foreach ( (array) ( $src['map'] ?? [] ) as $k => $v ) {
-			$lines[] = $k . ' = ' . $v;
-		}
-		echo '<style>.lb-biz .form-table th{width:220px}.lb-biz h2.title{margin-top:28px;padding-top:18px;border-top:1px solid #dcdcde}.lb-biz h2.title:first-of-type{border-top:0}.lb-rep{max-width:900px;margin-top:4px}.lb-rep td,.lb-rep th{vertical-align:middle}.lb-rep .lb-rep-x{width:70px;text-align:right}.lb-day{display:inline-block;margin:2px 10px 2px 0;white-space:nowrap}.lb-biz .lb-now{background:#f0f6fc;border-left:4px solid #72aee6;padding:8px 12px;margin:8px 0 0;max-width:880px}.lb-biz nav.lb-jump{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:6px 14px}</style>';
-		echo '<div class="wrap lb-wrap lb-biz"><h1>' . esc_html__( 'Business Info', 'launch-builder' ) . '</h1>';
-		$saved = isset( $_GET['saved'] ) ? sanitize_key( wp_unslash( $_GET['saved'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification -- display only.
-		if ( 'source-refused' === $saved ) {
-			echo '<div class="notice notice-error"><p>' . esc_html__( 'Saved, but that option can\'t be used as a source.', 'launch-builder' ) . '</p></div>';
-		} elseif ( 'rejected' === $saved ) {
-			$keys = isset( $_GET['lb_rejected'] ) ? sanitize_text_field( wp_unslash( $_GET['lb_rejected'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification -- display only.
-			/* translators: %s: comma-separated field keys */
-			echo '<div class="notice notice-warning"><p>' . esc_html( sprintf( __( 'Saved, except %s: Business Info values can use lb, site, area and service tokens only.', 'launch-builder' ), $keys ) ) . '</p></div>';
-		} elseif ( '1' === $saved ) {
-			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Saved. Every page now shows the new values.', 'launch-builder' ) . '</p></div>';
-		}
-		echo '<p>' . wp_kses( __( 'Set these once. Patterns insert them wherever they are needed, so changing a value here updates every page, header and footer. Use <code>{{lb.phone}}</code> in text and <code>#lb-phone_link</code> in link fields, or <code>[lb field="phone"]</code> anywhere else. Contact fields left blank show a demo value; ratings, review counts and social links never do (an empty social link is left out).', 'launch-builder' ), [ 'code' => [] ] ) . '</p>';
-
-		$all = self::fields();
-		$by_group = [];
-		foreach ( $all as $k => $f ) {
-			$by_group[ $f[5] ][] = $k;
-		}
-		$titles = [
-			'Basics'                    => __( 'Basics', 'launch-builder' ),
-			'Address'                   => __( 'Address', 'launch-builder' ),
-			'Service area and licences' => __( 'Service area and licences', 'launch-builder' ),
-			'Hours'                     => __( 'Hours', 'launch-builder' ),
-			'Reviews'                   => __( 'Reviews', 'launch-builder' ),
-			'Business details'          => __( 'Business details', 'launch-builder' ),
-			'Buttons and links'         => __( 'Buttons and links', 'launch-builder' ),
-			'Promotions and financing'  => __( 'Promotions and financing', 'launch-builder' ),
-			'Social profiles'           => __( 'Social profiles', 'launch-builder' ),
-			'Logos'                     => __( 'Logos', 'launch-builder' ),
-			'Form embed'                => __( 'Form embed', 'launch-builder' ),
-			'Writing brief'             => __( 'Writing brief', 'launch-builder' ),
-		];
-		$intro = [
-			'Address'       => __( 'Fill in the structured address and the one-line address is built from it (and used for maps and search engines).', 'launch-builder' ),
-			'Hours'         => __( 'Add opening hours (or tick Open 24/7) and the one-line hours are built from them. Days without a row are shown as closed to search engines.', 'launch-builder' ),
-			'Reviews'       => __( 'One row per review site, with the numbers shown on that site. The overall rating (weighted by review count) and the total count are worked out from these unless you type them below. Leave this empty rather than guess: nothing ever invents a rating.', 'launch-builder' ),
-			'Writing brief' => __( 'Notes for whoever writes the copy (you, a copywriter or an AI assistant). Not shown on the site.', 'launch-builder' ),
-		];
-		echo '<nav class="lb-jump" aria-label="' . esc_attr__( 'Sections', 'launch-builder' ) . '">';
-		foreach ( self::GROUPS as $g ) {
-			echo '<a href="#lb-g-' . esc_attr( sanitize_title( $g ) ) . '">' . esc_html( $titles[ $g ] ?? $g ) . '</a>';
-		}
-		echo '</nav>';
-
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_company_save">';
-		wp_nonce_field( 'lb_company_save' );
-		foreach ( self::GROUPS as $g ) {
-			if ( empty( $by_group[ $g ] ) ) {
-				continue;
-			}
-			echo '<h2 class="title" id="lb-g-' . esc_attr( sanitize_title( $g ) ) . '">' . esc_html( $titles[ $g ] ?? $g ) . '</h2>';
-			if ( isset( $intro[ $g ] ) ) {
-				echo '<p class="description" style="max-width:880px">' . esc_html( $intro[ $g ] ) . '</p>';
-			}
-			$reps = array_values( array_intersect( $by_group[ $g ], [ 'reviews', 'hours_spec', 'holiday_hours' ] ) );
-			foreach ( $reps as $k ) {
-				echo '<h3 style="margin:16px 0 4px">' . esc_html( $all[ $k ][0] ) . '</h3>';
-				echo self::repeater( $k, (array) ( $own[ $k ] ?? [] ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
-				if ( isset( $res[ $k ]['from'] ) && 'source' === $res[ $k ]['from'] ) {
-					echo '<p class="description"><strong>' . esc_html__( 'Rows currently come from the source option below:', 'launch-builder' ) . '</strong> ' . esc_html( $res[ $k ]['value'] ) . '</p>';
-				}
-			}
-			if ( 'Reviews' === $g ) {
-				$d = self::review_data();
-				if ( null !== $d['rating'] || null !== $d['count'] ) {
-					/* translators: 1: rating, 2: number of reviews */
-					echo '<p class="lb-now">' . esc_html( sprintf( __( 'Shown on the site: %1$s stars from %2$s reviews.', 'launch-builder' ), null !== $d['rating'] ? number_format_i18n( $d['rating'], 1 ) : '–', null !== $d['count'] ? number_format_i18n( $d['count'] ) : '–' ) ) . '</p>';
-				} else {
-					echo '<p class="lb-now">' . esc_html__( 'No rating yet. Rating widgets set to use Business Info show demo numbers to editors only until you add a review platform.', 'launch-builder' ) . '</p>';
-				}
-			}
-			echo '<table class="form-table" role="presentation"><tbody>';
-			foreach ( $by_group[ $g ] as $k ) {
-				if ( in_array( $k, $reps, true ) ) {
-					continue;
-				}
-				echo self::field_row( $k, $all[ $k ], $own, $res ); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
-			}
-			echo '</tbody></table>';
-		}
-
-		echo '<h2 class="title" id="lb-g-source">' . esc_html__( 'Read from an existing settings page (optional)', 'launch-builder' ) . '</h2><p style="max-width:880px">' . wp_kses( __( 'If this site already keeps these facts in another settings option, such as a Meta Box settings page, enter its option name and Business Info reads them from there instead. Fields are matched by common names (phone_number, business_name, linked_phone_number, quote_page, site_form…); map any others below, one per line, like <code>phone = my_phone_field</code>. Values are converted by type: a page ID in a link field becomes that page\'s address, an image ID stays an image.', 'launch-builder' ), [ 'code' => [] ] ) . '</p>';
-		echo '<p><input type="text" name="lb_source" class="regular-text" value="' . esc_attr( (string) ( $src['option'] ?? '' ) ) . '" placeholder="' . esc_attr__( 'option name, e.g. company_information', 'launch-builder' ) . '"></p>';
-		if ( is_multisite() ) {
-			echo '<p><label><input type="checkbox" name="lb_source_network" value="1"' . checked( ! empty( $src['network'] ), true, false ) . '> ' . esc_html__( 'Network option (shared by every site)', 'launch-builder' ) . '</label></p>';
-		}
-		echo '<p><textarea name="lb_map" rows="4" class="large-text code" placeholder="phone = phone_number">' . esc_textarea( implode( "\n", $lines ) ) . '</textarea></p>';
-		if ( $read['meta_box'] ) {
-			echo '<p class="description">' . esc_html__( 'This is a Meta Box settings page: values are read through Meta Box.', 'launch-builder' ) . '</p>';
-		}
-		if ( $read['skipped'] ) {
-			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'Some values in the source could not be used:', 'launch-builder' ) . '</p><ul style="list-style:disc;margin-left:20px">';
-			foreach ( $read['skipped'] as $s ) {
-				echo '<li><code>' . esc_html( $s['source_key'] ) . '</code> &rarr; ' . esc_html( $s['key'] ) . ': ' . esc_html( $s['reason'] ) . '</li>';
-			}
-			echo '</ul></div>';
-		}
-		submit_button( __( 'Save business info', 'launch-builder' ) );
-		echo '</form></div>';
-		$js = 'document.addEventListener("click",function(e){var a=e.target.closest("[data-lb-add]");if(a){var k=a.getAttribute("data-lb-add"),t=document.getElementById("lb-tpl-"+k),b=document.querySelector("[data-lb-rep=\'"+k+"\'] tbody");if(t&&b){var w=document.createElement("tbody");w.innerHTML=t.innerHTML.replace(/__i__/g,"n"+Date.now());var r=w.firstElementChild;b.appendChild(r);var f=r.querySelector("input,select");if(f){f.focus()}}}var x=e.target.closest("[data-lb-remove]");if(x){x.closest("tr").remove()}});';
-		wp_print_inline_script_tag( $js );
+		Company_Admin::page();
 	}
 }

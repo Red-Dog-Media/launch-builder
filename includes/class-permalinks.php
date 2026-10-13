@@ -2573,14 +2573,14 @@ final class Permalinks {
 		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'urls'; // phpcs:ignore WordPress.Security.NonceVerification
 		$tabs = [ 'urls' => __( 'URLs', 'launch-builder' ), 'redirects' => __( 'Redirects', 'launch-builder' ), 'bulk' => __( 'Bulk tools', 'launch-builder' ), 'settings' => __( 'Settings', 'launch-builder' ) ];
 		$tab = isset( $tabs[ $tab ] ) ? $tab : 'urls';
-		echo '<style>.lb-urls .lb-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:#f0f0f1}.lb-urls .lb-pill.custom{background:#dbeafe}.lb-urls .lb-pill.auto{background:#dcfce7}.lb-urls .lb-pill.dup{background:#fee2e2;color:#991b1b}.lb-urls .lb-card{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:14px 18px;margin:14px 0;max-width:1100px}.lb-urls td code{word-break:break-all}.lb-urls .lb-diff del{color:#991b1b}.lb-urls .lb-diff ins{color:#166534;text-decoration:none}</style>';
-		echo '<div class="wrap lb-urls"><h1>' . esc_html__( 'URLs', 'launch-builder' ) . '</h1>';
+		echo '<div class="wrap lb-wrap lb-set lb-urls">';
+		echo Dashboard::header( __( 'URLs', 'launch-builder' ), esc_html__( 'The address of every page, post and term, the redirects for old addresses, and the patterns that build new ones.', 'launch-builder' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
 		if ( ! self::installed() ) {
-			echo '<div class="notice notice-warning"><p>' . esc_html__( 'The URL tables are being installed; reload this page.', 'launch-builder' ) . '</p></div>';
+			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'The URL tables are being installed; reload this page.', 'launch-builder' ) . '</p></div>';
 		}
-		echo '<nav class="nav-tab-wrapper">';
+		echo '<nav class="lb-tabnav" aria-label="' . esc_attr__( 'Sections', 'launch-builder' ) . '">';
 		foreach ( $tabs as $k => $label ) {
-			echo '<a class="nav-tab' . ( $k === $tab ? ' nav-tab-active' : '' ) . '" href="' . esc_url( self::page_url( $k ) ) . '">' . esc_html( $label ) . '</a>';
+			echo '<a href="' . esc_url( self::page_url( $k ) ) . '"' . ( $k === $tab ? ' aria-current="page"' : '' ) . '>' . esc_html( $label ) . '</a>';
 		}
 		echo '</nav>';
 		$res = get_transient( 'lb_urls_result_' . get_current_user_id() );
@@ -2607,21 +2607,21 @@ final class Permalinks {
 	private static function print_result( array $res ): void {
 		$data = $res['data'] ?? [];
 		if ( isset( $res['error'] ) ) {
-			echo '<div class="notice notice-error"><p>' . esc_html( (string) $res['error'] ) . '</p></div>';
+			echo '<div class="notice notice-error inline"><p>' . esc_html( (string) $res['error'] ) . '</p></div>';
 			return;
 		}
-		echo '<div class="notice notice-success"><p>' . esc_html( (string) ( $res['message'] ?? '' ) ) . '</p></div>';
+		echo '<div class="notice notice-success inline"><p>' . esc_html( (string) ( $res['message'] ?? '' ) ) . '</p></div>';
 		$changes = (array) ( $data['changes'] ?? [] );
 		if ( $changes ) {
-			echo '<div class="lb-card"><h2>' . ( ! empty( $data['dry_run'] ) ? esc_html__( 'Preview (nothing changed yet)', 'launch-builder' ) : esc_html__( 'Changed', 'launch-builder' ) ) . '</h2><table class="widefat striped lb-diff"><thead><tr><th>' . esc_html__( 'Object', 'launch-builder' ) . '</th><th>' . esc_html__( 'Old', 'launch-builder' ) . '</th><th>' . esc_html__( 'New', 'launch-builder' ) . '</th></tr></thead><tbody>';
+			echo '<section class="lb-card lb-card--table"><div class="lb-panel__head"><h2>' . ( ! empty( $data['dry_run'] ) ? esc_html__( 'Preview (nothing changed yet)', 'launch-builder' ) : esc_html__( 'Changed', 'launch-builder' ) ) . '</h2></div><table class="widefat striped lb-diff rwd"><thead><tr><th>' . esc_html__( 'Object', 'launch-builder' ) . '</th><th>' . esc_html__( 'Old', 'launch-builder' ) . '</th><th>' . esc_html__( 'New', 'launch-builder' ) . '</th></tr></thead><tbody>';
 			foreach ( array_slice( $changes, 0, 200 ) as $c ) {
-				echo '<tr><td>' . esc_html( (string) ( $c['title'] ?? '' ) ) . ' <small>' . esc_html( (string) ( $c['object'] ?? '' ) ) . '</small></td><td><del><code>' . esc_html( (string) $c['old'] ) . '</code></del></td><td><ins><code>' . esc_html( (string) $c['new'] ) . '</code></ins></td></tr>';
+				echo '<tr><td data-label="' . esc_attr__( 'Object', 'launch-builder' ) . '">' . esc_html( (string) ( $c['title'] ?? '' ) ) . ' <small>' . esc_html( (string) ( $c['object'] ?? '' ) ) . '</small></td><td data-label="' . esc_attr__( 'Old', 'launch-builder' ) . '"><del><code>' . esc_html( (string) $c['old'] ) . '</code></del></td><td data-label="' . esc_attr__( 'New', 'launch-builder' ) . '"><ins><code>' . esc_html( (string) $c['new'] ) . '</code></ins></td></tr>';
 			}
 			echo '</tbody></table>';
 			foreach ( (array) ( $data['skipped'] ?? [] ) as $s ) {
 				echo '<p>' . esc_html( (string) ( $s['old'] ?? '' ) . ' -> ' . ( $s['new'] ?? '' ) . ': ' . ( $s['error'] ?? '' ) ) . '</p>';
 			}
-			echo '</div>';
+			echo '</section>';
 		}
 	}
 
@@ -2636,25 +2636,27 @@ final class Permalinks {
 		if ( is_wp_error( $data ) ) {
 			$data = [ 'total' => 0, 'urls' => [] ];
 		}
-		echo '<form method="get" class="lb-card"><input type="hidden" name="page" value="launch-builder-urls"><input type="hidden" name="tab" value="urls">';
-		echo '<input type="search" name="s" value="' . esc_attr( $s ) . '" placeholder="' . esc_attr__( 'Part of a URL', 'launch-builder' ) . '"> <select name="type"><option value="">' . esc_html__( 'All types', 'launch-builder' ) . '</option>';
+		echo '<form method="get" class="lb-card lb-formrow lb-filterbar"><input type="hidden" name="page" value="launch-builder-urls"><input type="hidden" name="tab" value="urls">';
+		echo '<label class="lb-search"><span class="screen-reader-text">' . esc_html__( 'Part of a URL', 'launch-builder' ) . '</span>' . Dashboard::icon( 'search' ) . '<input type="search" name="s" value="' . esc_attr( $s ) . '" placeholder="' . esc_attr__( 'Part of a URL', 'launch-builder' ) . '"></label>'; // phpcs:ignore WordPress.Security.EscapeOutput -- the icon is static markup.
+		echo '<label class="screen-reader-text" for="lb-urls-type">' . esc_html__( 'Type', 'launch-builder' ) . '</label><select id="lb-urls-type" name="type"><option value="">' . esc_html__( 'All types', 'launch-builder' ) . '</option>';
 		foreach ( array_merge( self::post_types(), self::taxonomies() ) as $n ) {
 			$o = get_post_type_object( $n ) ?: get_taxonomy( $n );
 			echo '<option value="' . esc_attr( $n ) . '"' . selected( $type, $n, false ) . '>' . esc_html( $o ? $o->labels->name : $n ) . '</option>';
 		}
-		echo '</select> <select name="source"><option value="">' . esc_html__( 'Any source', 'launch-builder' ) . '</option>';
+		echo '</select><label class="screen-reader-text" for="lb-urls-source">' . esc_html__( 'Source', 'launch-builder' ) . '</label><select id="lb-urls-source" name="source"><option value="">' . esc_html__( 'Any source', 'launch-builder' ) . '</option>';
 		foreach ( [ 'custom' => __( 'Custom', 'launch-builder' ), 'auto' => __( 'Automatic', 'launch-builder' ), 'native' => __( 'WordPress', 'launch-builder' ) ] as $k => $l ) {
 			echo '<option value="' . esc_attr( $k ) . '"' . selected( $source, $k, false ) . '>' . esc_html( $l ) . '</option>';
 		}
-		echo '</select> <label><input type="checkbox" name="dups" value="1"' . checked( $dups, true, false ) . '> ' . esc_html__( 'Duplicates only', 'launch-builder' ) . '</label> ';
-		submit_button( __( 'Filter', 'launch-builder' ), 'secondary', '', false );
+		echo '</select><label class="lb-check"><input type="checkbox" name="dups" value="1"' . checked( $dups, true, false ) . '> ' . esc_html__( 'Duplicates only', 'launch-builder' ) . '</label>';
+		echo '<button type="submit" class="lb-btn">' . esc_html__( 'Filter', 'launch-builder' ) . '</button>';
 		echo '</form>';
-		echo '<p>' . esc_html( sprintf( /* translators: %d: number of URLs */ _n( '%d URL', '%d URLs', (int) $data['total'], 'launch-builder' ), (int) $data['total'] ) ) . '</p>';
-		echo '<table class="widefat striped"><thead><tr><th>' . esc_html__( 'URL', 'launch-builder' ) . '</th><th>' . esc_html__( 'Title', 'launch-builder' ) . '</th><th>' . esc_html__( 'Type', 'launch-builder' ) . '</th><th>' . esc_html__( 'Source', 'launch-builder' ) . '</th></tr></thead><tbody>';
+		$chips = [ 'custom' => 'accent', 'auto' => 'ok', 'native' => 'plain' ];
+		echo '<section class="lb-card lb-card--table"><div class="lb-panel__head"><h2>' . esc_html__( 'All URLs', 'launch-builder' ) . '</h2><span class="lb-chip lb-chip--plain">' . esc_html( sprintf( /* translators: %d: number of URLs */ _n( '%d URL', '%d URLs', (int) $data['total'], 'launch-builder' ), (int) $data['total'] ) ) . '</span></div>';
+		echo '<table class="widefat striped rwd"><thead><tr><th>' . esc_html__( 'URL', 'launch-builder' ) . '</th><th>' . esc_html__( 'Title', 'launch-builder' ) . '</th><th>' . esc_html__( 'Type', 'launch-builder' ) . '</th><th>' . esc_html__( 'Source', 'launch-builder' ) . '</th></tr></thead><tbody>';
 		foreach ( (array) $data['urls'] as $u ) {
 			$edit = 'term' === strtok( $u['object'], ':' ) ? get_edit_term_link( (int) $u['id'] ) : get_edit_post_link( (int) $u['id'] );
-			echo '<tr><td><a href="' . esc_url( $u['url'] ) . '" target="_blank" rel="noopener"><code>' . esc_html( $u['uri'] ) . '</code></a>' . ( $u['duplicate'] ? ' <span class="lb-pill dup">' . esc_html__( 'duplicate', 'launch-builder' ) . '</span>' : '' ) . '</td>';
-			echo '<td>' . ( $edit ? '<a href="' . esc_url( $edit ) . '">' . esc_html( $u['title'] ) . '</a>' : esc_html( $u['title'] ) ) . '</td><td>' . esc_html( $u['type'] ) . '</td><td><span class="lb-pill ' . esc_attr( $u['source'] ) . '">' . esc_html( $u['source'] ) . '</span></td></tr>';
+			echo '<tr><td data-label="' . esc_attr__( 'URL', 'launch-builder' ) . '"><a href="' . esc_url( $u['url'] ) . '" target="_blank" rel="noopener"><code>' . esc_html( $u['uri'] ) . '</code></a>' . ( $u['duplicate'] ? ' <span class="lb-chip lb-chip--bad">' . esc_html__( 'duplicate', 'launch-builder' ) . '</span>' : '' ) . '</td>';
+			echo '<td data-label="' . esc_attr__( 'Title', 'launch-builder' ) . '">' . ( $edit ? '<a href="' . esc_url( $edit ) . '">' . esc_html( $u['title'] ) . '</a>' : esc_html( $u['title'] ) ) . '</td><td data-label="' . esc_attr__( 'Type', 'launch-builder' ) . '">' . esc_html( $u['type'] ) . '</td><td data-label="' . esc_attr__( 'Source', 'launch-builder' ) . '"><span class="lb-chip lb-chip--' . esc_attr( $chips[ $u['source'] ] ?? 'plain' ) . '">' . esc_html( $u['source'] ) . '</span></td></tr>';
 		}
 		if ( ! $data['urls'] ) {
 			echo '<tr><td colspan="4">' . esc_html__( 'Nothing found.', 'launch-builder' ) . '</td></tr>';
@@ -2662,8 +2664,9 @@ final class Permalinks {
 		echo '</tbody></table>';
 		$pages = (int) ceil( (int) $data['total'] / $per );
 		if ( $pages > 1 ) {
-			echo '<p class="tablenav-pages">' . wp_kses_post( (string) paginate_links( [ 'base' => add_query_arg( 'paged', '%#%' ), 'format' => '', 'current' => $paged, 'total' => $pages ] ) ) . '</p>';
+			echo '<nav class="lb-pager tablenav-pages" aria-label="' . esc_attr__( 'Pages of results', 'launch-builder' ) . '">' . wp_kses_post( (string) paginate_links( [ 'base' => add_query_arg( 'paged', '%#%' ), 'format' => '', 'current' => $paged, 'total' => $pages ] ) ) . '</nav>';
 		}
+		echo '</section>';
 	}
 
 	private static function form_open( string $op ): void {
@@ -2672,85 +2675,119 @@ final class Permalinks {
 	}
 
 	private static function types_checkboxes( string $name ): void {
+		echo '<div class="lb-checks">';
 		foreach ( array_merge( self::post_types(), self::taxonomies() ) as $n ) {
 			$o = get_post_type_object( $n ) ?: get_taxonomy( $n );
-			echo '<label style="margin-right:14px"><input type="checkbox" name="' . esc_attr( $name ) . '[]" value="' . esc_attr( $n ) . '"> ' . esc_html( $o ? $o->labels->name : $n ) . '</label>';
+			echo '<label class="lb-check"><input type="checkbox" name="' . esc_attr( $name ) . '[]" value="' . esc_attr( $n ) . '"> ' . esc_html( $o ? $o->labels->name : $n ) . '</label>';
 		}
+		echo '</div>';
 	}
 
 	private static function tab_bulk(): void {
-		echo '<div class="lb-card"><h2>' . esc_html__( 'Regenerate URLs', 'launch-builder' ) . '</h2><p>' . esc_html__( 'Rebuild automatic URLs from the URL patterns (Settings tab). Custom URLs stay unless you include them. Old URLs redirect (301).', 'launch-builder' ) . '</p>';
+		echo '<section class="lb-card"><h2>' . esc_html__( 'Regenerate URLs', 'launch-builder' ) . '</h2><p class="lb-card__sub">' . esc_html__( 'Rebuild automatic URLs from the URL patterns (Settings tab). Custom URLs stay unless you include them. Old URLs redirect (301).', 'launch-builder' ) . '</p>';
 		self::form_open( 'regenerate' );
-		echo '<p>';
+		echo '<div class="lb-rows"><div class="lb-row" role="group" aria-labelledby="lb-bulk-types"><div class="lb-row__label" id="lb-bulk-types">' . esc_html__( 'What to rebuild', 'launch-builder' ) . '</div><div class="lb-row__control">';
 		self::types_checkboxes( 'types' );
-		echo '</p><p><label><input type="checkbox" name="include_custom" value="1"> ' . esc_html__( 'Also reset custom URLs to automatic', 'launch-builder' ) . '</label></p><p><label><input type="checkbox" name="dry_run" value="1" checked> ' . esc_html__( 'Preview only (dry run)', 'launch-builder' ) . '</label></p>';
-		submit_button( __( 'Run', 'launch-builder' ), 'primary', 'submit', false );
-		echo '</form></div>';
-		echo '<div class="lb-card"><h2>' . esc_html__( 'Find and replace', 'launch-builder' ) . '</h2><p>' . esc_html__( 'Changed URLs become custom URLs; old URLs redirect (301). Collisions are skipped and listed.', 'launch-builder' ) . '</p>';
+		echo '</div></div><div class="lb-row" role="group" aria-labelledby="lb-bulk-opts"><div class="lb-row__label" id="lb-bulk-opts">' . esc_html__( 'Options', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-choices">';
+		echo '<label class="lb-check"><input type="checkbox" name="include_custom" value="1"> ' . esc_html__( 'Also reset custom URLs to automatic', 'launch-builder' ) . '</label>';
+		echo '<label class="lb-check"><input type="checkbox" name="dry_run" value="1" checked> ' . esc_html__( 'Preview only (dry run)', 'launch-builder' ) . '</label>';
+		echo '</div></div></div></div><div class="lb-formrow" style="margin-top:16px"><button type="submit" class="lb-btn lb-btn--primary">' . esc_html__( 'Run', 'launch-builder' ) . '</button></div>';
+		echo '</form></section>';
+		echo '<section class="lb-card"><h2>' . esc_html__( 'Find and replace', 'launch-builder' ) . '</h2><p class="lb-card__sub">' . esc_html__( 'Changed URLs become custom URLs; old URLs redirect (301). Collisions are skipped and listed.', 'launch-builder' ) . '</p>';
 		self::form_open( 'replace' );
-		echo '<p><input type="text" name="find" placeholder="' . esc_attr__( 'Find', 'launch-builder' ) . '" required> <input type="text" name="replace" placeholder="' . esc_attr__( 'Replace with', 'launch-builder' ) . '"> <label><input type="checkbox" name="regex" value="1"> ' . esc_html__( 'Regular expression', 'launch-builder' ) . '</label></p><p>';
+		echo '<div class="lb-rows"><div class="lb-row"><div class="lb-row__label">' . esc_html__( 'Change', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-formrow">';
+		echo '<label class="screen-reader-text" for="lb-bulk-find">' . esc_html__( 'Find', 'launch-builder' ) . '</label><input type="text" id="lb-bulk-find" name="find" placeholder="' . esc_attr__( 'Find', 'launch-builder' ) . '" required>';
+		echo '<span class="lb-arrow" aria-hidden="true">&rarr;</span>';
+		echo '<label class="screen-reader-text" for="lb-bulk-replace">' . esc_html__( 'Replace with', 'launch-builder' ) . '</label><input type="text" id="lb-bulk-replace" name="replace" placeholder="' . esc_attr__( 'Replace with', 'launch-builder' ) . '">';
+		echo '<label class="lb-check"><input type="checkbox" name="regex" value="1"> ' . esc_html__( 'Regular expression', 'launch-builder' ) . '</label>';
+		echo '</div></div></div><div class="lb-row" role="group" aria-labelledby="lb-bulk-ftypes"><div class="lb-row__label" id="lb-bulk-ftypes">' . esc_html__( 'Where', 'launch-builder' ) . '</div><div class="lb-row__control">';
 		self::types_checkboxes( 'types' );
-		echo '</p><p><label><input type="checkbox" name="dry_run" value="1" checked> ' . esc_html__( 'Preview only (dry run)', 'launch-builder' ) . '</label></p>';
-		submit_button( __( 'Run', 'launch-builder' ), 'primary', 'submit', false );
-		echo '</form></div>';
+		echo '</div></div><div class="lb-row"><div class="lb-row__label">' . esc_html__( 'Options', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-choices"><label class="lb-check"><input type="checkbox" name="dry_run" value="1" checked> ' . esc_html__( 'Preview only (dry run)', 'launch-builder' ) . '</label></div></div></div></div>';
+		echo '<div class="lb-formrow" style="margin-top:16px"><button type="submit" class="lb-btn lb-btn--primary">' . esc_html__( 'Run', 'launch-builder' ) . '</button></div>';
+		echo '</form></section>';
 	}
 
 	private static function tab_redirects(): void {
 		$list = Redirects::list( [ 'limit' => 100 ] );
-		echo '<div class="lb-card"><h2>' . esc_html__( 'Add a redirect', 'launch-builder' ) . '</h2>';
+		echo '<section class="lb-card"><h2>' . esc_html__( 'Add a redirect', 'launch-builder' ) . '</h2>';
 		self::form_open( 'redirect' );
-		echo '<p><input type="text" name="from" placeholder="/old-path/" required> &rarr; <input type="text" name="to" placeholder="/new-path/ or https://..." style="min-width:280px"> <select name="code">';
+		echo '<div class="lb-formrow" style="margin-top:12px"><label class="screen-reader-text" for="lb-redir-from">' . esc_html__( 'From', 'launch-builder' ) . '</label><input type="text" id="lb-redir-from" name="from" placeholder="/old-path/" required>';
+		echo '<span class="lb-arrow" aria-hidden="true">&rarr;</span>';
+		echo '<label class="screen-reader-text" for="lb-redir-to">' . esc_html__( 'To', 'launch-builder' ) . '</label><input type="text" id="lb-redir-to" name="to" class="lb-wide" placeholder="/new-path/ or https://...">';
+		echo '<label class="screen-reader-text" for="lb-redir-code">' . esc_html__( 'Code', 'launch-builder' ) . '</label><select id="lb-redir-code" name="code">';
 		foreach ( Redirects::CODES as $c ) {
 			echo '<option value="' . (int) $c . '">' . (int) $c . '</option>';
 		}
-		echo '</select> ';
-		submit_button( __( 'Add', 'launch-builder' ), 'secondary', 'submit', false );
-		echo '</p></form><p class="description">' . esc_html( sprintf( /* translators: %s: store name */ __( 'New redirects go to: %s.', 'launch-builder' ), 'rankmath' === $list['store'] ? 'Rank Math Redirections' : __( 'Launch Builder redirects table', 'launch-builder' ) ) ) . '</p></div>';
-		echo '<table class="widefat striped"><thead><tr><th>' . esc_html__( 'From', 'launch-builder' ) . '</th><th>' . esc_html__( 'To', 'launch-builder' ) . '</th><th>' . esc_html__( 'Code', 'launch-builder' ) . '</th><th>' . esc_html__( 'Hits', 'launch-builder' ) . '</th><th></th></tr></thead><tbody>';
+		echo '</select><button type="submit" class="lb-btn lb-btn--primary">' . esc_html__( 'Add', 'launch-builder' ) . '</button></div></form>';
+		echo '<p class="lb-hint">' . esc_html( sprintf( /* translators: %s: store name */ __( 'New redirects go to: %s.', 'launch-builder' ), 'rankmath' === $list['store'] ? 'Rank Math Redirections' : __( 'Launch Builder redirects table', 'launch-builder' ) ) ) . '</p></section>';
+		$total = (int) ( $list['total'] ?? count( (array) $list['redirects'] ) );
+		echo '<section class="lb-card lb-card--table"><div class="lb-panel__head"><h2>' . esc_html__( 'Redirects', 'launch-builder' ) . '</h2><span class="lb-chip lb-chip--plain">' . esc_html( sprintf( /* translators: %d: number of redirects */ _n( '%d redirect', '%d redirects', $total, 'launch-builder' ), $total ) ) . '</span></div>';
+		echo '<table class="widefat striped rwd"><thead><tr><th>' . esc_html__( 'From', 'launch-builder' ) . '</th><th>' . esc_html__( 'To', 'launch-builder' ) . '</th><th class="lb-num">' . esc_html__( 'Code', 'launch-builder' ) . '</th><th class="lb-num">' . esc_html__( 'Hits', 'launch-builder' ) . '</th><th><span class="screen-reader-text">' . esc_html__( 'Actions', 'launch-builder' ) . '</span></th></tr></thead><tbody>';
 		foreach ( (array) $list['redirects'] as $r ) {
-			echo '<tr><td><code>' . esc_html( (string) $r['from'] ) . '</code></td><td><code>' . esc_html( (string) ( $r['url'] ?: $r['to'] ) ) . '</code></td><td>' . (int) $r['code'] . '</td><td>' . (int) $r['hits'] . '</td><td>';
+			echo '<tr><td data-label="' . esc_attr__( 'From', 'launch-builder' ) . '"><code>' . esc_html( (string) $r['from'] ) . '</code></td><td data-label="' . esc_attr__( 'To', 'launch-builder' ) . '"><code>' . esc_html( (string) ( $r['url'] ?: $r['to'] ) ) . '</code></td><td class="lb-num" data-label="' . esc_attr__( 'Code', 'launch-builder' ) . '">' . (int) $r['code'] . '</td><td class="lb-num" data-label="' . esc_attr__( 'Hits', 'launch-builder' ) . '">' . (int) $r['hits'] . '</td><td class="lb-end">';
 			self::form_open( 'delete_redirect' );
 			echo '<input type="hidden" name="id" value="' . (int) $r['id'] . '"><input type="hidden" name="store" value="' . esc_attr( (string) $r['store'] ) . '">';
-			submit_button( __( 'Delete', 'launch-builder' ), 'link-delete small', 'submit', false );
+			echo '<button type="submit" class="lb-btn lb-btn--sm lb-btn--danger">' . esc_html__( 'Delete', 'launch-builder' ) . '</button>';
 			echo '</form></td></tr>';
 		}
 		if ( ! $list['redirects'] ) {
 			echo '<tr><td colspan="5">' . esc_html__( 'No redirects yet.', 'launch-builder' ) . '</td></tr>';
 		}
 		echo '</tbody></table>';
+		if ( $total > count( (array) $list['redirects'] ) ) {
+			echo '<p class="lb-hint" style="padding:0 22px 16px">' . esc_html( sprintf( /* translators: %d: number of redirects shown */ __( 'Showing the newest %d.', 'launch-builder' ), count( (array) $list['redirects'] ) ) ) . '</p>';
+		}
+		echo '</section>';
 	}
 
 	private static function tab_settings(): void {
 		$s = self::settings();
 		self::form_open( 'settings' );
-		echo '<div class="lb-card"><h2>' . esc_html__( 'URL patterns', 'launch-builder' ) . '</h2><p class="description">' . esc_html__( 'Empty = WordPress default. Posts: %postname% %parent% %parent_uri% %lb_area_parent% %post_type% %year% %monthnum% %day% %author% and %{taxonomy}% (e.g. %lb_service_cat%). Terms: %term% %parent% %parent_uri% %taxonomy% %{taxonomy}%. Saving a changed pattern rebuilds the first 200 URLs at once (the rest from the Bulk tools tab); old URLs redirect.', 'launch-builder' ) . '</p><table class="form-table">';
+		echo '<section class="lb-card"><h2>' . esc_html__( 'URL patterns', 'launch-builder' ) . '</h2><p class="lb-card__sub">' . esc_html__( 'Leave a box empty to use the WordPress default. Saving a changed pattern rebuilds the first 200 URLs at once (the rest from the Bulk tools tab). Old URLs redirect.', 'launch-builder' ) . '</p>';
+		$tags = [
+			__( 'Posts and pages', 'launch-builder' ) => [ '%postname%', '%parent%', '%parent_uri%', '%lb_area_parent%', '%post_type%', '%year%', '%monthnum%', '%day%', '%author%', '%{taxonomy}%' ],
+			__( 'Terms', 'launch-builder' )           => [ '%term%', '%parent%', '%parent_uri%', '%taxonomy%', '%{taxonomy}%' ],
+		];
+		echo '<div class="lb-tags">';
+		foreach ( $tags as $head => $list ) {
+			echo '<p><b>' . esc_html( $head ) . ':</b> ';
+			foreach ( $list as $tag ) {
+				echo '<code>' . esc_html( $tag ) . '</code> ';
+			}
+			echo '</p>';
+		}
+		echo '<p class="lb-hint">' . esc_html__( 'Use %{taxonomy}% with a taxonomy name, for example %lb_service_cat%.', 'launch-builder' ) . '</p></div>';
+		echo '<div class="lb-rows">';
 		foreach ( self::post_types() as $pt ) {
 			$o = get_post_type_object( $pt );
 			$native = (string) self::native_example( 'post', $pt );
-			echo '<tr><th>' . esc_html( $o ? $o->labels->name : $pt ) . ' <small>(' . esc_html( $pt ) . ')</small></th><td><input type="text" class="regular-text" name="ps_post[' . esc_attr( $pt ) . ']" value="' . esc_attr( (string) ( $s['permastructures']['post_types'][ $pt ] ?? '' ) ) . '" placeholder="' . esc_attr( $native ) . '"></td></tr>';
+			echo '<div class="lb-row"><div class="lb-row__label"><label for="lb-ps-post-' . esc_attr( $pt ) . '">' . esc_html( $o ? $o->labels->name : $pt ) . '</label> <small class="lb-code-label">' . esc_html( $pt ) . '</small></div><div class="lb-row__control"><input type="text" class="regular-text" id="lb-ps-post-' . esc_attr( $pt ) . '" name="ps_post[' . esc_attr( $pt ) . ']" value="' . esc_attr( (string) ( $s['permastructures']['post_types'][ $pt ] ?? '' ) ) . '" placeholder="' . esc_attr( $native ) . '"></div></div>';
 		}
 		foreach ( self::taxonomies() as $tax ) {
 			$o = get_taxonomy( $tax );
-			echo '<tr><th>' . esc_html( $o ? $o->labels->name : $tax ) . ' <small>(' . esc_html( $tax ) . ')</small></th><td><input type="text" class="regular-text" name="ps_term[' . esc_attr( $tax ) . ']" value="' . esc_attr( (string) ( $s['permastructures']['taxonomies'][ $tax ] ?? '' ) ) . '" placeholder="' . esc_attr( (string) self::native_example( 'term', $tax ) ) . '"></td></tr>';
+			echo '<div class="lb-row"><div class="lb-row__label"><label for="lb-ps-term-' . esc_attr( $tax ) . '">' . esc_html( $o ? $o->labels->name : $tax ) . '</label> <small class="lb-code-label">' . esc_html( $tax ) . '</small></div><div class="lb-row__control"><input type="text" class="regular-text" id="lb-ps-term-' . esc_attr( $tax ) . '" name="ps_term[' . esc_attr( $tax ) . ']" value="' . esc_attr( (string) ( $s['permastructures']['taxonomies'][ $tax ] ?? '' ) ) . '" placeholder="' . esc_attr( (string) self::native_example( 'term', $tax ) ) . '"></div></div>';
 		}
-		echo '</table></div><div class="lb-card"><h2>' . esc_html__( 'Behaviour', 'launch-builder' ) . '</h2><table class="form-table">';
-		echo '<tr><th>' . esc_html__( 'Trailing slash', 'launch-builder' ) . '</th><td><select name="trailing_slash">';
+		echo '</div></section>';
+		echo '<section class="lb-card"><h2>' . esc_html__( 'Behaviour', 'launch-builder' ) . '</h2><div class="lb-rows">';
+		echo '<div class="lb-row"><div class="lb-row__label"><label for="lb-trailing">' . esc_html__( 'Trailing slash', 'launch-builder' ) . '</label></div><div class="lb-row__control"><select id="lb-trailing" name="trailing_slash">';
 		foreach ( [ 'keep' => __( 'Follow the WordPress permalink setting', 'launch-builder' ), 'always' => __( 'Always', 'launch-builder' ), 'never' => __( 'Never', 'launch-builder' ) ] as $k => $l ) {
 			echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['trailing_slash'], $k, false ) . '>' . esc_html( $l ) . '</option>';
 		}
-		echo '</select></td></tr>';
+		echo '</select></div></div>';
+		echo '<div class="lb-row" role="group" aria-labelledby="lb-tidy"><div class="lb-row__label" id="lb-tidy">' . esc_html__( 'Tidy-ups', 'launch-builder' ) . '</div><div class="lb-row__control"><div class="lb-choices">';
 		$checks = [ 'lowercase' => __( 'Lower-case URLs', 'launch-builder' ), 'transliterate' => __( 'Turn accented letters into plain ones (é to e)', 'launch-builder' ), 'stop_words' => __( 'Strip stop words (a, the, of...) from automatic URLs', 'launch-builder' ), 'slug_sync' => __( 'Keep the slug equal to the last part of a custom URL', 'launch-builder' ), 'auto_redirect' => __( 'Redirect (301) the old URL whenever a URL changes', 'launch-builder' ) ];
 		foreach ( $checks as $k => $l ) {
-			echo '<tr><th>' . esc_html( $l ) . '</th><td><input type="checkbox" name="' . esc_attr( $k ) . '" value="1"' . checked( (bool) $s[ $k ], true, false ) . '></td></tr>';
+			echo '<label class="lb-check"><input type="checkbox" name="' . esc_attr( $k ) . '" value="1"' . checked( (bool) $s[ $k ], true, false ) . '> ' . esc_html( $l ) . '</label>';
 		}
-		echo '<tr><th>' . esc_html__( 'Stop words', 'launch-builder' ) . '</th><td><input type="text" class="large-text" name="stop_word_list" value="' . esc_attr( (string) $s['stop_word_list'] ) . '" placeholder="' . esc_attr( self::STOP_WORDS ) . '"></td></tr>';
-		echo '<tr><th>' . esc_html__( 'Redirects go to', 'launch-builder' ) . '</th><td><select name="redirect_store">';
+		echo '</div></div></div>';
+		echo '<div class="lb-row"><div class="lb-row__label"><label for="lb-stopwords">' . esc_html__( 'Stop words', 'launch-builder' ) . '</label></div><div class="lb-row__control"><input type="text" class="large-text" id="lb-stopwords" name="stop_word_list" value="' . esc_attr( (string) $s['stop_word_list'] ) . '" placeholder="' . esc_attr( self::STOP_WORDS ) . '"></div></div>';
+		echo '<div class="lb-row"><div class="lb-row__label"><label for="lb-redir-store">' . esc_html__( 'Redirects go to', 'launch-builder' ) . '</label></div><div class="lb-row__control"><select id="lb-redir-store" name="redirect_store">';
 		foreach ( [ 'auto' => __( 'Rank Math Redirections when active, else Launch Builder', 'launch-builder' ), 'own' => __( 'Launch Builder redirects table', 'launch-builder' ), 'rankmath' => __( 'Rank Math Redirections', 'launch-builder' ) ] as $k => $l ) {
 			echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['redirect_store'], $k, false ) . '>' . esc_html( $l ) . '</option>';
 		}
-		echo '</select></td></tr></table>';
-		submit_button( __( 'Save settings', 'launch-builder' ) );
-		echo '</div></form>';
+		echo '</select></div></div></div></section>';
+		echo '<div class="lb-savebar"><p>' . esc_html__( 'Saving a changed pattern updates the URLs that use it.', 'launch-builder' ) . '</p><button type="submit" class="lb-btn lb-btn--primary">' . esc_html__( 'Save settings', 'launch-builder' ) . '</button></div>';
+		echo '</form>';
 	}
 
 	/** WordPress's own URL of the first object of a type, as an example. */

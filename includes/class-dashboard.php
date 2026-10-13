@@ -71,6 +71,7 @@ final class Dashboard {
 		if ( null === $paths ) {
 			$paths = [
 				'check'    => '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+				'x'        => '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
 				'bolt'     => '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
 				'link'     => '<path d="M9.5 14.5l5-5M8 12l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 12l2-2a3.5 3.5 0 0 0-5-5l-2 2"/>',
 				'copy'     => '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/>',
@@ -90,20 +91,46 @@ final class Dashboard {
 				'activity' => '<path d="M3 12h4l2.5-6 5 12L17 12h4"/>',
 				'sliders'  => '<path d="M5 6h8M17 6h2M5 12h2M11 12h8M5 18h10M19 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
 				'out'      => '<path d="M8 16l8-8M9 8h7v7"/>',
+				'plus'     => '<path d="M12 5v14M5 12h14"/>',
+				'undo'     => '<path d="M9 6L4.5 10.5 9 15M4.5 10.5H15a4.5 4.5 0 0 1 0 9h-3"/>',
+				'chevron'  => '<path d="M8 10l4 4 4-4"/>',
+				'star'     => '<path d="M12 4l2.4 5 5.4.7-4 3.8 1 5.4L12 16.2 7.2 18.9l1-5.4-4-3.8 5.4-.7z"/>',
+				'clock'    => '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+				'pin'      => '<path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0c0 5.4 6.5 11 6.5 11z"/><circle cx="12" cy="10" r="2.4"/>',
+				'share'    => '<circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M8.7 10.8l6.6-3M8.7 13.2l6.6 3"/>',
+				'phone'    => '<path d="M6.5 4h3l1.5 4-2 1.3a11 11 0 0 0 5.7 5.7L16 13l4 1.5v3a2 2 0 0 1-2.2 2A14.5 14.5 0 0 1 4.5 6.2 2 2 0 0 1 6.5 4z"/>',
 			];
 		}
 		$p = $paths[ $name ] ?? $paths['box'];
 		return '<svg class="lb-i' . ( '' !== $class ? ' ' . esc_attr( $class ) : '' ) . '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $p . '</svg>'; // phpcs:ignore -- static markup.
 	}
 
-	/** The menu icon: a map pin with an arrow, as a data URI (WordPress paints it in the menu colours). */
+	/** The two shapes of the LaunchLocal mark, drawn on a 500 x 500 artboard (the viewBox below crops it to a square with a little air). */
+	const MARK = [
+		'M84.9338,372.2949,243.0049,123.6993v78.4943l-56.12,88.26,52.2634-20.4384a3.2506,3.2506,0,0,1,4.3874,3.6748l-9.7309,45.45L88.1265,376.1088A2.6153,2.6153,0,0,1,84.9338,372.2949Z',
+		'M415.0663,372.2949,256.9952,123.6993v78.4943l56.12,88.26-52.2635-20.4384a3.2506,3.2506,0,0,0-4.3873,3.6748l9.7309,45.45,145.6778,56.9693A2.6154,2.6154,0,0,0,415.0663,372.2949Z',
+	];
+
+	const MARK_VIEWBOX = '70 70 360 360';
+
+	/** The mark's paths; $attr is added to each (for example fill="#fff"). */
+	public static function mark_paths( string $attr = '' ): string {
+		$out = '';
+		foreach ( self::MARK as $d ) {
+			$out .= '<path ' . ( '' !== $attr ? $attr . ' ' : '' ) . 'd="' . $d . '"/>';
+		}
+		return $out;
+	}
+
+	/** The menu icon: the mark as a data URI (WordPress paints it in the menu colours). */
 	public static function menu_icon(): string {
-		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill="#a7aaad" fill-rule="evenodd" d="M10 1.5a6 6 0 0 0-6 6c0 4.2 6 11 6 11s6-6.8 6-11a6 6 0 0 0-6-6zm0 3.2l3.2 3.7h-2.1v3.1H8.9V8.4H6.8z"/></svg>';
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' . self::MARK_VIEWBOX . '">' . self::mark_paths( 'fill="#a7aaad"' ) . '</svg>';
 		return 'data:image/svg+xml;base64,' . base64_encode( $svg ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions
 	}
 
-	private static function brand_mark(): string {
-		return '<span class="lb-mark" aria-hidden="true"><svg viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 1.5a6 6 0 0 0-6 6c0 4.2 6 11 6 11s6-6.8 6-11a6 6 0 0 0-6-6zm0 3.2l3.2 3.7h-2.1v3.1H8.9V8.4H6.8z"/></svg></span>';
+	/** The mark on the accent tile at the top of every Launch Builder screen. */
+	public static function brand_mark(): string {
+		return '<span class="lb-mark" aria-hidden="true"><svg viewBox="' . self::MARK_VIEWBOX . '">' . self::mark_paths() . '</svg></span>'; // phpcs:ignore -- static markup.
 	}
 
 	private static function categories(): array {
@@ -138,7 +165,8 @@ final class Dashboard {
 		return $rows;
 	}
 
-	private static function header( string $title, string $sub, string $actions = '' ): string {
+	/** The top of a screen: the mark, the title, a line under it and optional buttons. $sub and $actions must already be escaped. */
+	public static function header( string $title, string $sub, string $actions = '' ): string {
 		return '<header class="lb-top"><div class="lb-brand">' . self::brand_mark() . '<div><h1>' . esc_html( $title ) . '</h1><p class="lb-tag">' . $sub . '</p></div></div>' . ( '' !== $actions ? '<div class="lb-actions">' . $actions . '</div>' : '' ) . '</header><hr class="wp-header-end">'; // phpcs:ignore -- $sub and $actions are built from escaped parts.
 	}
 
@@ -333,6 +361,50 @@ final class Dashboard {
 		return $out . self::button( __( 'Open the check', 'launch-builder' ), Admin::url( 'launch-builder-health' ) ) . '</section>';
 	}
 
+	/** Compatibility: one line each for Rank Math and Meta Box, from the same data get-compat reports. */
+	private static function compat_card(): string {
+		$out = '<section class="lb-panel" id="lb-compat"><div class="lb-panel__head"><h2>' . esc_html__( 'Compatibility', 'launch-builder' ) . '</h2></div>';
+
+		if ( Compat::rm_active() ) {
+			$h = md5( (string) wp_json_encode( [ get_option( Company::OPT ), get_option( 'rank-math-options-titles' ), get_option( 'rank-math-options-general' ) ] ) );
+			$cached = get_transient( 'lb_compat_card' ); // The dry run reads many options: keep its answer while neither side changed.
+			if ( is_array( $cached ) && ( $cached['h'] ?? '' ) === $h && is_array( $cached['c'] ?? null ) ) {
+				$c = $cached['c'];
+			} else {
+				$c = Compat::business_sync( [ 'dry_run' => true ] )['counts'];
+				set_transient( 'lb_compat_card', [ 'h' => $h, 'c' => $c ], 10 * MINUTE_IN_SECONDS );
+			}
+			$todo = (int) ( $c['fill'] ?? 0 ) + (int) ( $c['update'] ?? 0 );
+			$line = $todo
+				/* translators: 1: Rank Math version, 2: number of settings */
+				? sprintf( _n( 'Version %1$s. %2$d Local SEO setting can be filled from Business Info.', 'Version %1$s. %2$d Local SEO settings can be filled from Business Info.', $todo, 'launch-builder' ), Compat::rm_version(), $todo )
+				/* translators: %s: Rank Math version */
+				: sprintf( __( 'Version %s. Local SEO already matches Business Info.', 'launch-builder' ), Compat::rm_version() );
+			$out .= '<div class="lb-kv">' . self::icon( 'search' ) . '<div><b>' . esc_html__( 'Rank Math', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . ' <a href="' . esc_url( Admin::url( 'launch-builder-business' ) . '#lb-rm' ) . '">' . esc_html__( 'Review', 'launch-builder' ) . '</a></span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
+		} else {
+			$out .= '<div class="lb-kv">' . self::icon( 'search' ) . '<div><b>' . esc_html__( 'Rank Math', 'launch-builder' ) . '</b><span>' . esc_html__( 'Not active. Without it this site prints no business structured data.', 'launch-builder' ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput
+		}
+
+		$mb = Compat::mb_status();
+		if ( $mb['active'] ) {
+			$n = static function ( string $pt ) use ( $mb ): int { return count( (array) ( $mb['fields'][ $pt ] ?? [] ) ); };
+			$taken = [];
+			foreach ( [ '_lb_icon' => __( 'Icon', 'launch-builder' ), '_lb_summary' => __( 'Summary', 'launch-builder' ), '_lb_services' => __( 'Services offered', 'launch-builder' ) ] as $id => $label ) {
+				if ( ! empty( $mb['owns_card_fields'][ $id ] ) ) {
+					$taken[] = $label;
+				}
+			}
+			/* translators: 1: Meta Box version, 2: services fields, 3: service area fields, 4: page fields */
+			$line = sprintf( __( 'Version %1$s. Fields tokens can read: %2$d on services, %3$d on service areas, %4$d on pages.', 'launch-builder' ), '' !== $mb['version'] ? $mb['version'] : '–', $n( Entries::SERVICE ), $n( Entries::AREA ), $n( 'page' ) );
+			/* translators: %s: field names, for example "Icon, Services offered" */
+			$line .= ' ' . ( $taken ? sprintf( __( 'Meta Box edits %s.', 'launch-builder' ), implode( ', ', $taken ) ) : __( 'Card details still edits the icon and services.', 'launch-builder' ) );
+		} else {
+			$line = __( 'Not active. {{meta.field}} tokens print their fallback or nothing until it is on.', 'launch-builder' );
+		}
+		$out .= '<div class="lb-kv" style="margin-bottom:0">' . self::icon( 'box' ) . '<div><b>' . esc_html__( 'Meta Box', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
+		return $out . '</section>';
+	}
+
 	private static function links_card(): string {
 		$rows = [
 			[ 'business', __( 'Business info', 'launch-builder' ), Admin::url( 'launch-builder-business' ) ],
@@ -391,7 +463,7 @@ final class Dashboard {
 		echo '<div class="lb-grid"><div><section class="lb-panel"><div class="lb-panel__head"><h2>' . esc_html__( 'Modules', 'launch-builder' ) . '</h2><span class="lb-note" style="margin:0"><span data-lb-on-count>' . (int) $on . '</span> ' . esc_html__( 'of', 'launch-builder' ) . ' <span data-lb-total-count>' . (int) count( $mods ) . '</span> ' . esc_html__( 'on', 'launch-builder' ) . ' · <a href="' . esc_url( Admin::url( 'launch-builder-modules' ) ) . '">' . esc_html__( 'Manage all', 'launch-builder' ) . '</a></span></div>'; // phpcs:ignore
 		echo self::board( false ) . '</section>'; // phpcs:ignore
 		echo '<div class="lb-grid lb-grid--even">' . self::activity_card() . self::design_card() . '</div></div>'; // phpcs:ignore
-		echo '<div class="lb-stack">' . self::connect_card() . self::health_card() . self::links_card() . '</div></div></div>'; // phpcs:ignore
+		echo '<div class="lb-stack">' . self::connect_card() . self::health_card() . self::compat_card() . self::links_card() . '</div></div></div>'; // phpcs:ignore
 	}
 
 	public static function page_modules(): void {

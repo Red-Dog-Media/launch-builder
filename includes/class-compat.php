@@ -74,6 +74,34 @@ final class Compat {
 	/** Business Info keys overlaid in rank-math-options-titles (see identity()). */
 	const OVERLAY_KEYS = [ 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'organization_description', 'email', 'phone', 'social_url_facebook', 'social_additional_profiles', 'local_business_type', 'local_address', 'opening_hours', 'phone_numbers', 'price_range', 'geo', 'local_seo_contact_page' ];
 
+	/** Every Rank Math titles key Business Info fills: the overlay keys plus the site type (see business_map()). */
+	const BUSINESS_KEYS = [ 'knowledgegraph_type', 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'organization_description', 'email', 'phone', 'social_url_facebook', 'social_additional_profiles', 'local_business_type', 'local_address', 'opening_hours', 'phone_numbers', 'price_range', 'geo', 'local_seo_contact_page' ];
+
+	/** What the last "fill Rank Math from Business Info" wrote and what it replaced: { time, user, snapshot, before, ledger, owned, module }. */
+	const OPT_FILL = 'launch_builder_rm_fill';
+
+	/** A Meta Box field group that takes over the Card details fields (shown by get-playbook meta_box). */
+	const META_BOX_EXAMPLE = <<<'PHP'
+		add_filter( 'rwmb_meta_boxes', function ( $boxes ) {
+			$boxes[] = [
+				'title'      => 'Card details',
+				'post_types' => [ 'lb_service', 'lb_area' ],
+				'fields'     => [
+					[ 'id' => '_lb_icon', 'name' => 'Icon', 'type' => 'text' ],
+					[ 'id' => '_lb_summary', 'name' => 'Summary', 'type' => 'textarea' ],
+				],
+			];
+			$boxes[] = [
+				'title'      => 'Services offered',
+				'post_types' => [ 'lb_area' ],
+				'fields'     => [
+					[ 'id' => '_lb_services', 'name' => 'Services offered', 'type' => 'post', 'post_type' => 'lb_service', 'field_type' => 'select_advanced', 'multiple' => true, 'clone' => false ],
+				],
+			];
+			return $boxes;
+		} );
+		PHP;
+
 	/** Templates used for the service/area Rank Math keys until the brief or sync-seo gives others. */
 	const DEFAULT_TEMPLATES = [
 		'service' => [ 'title' => '%title% %sep% %sitename%', 'description' => '%lb_entry_summary%' ],
@@ -234,6 +262,14 @@ final class Compat {
 				'offset'    => [ 'type' => 'integer', 'description' => 'Pages to skip (pages are processed 300 per call; next_offset says where to continue).' ],
 			] ], [ __CLASS__, 'sync_seo_tool' ], 'manage_options' );
 
+		Abilities::add( 'fill-rank-math', 'Fill Rank Math from Business Info', 'Fill Rank Math\'s Local SEO and knowledge graph settings from Business Info: business name, description, logo, email, phone numbers, Facebook and other profiles, business type, address, opening hours, price range, map coordinates and contact page. dry_run (default true) lists every setting with what Rank Math holds now, what Business Info would put there and what would happen: fill (empty or Rank Math\'s own starting value), update (Launch Builder\'s earlier value), yours (set in Rank Math: kept unless forced), match, empty (Business Info has nothing yet). A real run takes a snapshot first and records what it wrote and what it replaced; a value changed in Rank Math afterwards is never overwritten. local_seo: true also turns on Rank Math\'s Local SEO module, which Rank Math needs before it prints the address, hours and phone numbers. force: row ids (name, phones, address...), setting keys (titles.knowledgegraph_name) or "all" to replace values set in Rank Math. undo: true puts back what the last fill replaced (settings changed in Rank Math since are left alone). The same preview, fill and undo are on the Business Info screen. cannot lists what Rank Math cannot take from Business Info.',
+			[ 'properties' => [
+				'dry_run'   => [ 'type' => 'boolean', 'description' => 'List what would change without writing (default true).' ],
+				'force'     => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Replace values set in Rank Math: row ids, titles.<key> names, or "all".' ],
+				'local_seo' => [ 'type' => 'boolean', 'description' => 'Turn Rank Math\'s Local SEO module on (true) or off (false).' ],
+				'undo'      => [ 'type' => 'boolean', 'description' => 'Put back what the last fill replaced. This runs at once: dry_run does not apply to it.' ],
+			] ], [ __CLASS__, 'fill_rank_math_tool' ], 'manage_options' );
+
 		Abilities::add( 'preview-seo', 'Preview SEO title and description', 'The SEO title, meta description and robots a post, page, service or area gets, with Rank Math variables and tokens resolved, and where each comes from (meta, role template, post type template). Give template_title / template_description to try a template on that object without saving it; unknown_vars lists variables nothing would replace.',
 			[ 'properties' => [
 				'post_id'              => [ 'type' => 'integer' ],
@@ -269,8 +305,16 @@ final class Compat {
 			'robots'     => 'Thank-you pages are noindex,follow and out of the sitemap; search and 404 are noindex.',
 			'check'      => 'preview-seo shows the resolved title/description for any page; get-compat lists every Rank Math key Launch Builder owns and its status.',
 			'indexing'   => 'IndexNow (Rank Math Instant Indexing) is suppressed while the site discourages search engines and during builds.',
+			'business'   => 'Business Info fills Rank Math\'s Local SEO and knowledge graph settings (name, description, logo, email, phones, profiles, business type, address, hours, price range, coordinates, contact page): fill-rank-math lists what it would do (dry_run, the default), writes it, and undoes the last write. It keeps anything set in Rank Math unless forced. Rank Math prints address, hours and phones only while its Local SEO module is on (local_seo: true). Never add a second LocalBusiness schema.',
 		];
-		$pb['tools_by_job']['SEO setup'] = [ 'sync-seo', 'preview-seo', 'get-compat' ];
+		$pb['tools_by_job']['SEO setup'] = [ 'sync-seo', 'fill-rank-math', 'preview-seo', 'get-compat' ];
+		$pb['meta_box'] = [
+			'ids'     => 'Card details and Meta Box: a Meta Box field with exactly these ids takes over from the Card details box and edits the same stored data. _lb_icon (services and areas): type Text, a Kadence icon name such as fe_mapPin (anything else is saved as empty). _lb_services (areas only): type Post, post type lb_service, Multiple on, Clone off (one stored row per service; a cloneable field is stored as one serialized row and read wrongly). _lb_summary (services and areas): type Textarea; it is the Excerpt, and line breaks are flattened. A field with another id (icon, service_icon) does not take over: both boxes show and only the _lb_ ids feed the cards.',
+			'example' => "A ready-to-paste field group (a small plugin or the theme's functions file; Meta Box Builder takes the same ids and settings):\n" . self::META_BOX_EXAMPLE,
+			'tokens'  => '{{meta.field_id}} and {{meta.field_id|fallback}} print a Meta Box field of the page or entry being shown (block text, links, image addresses, SEO titles); always give a fallback on text that matters. Works: text, number, select, radio, checkbox, URL, date and simple lists (comma-separated). A picture gives its full-size address (a gallery or file list gives the first file). Rich text, maps and embeds print as safe HTML. A Post field prints the titles of its published posts, a taxonomy field its term names. Not available: password fields, ids that look like secrets (pass, secret, token, api key, license key), groups, key-value fields and user fields (they print nothing), and there is no {{meta.group.sub}} syntax.',
+			'tools'   => 'add-service, add-area, list-entries and the brief read and write title, text, summary, order, icon and services only. They never touch other Meta Box fields (use rest-request, or Meta Box\'s own REST extension, for those).',
+			'off'     => 'With Meta Box deactivated nothing is lost: values stay in the database, Card details comes back with Icon and Services, and {{meta.*}} tokens print their fallback or nothing (the site check warns about the ones without a fallback).',
+		];
 	}
 
 	/** Audit checks, registered with Audit::register_check() from boot(). Site-wide, not batched. */
@@ -754,7 +798,11 @@ final class Compat {
 	 * Everything Launch Builder wants in Rank Math's options: group => key => value. Business Info keys appear only when
 	 * Business Info has a real (non-demo) value for them.
 	 */
-	public static function rm_desired(): array {
+	public static function rm_desired( string $scope = 'all' ): array {
+		if ( 'business' === $scope ) { // Only what Business Info fills (the Business Info screen's Rank Math card, fill-rank-math).
+			$own = [ 'knowledgegraph_type' => self::RM_TITLES['knowledgegraph_type'] ] + self::identity();
+			return [ 'titles' => array_intersect_key( $own, array_flip( self::BUSINESS_KEYS ) ) ];
+		}
 		$titles = self::RM_TITLES;
 		foreach ( self::OPTION_ROLES as $role => $keys ) {
 			foreach ( [ 'title' => $keys[0], 'description' => $keys[1] ] as $field => $key ) {
@@ -805,14 +853,79 @@ final class Compat {
 
 	/** ok | missing | differs | kept_edit for one key. */
 	private static function key_status( string $group, string $key, array $raw, $want ): string {
+		switch ( self::key_state( $group, $key, $raw, $want ) ) {
+			case 'match':
+				return 'ok';
+			case 'edited':
+			case 'own':
+				return 'kept_edit';
+			case 'fill':
+				return array_key_exists( $key, $raw ) ? 'differs' : 'missing'; // Rank Math's screens always save every key: an absent key was reset, never an admin choice.
+		}
+		return 'differs';
+	}
+
+	/**
+	 * Where one Rank Math key stands against the value Launch Builder wants:
+	 *   match   already equal
+	 *   fill    absent, empty or still Rank Math's own starting value
+	 *   update  Launch Builder wrote the current value earlier and nobody changed it since
+	 *   edited  Launch Builder wrote it earlier and somebody changed it in Rank Math since
+	 *   own     somebody typed it into Rank Math and Launch Builder never wrote it (Business Info keys only)
+	 * edited and own are kept unless forced.
+	 */
+	private static function key_state( string $group, string $key, array $raw, $want ): string {
 		if ( ! array_key_exists( $key, $raw ) ) {
-			return 'missing'; // Rank Math's screens always save every key: an absent key was reset, never an admin choice.
+			return 'fill';
 		}
 		$cur = $raw[ $key ];
 		if ( self::same( $cur, $want ) ) {
-			return 'ok';
+			return 'match';
 		}
-		return Ledger::is_edited( self::ledger_key( $group, $key ), Ledger::hash_value( $cur ) ) ? 'kept_edit' : 'differs';
+		$lk = self::ledger_key( $group, $key );
+		if ( null !== Ledger::get( $lk ) ) {
+			return Ledger::is_edited( $lk, Ledger::hash_value( $cur ) ) ? 'edited' : 'update';
+		}
+		$blank = self::rm_blank( $cur ) || self::rm_starting_value( $key, $cur );
+		if ( 'titles' === $group && in_array( $key, self::BUSINESS_KEYS, true ) && ! $blank ) {
+			if ( in_array( $key, (array) get_option( self::OPT_OWNED, [] ), true ) ) {
+				return 'update'; // Launch Builder already overlays this key: it is ours, whether or not a ledger row exists yet.
+			}
+			return 'own';
+		}
+		return $blank ? 'fill' : 'update';
+	}
+
+	/** Is a Rank Math setting value empty (nothing, '', or a list of empty rows)? */
+	private static function rm_blank( $v ): bool {
+		if ( is_array( $v ) ) {
+			foreach ( $v as $x ) {
+				if ( ! self::rm_blank( $x ) ) {
+					return false;
+				}
+			}
+			return true;
+		}
+		return null === $v || '' === trim( (string) $v ) || '0' === (string) $v;
+	}
+
+	/** Is this the value Rank Math fills in by itself when it is installed (so nobody chose it)? */
+	private static function rm_starting_value( string $key, $cur ): bool {
+		switch ( $key ) {
+			case 'knowledgegraph_type':
+				return 'person' === $cur;
+			case 'knowledgegraph_name':
+				$name = (string) get_bloginfo( 'name' );
+				// The site title now, or what a new WordPress site is called before anyone renames it.
+				return in_array( trim( (string) $cur ), [ $name, wp_specialchars_decode( $name ), 'My WordPress Website', 'My WordPress Blog', 'WordPress', 'Just another WordPress site' ], true );
+			case 'url':
+				return untrailingslashit( (string) $cur ) === untrailingslashit( home_url() );
+			case 'local_business_type':
+				return 'Organization' === $cur;
+			case 'opening_hours': // Every day 09:00-17:00.
+				return is_array( $cur ) && 7 === count( $cur ) && ! array_filter( $cur, static function ( $r ) { return ! is_array( $r ) || '09:00-17:00' !== (string) ( $r['time'] ?? '' ); } );
+		}
+		return false;
 	}
 
 	private static function ledger_key( string $group, string $key ): string {
@@ -823,7 +936,7 @@ final class Compat {
 	 * Merge the owned keys into Rank Math's options (see the class comment). Returns the change list, kept edits and how
 	 * each key was written.
 	 *
-	 * @param array $args { dry_run: bool, force: string[] ('group.key' or 'all'), local_seo: ?bool, label: string }
+	 * @param array $args { dry_run: bool, force: string[] ('group.key' or 'all'), local_seo: ?bool, label: string, scope: 'all' | 'business' }
 	 */
 	public static function rank_math_settings( array $args = [] ): array {
 		$out = [ 'active' => self::rm_active(), 'version' => self::rm_version(), 'changes' => [], 'kept' => [], 'ok' => 0, 'via' => [], 'modules' => [], 'warnings' => [] ];
@@ -833,10 +946,11 @@ final class Compat {
 		$dry = ! empty( $args['dry_run'] );
 		$force = array_map( 'strval', (array) ( $args['force'] ?? [] ) );
 		$forced = static function ( string $k ) use ( $force ): bool { return in_array( 'all', $force, true ) || in_array( $k, $force, true ); };
+		$business = 'business' === (string) ( $args['scope'] ?? 'all' );
 
 		$plan = []; // group => key => value
 		$owned_now = [];
-		$desired = self::rm_desired();
+		$desired = self::rm_desired( $business ? 'business' : 'all' );
 		foreach ( $desired as $group => $keys ) {
 			$raw = self::raw_option( self::RM_OPTIONS[ $group ] );
 			foreach ( $keys as $key => $want ) {
@@ -870,11 +984,14 @@ final class Compat {
 				$out['modules'][] = [ 'module' => 'local-seo', 'old' => ! $on, 'new' => $on ];
 			}
 		}
-		foreach ( [ 'sitemap', 'rich-snippet' ] as $m ) {
+		foreach ( $business ? [ 'rich-snippet' ] : [ 'sitemap', 'rich-snippet' ] as $m ) {
 			if ( ! self::rm_module( $m ) ) {
 				/* translators: %s: Rank Math module id */
 				$out['warnings'][] = sprintf( __( 'Rank Math module "%s" is off: the sitemap/schema settings are stored but have no effect until it is on.', 'launch-builder' ), $m );
 			}
+		}
+		if ( $business && ! self::rm_module( 'local-seo' ) && empty( $modules['local-seo'] ) ) {
+			$out['warnings'][] = __( 'Rank Math\'s Local SEO module is off: the address, hours, phone numbers and business type are stored, but Rank Math prints them only once that module is on.', 'launch-builder' );
 		}
 		if ( ! self::rm_ready() ) {
 			$out['warnings'][] = __( 'Rank Math is active but not set up (its setup wizard was neither finished nor skipped): the settings are stored, but Rank Math outputs nothing until then.', 'launch-builder' );
@@ -1051,15 +1168,12 @@ final class Compat {
 		return isset( $resolved[ $key ] ) && 'default' !== $resolved[ $key ]['from'] ? trim( (string) $resolved[ $key ]['value'] ) : '';
 	}
 
-	/** A Business Info list field (stored as an array or JSON). */
+	/**
+	 * A Business Info list field (hours_spec, areas_served...) as Business Info reads it: the saved rows, or the rows from
+	 * another settings page when one is set as the source, so those reach Rank Math and the schema too.
+	 */
 	public static function biz_list( string $key ): array {
-		$own = get_option( Company::OPT, [] );
-		$v = is_array( $own ) ? ( $own[ $key ] ?? null ) : null;
-		if ( is_string( $v ) && '' !== trim( $v ) ) {
-			$d = json_decode( $v, true );
-			$v = is_array( $d ) ? $d : array_map( 'trim', (array) preg_split( '/\s*[;\n]\s*/', $v ) );
-		}
-		return is_array( $v ) ? array_values( array_filter( $v, static function ( $x ) { return '' !== $x && null !== $x; } ) ) : [];
+		return Company::list_value( $key );
 	}
 
 	/**
@@ -1274,6 +1388,362 @@ final class Compat {
 		if ( $keep !== $owned ) {
 			update_option( self::OPT_OWNED, $keep, true );
 		}
+	}
+
+	/* ------------------------------------------------------------------ Business Info -> Rank Math (preview, fill, undo) */
+
+	/**
+	 * What Business Info fills in Rank Math, one entry per setting a person sees in Rank Math's Local SEO tab: label, the
+	 * Rank Math titles keys behind it, the Business Info fields it comes from (or a plain-words source).
+	 *
+	 * @return array<string,array{label:string,keys:string[],from:string[],from_text:string}>
+	 */
+	public static function business_map(): array {
+		return [
+			'type'     => [ 'label' => __( 'Site type', 'launch-builder' ), 'keys' => [ 'knowledgegraph_type' ], 'from' => [], 'from_text' => __( 'A business, not a person', 'launch-builder' ) ],
+			'name'     => [ 'label' => __( 'Business name', 'launch-builder' ), 'keys' => [ 'knowledgegraph_name' ], 'from' => [ 'name' ], 'from_text' => '' ],
+			'url'      => [ 'label' => __( 'Website address', 'launch-builder' ), 'keys' => [ 'url' ], 'from' => [], 'from_text' => __( 'This site\'s address', 'launch-builder' ) ],
+			'logo'     => [ 'label' => __( 'Logo', 'launch-builder' ), 'keys' => [ 'knowledgegraph_logo', 'knowledgegraph_logo_id' ], 'from' => [], 'from_text' => __( 'The site logo (Appearance, Customize)', 'launch-builder' ) ],
+			'about'    => [ 'label' => __( 'Description', 'launch-builder' ), 'keys' => [ 'organization_description' ], 'from' => [ 'about' ], 'from_text' => '' ],
+			'email'    => [ 'label' => __( 'Email', 'launch-builder' ), 'keys' => [ 'email' ], 'from' => [ 'email' ], 'from_text' => '' ],
+			'phones'   => [ 'label' => __( 'Phone numbers', 'launch-builder' ), 'keys' => [ 'phone_numbers', 'phone' ], 'from' => [ 'phone', 'emergency_phone' ], 'from_text' => '' ],
+			'facebook' => [ 'label' => __( 'Facebook page', 'launch-builder' ), 'keys' => [ 'social_url_facebook' ], 'from' => [ 'facebook' ], 'from_text' => '' ],
+			'profiles' => [ 'label' => __( 'Other profiles', 'launch-builder' ), 'keys' => [ 'social_additional_profiles' ], 'from' => [ 'instagram', 'youtube', 'google', 'linkedin', 'x', 'yelp', 'tiktok', 'nextdoor', 'bbb', 'angi', 'houzz' ], 'from_text' => '' ],
+			'btype'    => [ 'label' => __( 'Business type', 'launch-builder' ), 'keys' => [ 'local_business_type' ], 'from' => [ 'business_type' ], 'from_text' => '' ],
+			'address'  => [ 'label' => __( 'Address', 'launch-builder' ), 'keys' => [ 'local_address' ], 'from' => [ 'street', 'locality', 'region', 'postal_code', 'country' ], 'from_text' => '' ],
+			'hours'    => [ 'label' => __( 'Opening hours', 'launch-builder' ), 'keys' => [ 'opening_hours' ], 'from' => [ 'hours_spec', 'is_24_7' ], 'from_text' => '' ],
+			'price'    => [ 'label' => __( 'Price range', 'launch-builder' ), 'keys' => [ 'price_range' ], 'from' => [ 'price_range' ], 'from_text' => '' ],
+			'geo'      => [ 'label' => __( 'Map coordinates', 'launch-builder' ), 'keys' => [ 'geo' ], 'from' => [ 'lat', 'lng' ], 'from_text' => '' ],
+			'contact'  => [ 'label' => __( 'Contact page', 'launch-builder' ), 'keys' => [ 'local_seo_contact_page' ], 'from' => [ 'quote_url' ], 'from_text' => '' ],
+		];
+	}
+
+	/** Which Rank Math settings each Business Info field feeds: field key => list of setting names. */
+	public static function business_feeds(): array {
+		$out = [];
+		foreach ( self::business_map() as $m ) {
+			foreach ( $m['from'] as $k ) {
+				$out[ $k ][] = (string) $m['label'];
+			}
+		}
+		return $out;
+	}
+
+	/** What Rank Math cannot take from Business Info (or Launch Builder does not send), in plain words. */
+	public static function business_cannot(): array {
+		return [
+			__( 'Holiday hours: Rank Math only has opening hours for a normal week.', 'launch-builder' ),
+			__( 'A second office address: Rank Math\'s free version has one location (Rank Math Pro adds more).', 'launch-builder' ),
+			__( 'Star ratings and review counts: Launch Builder never adds them to your business schema, because search engines want ratings that visitors can see on the page.', 'launch-builder' ),
+			__( 'Areas served: Rank Math has no setting for it, so Launch Builder adds it to your schema itself.', 'launch-builder' ),
+			__( 'License numbers and years in business: Rank Math has no matching setting. Its Additional Info list (legal name, founding date, tax ID, number of employees) stays yours too, because Business Info has no field that means the same.', 'launch-builder' ),
+			__( 'Your X (Twitter) username for share cards: the profile link goes in as a profile, but the username box stays yours.', 'launch-builder' ),
+			__( 'The Google Maps key, the About page, the website name and Rank Math\'s own display options.', 'launch-builder' ),
+		];
+	}
+
+	/** Rank Math's business type key for Business Info's value ('Plumber'), or '' when Rank Math has no such type. */
+	public static function rm_business_type( string $t ): string {
+		return self::business_type( $t );
+	}
+
+	/** Rank Math's business types as key => label (empty without Rank Math). */
+	public static function rm_business_types(): array {
+		if ( ! class_exists( '\RankMath\Helper' ) || ! method_exists( '\RankMath\Helper', 'choices_business_types' ) ) {
+			return [];
+		}
+		return array_map( 'strval', (array) \RankMath\Helper::choices_business_types() );
+	}
+
+	/** A short human text for a Rank Math setting value (the preview table). */
+	private static function business_show( string $key, $v ): string {
+		if ( null === $v || '' === $v || [] === $v ) {
+			return '';
+		}
+		switch ( $key ) {
+			case 'local_address':
+				return is_array( $v ) ? implode( ', ', array_filter( array_map( 'strval', array_values( $v ) ), 'strlen' ) ) : (string) $v;
+			case 'opening_hours':
+				return self::show_hours( $v );
+			case 'phone_numbers':
+				$out = [];
+				foreach ( (array) $v as $r ) {
+					$r = (array) $r;
+					$n = (string) ( $r['number'] ?? '' );
+					if ( '' !== $n ) {
+						$out[] = $n . ( ! empty( $r['type'] ) ? ' (' . $r['type'] . ')' : '' );
+					}
+				}
+				return implode( ', ', $out );
+			case 'social_additional_profiles':
+				return implode( ', ', array_filter( array_map( 'trim', (array) preg_split( '/\r\n|\r|\n/', (string) $v ) ) ) );
+			case 'knowledgegraph_logo':
+				return wp_basename( (string) $v );
+			case 'knowledgegraph_logo_id':
+				return '';
+			case 'local_seo_contact_page':
+				$title = (int) $v ? get_the_title( (int) $v ) : '';
+				return '' !== $title ? $title . ' (#' . (int) $v . ')' : (string) $v;
+		}
+		return is_scalar( $v ) ? (string) $v : (string) wp_json_encode( $v );
+	}
+
+	/** Opening hours rows as text: "Mon–Fri 08:00-18:00; Sat 09:00-14:00". */
+	private static function show_hours( $rows ): string {
+		if ( ! is_array( $rows ) ) {
+			return '';
+		}
+		$order = [ 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' ];
+		$by = [];
+		foreach ( $rows as $r ) {
+			$r = (array) $r;
+			$t = (string) ( $r['time'] ?? '' );
+			$i = array_search( (string) ( $r['day'] ?? '' ), $order, true );
+			if ( '' !== $t && false !== $i ) {
+				$by[ $t ][] = (int) $i;
+			}
+		}
+		$parts = [];
+		foreach ( $by as $t => $days ) {
+			sort( $days );
+			$runs = [];
+			foreach ( $days as $i ) {
+				$last = count( $runs ) - 1;
+				if ( $last >= 0 && end( $runs[ $last ] ) === $i - 1 ) {
+					$runs[ $last ][] = $i;
+				} else {
+					$runs[] = [ $i ];
+				}
+			}
+			$labels = [];
+			foreach ( $runs as $run ) {
+				$a = substr( $order[ $run[0] ], 0, 3 );
+				$b = substr( $order[ end( $run ) ], 0, 3 );
+				$labels[] = count( $run ) >= 3 ? $a . '–' . $b : implode( ', ', array_map( static function ( $i ) use ( $order ) { return substr( $order[ $i ], 0, 3 ); }, $run ) );
+			}
+			$parts[] = implode( ', ', $labels ) . ' ' . $t;
+		}
+		return implode( '; ', $parts );
+	}
+
+	/**
+	 * Every Business Info setting in Rank Math with what it holds now, what Business Info would put there and what would
+	 * happen: one row per business_map() entry.
+	 *   status  match (same already) | fill (empty or Rank Math's own starting value) | update (Launch Builder's earlier
+	 *           value, Business Info changed since) | yours (set in Rank Math, kept unless forced) | empty (Business Info
+	 *           has nothing for it yet)
+	 *   action  write | keep | none
+	 *
+	 * @param string[] $force 'titles.key' or 'all' (the same list sync-seo takes)
+	 */
+	public static function business_rows( array $force = [] ): array {
+		$raw = self::raw_option( self::RM_OPTIONS['titles'] );
+		$want = self::rm_desired( 'business' )['titles'];
+		$fields = Company::fields();
+		$res = Company::resolve();
+		$rank = [ 'empty' => 0, 'match' => 1, 'fill' => 2, 'update' => 3, 'yours' => 4 ];
+		$rows = [];
+		foreach ( self::business_map() as $id => $m ) {
+			$status = 'empty';
+			$writes = [];
+			$keeps = [];
+			foreach ( $m['keys'] as $key ) {
+				if ( ! array_key_exists( $key, $want ) ) {
+					continue;
+				}
+				$st = self::key_state( 'titles', $key, $raw, $want[ $key ] );
+				$coarse = in_array( $st, [ 'edited', 'own' ], true ) ? 'yours' : $st;
+				if ( $rank[ $coarse ] > $rank[ $status ] ) {
+					$status = $coarse;
+				}
+				if ( 'fill' === $st || 'update' === $st || ( 'yours' === $coarse && ( in_array( 'all', $force, true ) || in_array( 'titles.' . $key, $force, true ) ) ) ) {
+					$writes[] = $key;
+				} elseif ( 'yours' === $coarse ) {
+					$keeps[] = $key;
+				}
+			}
+			$from = [];
+			foreach ( $m['from'] as $k ) {
+				if ( isset( $res[ $k ], $fields[ $k ] ) && 'default' !== $res[ $k ]['from'] && '' !== trim( (string) $res[ $k ]['value'] ) ) {
+					$from[] = [ 'key' => $k, 'label' => (string) $fields[ $k ][0] ];
+				}
+			}
+			$main = $m['keys'][0];
+			$rows[] = [
+				'id'        => (string) $id,
+				'label'     => (string) $m['label'],
+				'keys'      => $m['keys'],
+				'from'      => $from,
+				'from_text' => (string) $m['from_text'],
+				'status'    => $status,
+				'action'    => $writes ? 'write' : ( $keeps ? 'keep' : 'none' ),
+				'writes'    => $writes,
+				'keeps'     => $keeps,
+				'current'   => self::business_show( $main, $raw[ $main ] ?? null ),
+				'wanted'    => array_key_exists( $main, $want ) ? self::business_show( $main, $want[ $main ] ) : '',
+				'by'        => 'yours' === $status ? ( self::edited_since_write( $m['keys'] ) ? 'edited' : 'own' ) : '',
+			];
+		}
+		return $rows;
+	}
+
+	/** Did Launch Builder write one of these keys before (so a different value now is a change somebody made in Rank Math)? */
+	private static function edited_since_write( array $keys ): bool {
+		foreach ( $keys as $key ) {
+			if ( null !== Ledger::get( self::ledger_key( 'titles', $key ) ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Expand the force list the screen and tools send: row ids and 'titles.key' names become 'titles.key', or 'all'. */
+	private static function business_force( array $force ): array {
+		$map = self::business_map();
+		$out = [];
+		foreach ( $force as $f ) {
+			$f = (string) $f;
+			if ( 'all' === $f ) {
+				return [ 'all' ];
+			}
+			if ( isset( $map[ $f ] ) ) {
+				foreach ( $map[ $f ]['keys'] as $k ) {
+					$out[] = 'titles.' . $k;
+				}
+			} elseif ( 0 === strpos( $f, 'titles.' ) && in_array( substr( $f, 7 ), self::BUSINESS_KEYS, true ) ) {
+				$out[] = $f;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * Preview or write the Business Info settings in Rank Math (the Business Info screen's Rank Math card, fill-rank-math).
+	 * A dry run (the default) writes nothing. A real run takes a snapshot, writes only what Launch Builder may (see
+	 * key_state), records what it wrote and what it replaced so undo_business_fill() can put it back.
+	 *
+	 * @param array $args { dry_run: bool (default true), force: string[] (row ids, 'titles.key' or 'all'), local_seo: ?bool }
+	 */
+	public static function business_sync( array $args = [] ): array {
+		$dry = ! array_key_exists( 'dry_run', $args ) || ! empty( $args['dry_run'] );
+		$force = self::business_force( array_map( 'strval', (array) ( $args['force'] ?? [] ) ) );
+		$local = array_key_exists( 'local_seo', $args ) && null !== $args['local_seo'] ? (bool) $args['local_seo'] : null;
+		$out = [ 'active' => self::rm_active(), 'ready' => self::rm_ready(), 'version' => self::rm_version(), 'dry_run' => $dry, 'local_seo' => [ 'on' => self::rm_module( 'local-seo' ), 'change' => null ], 'rows' => [], 'counts' => [], 'changes' => [], 'kept' => [], 'warnings' => [], 'cannot' => self::business_cannot() ];
+		if ( ! $out['active'] ) {
+			$out['warnings'][] = __( 'Rank Math is not active on this site, so there is nothing to fill. When it is turned on, Business Info fills it automatically.', 'launch-builder' );
+			return $out;
+		}
+		$before = [ 'raw' => self::raw_option( self::RM_OPTIONS['titles'] ), 'owned' => (array) get_option( self::OPT_OWNED, [] ), 'module' => self::rm_module( 'local-seo' ), 'ledger' => [] ];
+		foreach ( self::BUSINESS_KEYS as $k ) {
+			$before['ledger'][ self::ledger_key( 'titles', $k ) ] = Ledger::get( self::ledger_key( 'titles', $k ) );
+		}
+		$r = self::rank_math_settings( [ 'scope' => 'business', 'dry_run' => $dry, 'force' => $force, 'local_seo' => $local, 'label' => 'fill-rank-math' ] );
+		$out['changes'] = $r['changes'];
+		$out['kept'] = $r['kept'];
+		$out['warnings'] = $r['warnings'];
+		$out['via'] = $r['via'];
+		if ( ! empty( $r['snapshot'] ) ) {
+			$out['snapshot'] = $r['snapshot'];
+		}
+		foreach ( (array) $r['modules'] as $m ) {
+			if ( 'local-seo' === $m['module'] ) {
+				$out['local_seo']['change'] = $m['new'] ? 'on' : 'off';
+			}
+		}
+		if ( ! $dry && ( $r['changes'] || $r['modules'] ) && ! empty( $r['snapshot'] ) ) {
+			$keys = [];
+			$was = [];
+			foreach ( $r['changes'] as $c ) {
+				$k = substr( (string) $c['key'], 7 ); // After "titles.".
+				$keys[] = $k;
+				$was[ $k ] = array_key_exists( $k, $before['raw'] ) ? [ 'v' => $before['raw'][ $k ] ] : null;
+			}
+			update_option( self::OPT_FILL, [
+				'time'     => time(),
+				'user'     => get_current_user_id(),
+				'snapshot' => (string) $r['snapshot'],
+				'keys'     => $keys,
+				'before'   => $was,
+				'ledger'   => array_intersect_key( $before['ledger'], array_flip( array_map( static function ( $k ) { return self::ledger_key( 'titles', $k ); }, $keys ) ) ),
+				'owned'    => $before['owned'],
+				'module'   => $out['local_seo']['change'] ? [ 'local-seo' => $before['module'] ] : [],
+			], false );
+		}
+		$out['rows'] = self::business_rows( $force );
+		foreach ( [ 'match', 'fill', 'update', 'yours', 'empty' ] as $st ) {
+			$out['counts'][ $st ] = count( array_filter( $out['rows'], static function ( $row ) use ( $st ) { return $st === $row['status']; } ) );
+		}
+		$out['last_fill'] = self::last_fill();
+		return $out;
+	}
+
+	/** The last fill that can still be undone: { time, user, snapshot, keys } or null. */
+	public static function last_fill(): ?array {
+		$rec = get_option( self::OPT_FILL, null );
+		if ( ! is_array( $rec ) || empty( $rec['keys'] ) ) {
+			return null;
+		}
+		return [ 'time' => (int) ( $rec['time'] ?? 0 ), 'user' => (int) ( $rec['user'] ?? 0 ), 'snapshot' => (string) ( $rec['snapshot'] ?? '' ), 'keys' => array_values( (array) $rec['keys'] ) ];
+	}
+
+	/**
+	 * Put back what the last fill replaced. A setting somebody changed in Rank Math since the fill is left as it is.
+	 *
+	 * @return array|\WP_Error { reverted: string[], left: string[], local_seo: ?string }
+	 */
+	public static function undo_business_fill() {
+		$rec = get_option( self::OPT_FILL, null );
+		if ( ! is_array( $rec ) || empty( $rec['before'] ) || ! is_array( $rec['before'] ) ) {
+			return new \WP_Error( 'lb_nothing', __( 'There is no Rank Math fill to undo.', 'launch-builder' ), [ 'status' => 404 ] );
+		}
+		if ( ! self::rm_active() ) {
+			return new \WP_Error( 'lb_rm_off', __( 'Rank Math is not active, so there is nothing to put back.', 'launch-builder' ), [ 'status' => 409 ] );
+		}
+		$out = [ 'reverted' => [], 'left' => [], 'local_seo' => null ];
+		self::$raw = true;
+		self::$writing = true;
+		try {
+			$raw = self::raw_option( self::RM_OPTIONS['titles'] );
+			foreach ( $rec['before'] as $key => $b ) {
+				$key = (string) $key;
+				if ( ! in_array( $key, self::BUSINESS_KEYS, true ) || ! array_key_exists( $key, $raw ) ) {
+					continue;
+				}
+				if ( Ledger::is_edited( self::ledger_key( 'titles', $key ), Ledger::hash_value( $raw[ $key ] ) ) ) {
+					$out['left'][] = $key; // Changed in Rank Math after the fill: not ours to undo.
+					continue;
+				}
+				if ( is_array( $b ) && array_key_exists( 'v', $b ) ) {
+					$raw[ $key ] = $b['v'];
+				} else {
+					unset( $raw[ $key ] );
+				}
+				$out['reverted'][] = $key;
+			}
+			update_option( self::RM_OPTIONS['titles'], $raw );
+			if ( isset( $rec['module']['local-seo'] ) && self::rm_module( 'local-seo' ) !== (bool) $rec['module']['local-seo'] ) {
+				self::rm_write( [], [ 'local-seo' => (bool) $rec['module']['local-seo'] ] );
+				$out['local_seo'] = $rec['module']['local-seo'] ? 'on' : 'off';
+			}
+		} finally {
+			self::$writing = false;
+			self::$raw = false;
+		}
+		foreach ( (array) ( $rec['ledger'] ?? [] ) as $lk => $row ) {
+			if ( ! is_array( $row ) ) {
+				Ledger::forget( (string) $lk );
+			} else {
+				Ledger::record( (string) $lk, (string) $row['type'], $row['id'], (string) $row['hash'], (string) $row['status'] );
+			}
+		}
+		$written = array_values( array_intersect( array_map( 'strval', array_keys( $rec['before'] ) ), $out['reverted'] ) );
+		$owned = array_values( array_diff( (array) get_option( self::OPT_OWNED, [] ), $written ) );
+		self::set_owned( array_merge( $owned, array_intersect( (array) ( $rec['owned'] ?? [] ), $written ) ) );
+		delete_option( self::OPT_FILL );
+		self::rm_reset();
+		self::flush_identity();
+		Cache::purge_later();
+		return $out;
 	}
 
 	/* ------------------------------------------------------------------ the sync (settings + Kadence + pages) */
@@ -2075,19 +2545,26 @@ final class Compat {
 		if ( null === $by ) {
 			return [];
 		}
+		[ $kind, $sub ] = self::mb_target( $object_type );
+		$memo = 'allowed:' . $kind . ':' . $sub; // Every {{meta.*}} token asks, so keep the answer for the request.
+		if ( isset( self::$mb[ $memo ] ) ) {
+			return self::$mb[ $memo ];
+		}
 		$out = [];
 		foreach ( $by as $id => $f ) {
 			$f = (array) $f;
 			$type = (string) ( $f['type'] ?? 'text' );
 			$id = (string) ( $f['id'] ?? $id );
-			if ( '' === $id || in_array( $type, [ 'password', 'heading', 'divider', 'custom_html', 'button', 'tab', 'hidden', 'sidebar', 'background' ], true ) || preg_match( '/(pass|secret|token|salt|_key$|api_?key|private|licen[sc]e|credential)/i', $id ) ) {
-				continue;
+			if ( '' === $id || in_array( $type, [ 'password', 'heading', 'divider', 'custom_html', 'button', 'tab', 'hidden', 'sidebar', 'background' ], true ) || preg_match( '/(pass|secret|token|salt|_key$|api_?key|private|licen[sc]e_?(key|code)|credential)/i', $id ) ) {
+				continue; // A license number is a fact to show; a license key is a secret.
 			}
 			$list = ! empty( $f['clone'] ) || ! empty( $f['multiple'] ) || in_array( $type, [ 'checkbox_list', 'image_advanced', 'file_advanced', 'image', 'file', 'image_upload', 'file_upload', 'video', 'autocomplete', 'key_value', 'group', 'fieldset_text' ], true );
 			if ( in_array( $type, [ 'wysiwyg', 'oembed', 'map', 'osm' ], true ) ) {
 				$contexts = [ 'html' ];
-			} elseif ( in_array( $type, [ 'url', 'single_image', 'file_input', 'post', 'taxonomy', 'taxonomy_advanced', 'user' ], true ) && ! $list ) {
+			} elseif ( in_array( $type, [ 'url', 'single_image', 'file_input' ], true ) && ! $list ) {
 				$contexts = [ 'html', 'attr', 'text', 'url' ];
+			} elseif ( in_array( $type, [ 'image_advanced', 'image', 'image_upload', 'file_advanced', 'file', 'file_upload', 'video' ], true ) ) {
+				$contexts = [ 'html', 'attr', 'text', 'url' ]; // A picture or file list gives the address of its first file.
 			} elseif ( in_array( $type, [ 'group', 'key_value', 'fieldset_text' ], true ) ) {
 				$contexts = [];
 			} else {
@@ -2107,24 +2584,37 @@ final class Compat {
 				'shape'    => $list ? 'list' : 'scalar',
 			];
 		}
+		if ( did_action( 'init' ) && ! doing_action( 'init' ) ) {
+			self::$mb[ $memo ] = $out;
+		}
 		return $out;
 	}
 
 	/**
-	 * Does Meta Box register field $id for this post type? (Entries' Card details box yields to it, so only one editor
-	 * owns the value.) Any registered field counts, whatever its type.
+	 * Does Meta Box (or the launch_builder_field_owned_elsewhere filter) own field $id for this post type? One answer for
+	 * the Card details box and for get-compat: this asks Entries::meta_box_owns(), the check the box itself uses. Any
+	 * registered field counts, whatever its type.
 	 */
 	public static function mb_owns_field( string $post_type, string $id ): bool {
-		$by = self::mb_registry( $post_type );
-		if ( ! $by ) {
-			return false;
+		return Entries::meta_box_owns( $id, $post_type );
+	}
+
+	/**
+	 * Meta Box in one place, for get-compat and the admin Compatibility card: whether it is on, its version, the allowed
+	 * token fields per type (id, type) and which Card details fields it owns.
+	 *
+	 * @return array{active:bool,version:string,fields:array<string,array>,owns_card_fields:array<string,bool>}
+	 */
+	public static function mb_status(): array {
+		$out = [ 'active' => self::mb_active(), 'version' => defined( 'RWMB_VER' ) ? (string) RWMB_VER : '', 'fields' => [], 'owns_card_fields' => [] ];
+		if ( ! $out['active'] ) {
+			return $out;
 		}
-		foreach ( $by as $fid => $f ) {
-			if ( (string) ( ( (array) $f )['id'] ?? $fid ) === $id ) {
-				return true;
-			}
+		foreach ( [ Entries::SERVICE, Entries::AREA, 'page' ] as $pt ) {
+			$out['fields'][ $pt ] = array_values( array_map( static function ( $f ) { return [ 'id' => $f['id'], 'type' => $f['type'], 'shape' => $f['shape'], 'contexts' => $f['contexts'] ]; }, self::mb_fields_for( $pt ) ) );
 		}
-		return false;
+		$out['owns_card_fields'] = array_filter( [ '_lb_summary' => self::mb_owns_field( Entries::SERVICE, '_lb_summary' ), '_lb_icon' => self::mb_owns_field( Entries::SERVICE, '_lb_icon' ), '_lb_services' => self::mb_owns_field( Entries::AREA, '_lb_services' ) ] );
+		return $out;
 	}
 
 	/** Raw Meta Box fields for an object type (field id => settings), or null when unavailable yet. */
@@ -2287,7 +2777,7 @@ final class Compat {
 				$out[] = self::finding( 'warning', sprintf( __( 'Rank Math setting %1$s is %2$s (services/areas sitemap, schema or knowledge graph).', 'launch-builder' ), $r['key'], $r['status'] ), 'Run sync-seo.', 'option', $r['key'] );
 			} elseif ( 'kept_edit' === $r['status'] ) {
 				/* translators: %s: setting key */
-				$out[] = self::finding( 'info', sprintf( __( 'Rank Math setting %s was changed in Rank Math after Launch Builder set it; it is kept.', 'launch-builder' ), $r['key'] ), 'sync-seo with force ["' . $r['key'] . '"] restores the Launch Builder value.', 'option', $r['key'] );
+				$out[] = self::finding( 'info', sprintf( __( 'Rank Math setting %s holds a value set in Rank Math, so Launch Builder keeps it.', 'launch-builder' ), $r['key'] ), 'sync-seo with force ["' . $r['key'] . '"] restores the Launch Builder value.', 'option', $r['key'] );
 			}
 		}
 		return $out;
@@ -2408,6 +2898,7 @@ final class Compat {
 					'to_sync'        => $st['to_sync'],
 					'kept_edits'     => $st['kept'],
 					'overlay_keys'   => array_values( (array) get_option( self::OPT_OWNED, [] ) ),
+					'last_fill'      => self::last_fill(),
 					'templates'      => self::templates() + array_diff_key( self::DEFAULT_TEMPLATES, self::templates() ),
 					'indexnow'       => [ 'suppressed_now' => self::indexing_suppressed(), 'suppressed' => get_option( self::OPT_INDEXNOW, [ 'count' => 0 ] ) ],
 					'breadcrumbs_on' => current_theme_supports( 'rank-math-breadcrumbs' ) || 'on' === ( self::raw_option( self::RM_OPTIONS['general'] )['breadcrumbs'] ?? '' ),
@@ -2420,12 +2911,9 @@ final class Compat {
 			$out['kadence'] = Plugin::kadence_theme_active() ? [ 'microdata' => (bool) apply_filters( 'kadence_microdata', true, 'launch-builder-report' ), 'load_fonts_local' => (bool) get_theme_mod( 'load_fonts_local', false ) ] : [ 'active' => false ];
 		}
 		if ( $all || 'meta_box' === $section ) {
-			$mb = [ 'active' => self::mb_active(), 'version' => defined( 'RWMB_VER' ) ? (string) RWMB_VER : '' ];
-			if ( $mb['active'] ) {
-				foreach ( [ Entries::SERVICE, Entries::AREA, 'page' ] as $pt ) {
-					$mb['fields'][ $pt ] = array_values( array_map( static function ( $f ) { return [ 'id' => $f['id'], 'type' => $f['type'], 'shape' => $f['shape'], 'contexts' => $f['contexts'] ]; }, self::mb_fields_for( $pt ) ) );
-				}
-				$mb['owns_card_fields'] = array_filter( [ '_lb_summary' => self::mb_owns_field( Entries::SERVICE, '_lb_summary' ), '_lb_icon' => self::mb_owns_field( Entries::SERVICE, '_lb_icon' ), '_lb_services' => self::mb_owns_field( Entries::AREA, '_lb_services' ) ] );
+			$mb = self::mb_status();
+			if ( ! $mb['active'] ) {
+				unset( $mb['fields'], $mb['owns_card_fields'] ); // Same shape as before: just active and version.
 			}
 			$out['meta_box'] = $mb;
 		}
@@ -2463,6 +2951,32 @@ final class Compat {
 			return new \WP_Error( 'lb_seo', $r['error'], [ 'status' => 400 ] );
 		}
 		return $r;
+	}
+
+	public static function fill_rank_math_tool( $input = [] ) {
+		$input = (array) $input;
+		if ( isset( $input['force'] ) && ! is_array( $input['force'] ) ) {
+			return new \WP_Error( 'lb_force', 'force must be a list.', [ 'status' => 400 ] );
+		}
+		$undo = ! empty( $input['undo'] );
+		$dry = ! $undo && ( ! array_key_exists( 'dry_run', $input ) || ! empty( $input['dry_run'] ) );
+		if ( ! $dry && ! Lock::acquire( 'sync', 120 ) ) {
+			return new \WP_Error( 'lb_locked', 'Another sync is running; try again in a minute.', [ 'status' => 409 ] );
+		}
+		try {
+			if ( $undo ) {
+				return self::undo_business_fill();
+			}
+			$args = [ 'dry_run' => $dry, 'force' => (array) ( $input['force'] ?? [] ) ];
+			if ( array_key_exists( 'local_seo', $input ) ) {
+				$args['local_seo'] = (bool) $input['local_seo'];
+			}
+			return self::business_sync( $args );
+		} finally {
+			if ( ! $dry ) {
+				Lock::release( 'sync' );
+			}
+		}
 	}
 
 	public static function preview_seo_tool( $input = [] ) {

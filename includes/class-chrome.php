@@ -33,6 +33,12 @@ defined( 'ABSPATH' ) || exit;
  * marked pruned_by_lb); a slot with a design that failed to compile is never pruned and its failing roles keep what they
  * had (compile_failed is reported, e.g. pattern slugs that do not exist yet).
  *
+ * Names: the Element, the synced pattern and the block header of a group share one title, "Launch Builder · {slot} · {page
+ * types}" (title()), so the Elements list reads as an outline. The ledger row remembers the title LB wrote: a later apply
+ * renames the posts while the title is still that one (or, for a row from before titles were tracked, the old machine
+ * label) and never a title a person changed; force takes LB's title back. Keys and slugs never change. Chrome_Admin shows
+ * the same names and page types on the Elements screens.
+ *
  * Runtime: kadence_element_display (role check, _lb_hero, single-winner guard per slot, LB elements off in patterns
  * mode), the patterns-mode renderer (remove_action of the theme's own callbacks, never CSS hiding), the layout policy on
  * kadence_post_layout, the entry template filter and the theme's title-bar crumbs guard (class Breadcrumbs).
@@ -114,6 +120,43 @@ final class Chrome {
 
 	/** Kadence Pro hook => chrome slot, for elements LB did not compile (legacy element-* ones, foreign ones). */
 	const HOOK_SLOTS = [ 'replace_header' => 'header', 'replace_hero_header' => 'hero', 'replace_single_content' => 'template', 'replace_archive_content' => 'template', 'replace_404' => 'notfound_body', 'replace_footer' => 'footer', 'kadence_before_footer' => 'before_footer', 'fixed_on_footer' => 'sticky_bar' ];
+
+	/** Plain slot names for post titles and the Elements screens (the Design hub words them the same way). */
+	const SLOT_NAMES = [
+		'header'        => 'Header',
+		'notice'        => 'Notice bar',
+		'hero'          => 'Hero',
+		'crumbs'        => 'Breadcrumbs',
+		'template'      => 'Page template',
+		'notfound_body' => '404 content',
+		'before_footer' => 'Before the footer',
+		'footer'        => 'Footer',
+		'sticky_bar'    => 'Sticky call bar',
+	];
+
+	/**
+	 * Page types in plain words, in the order the Design hub lists them: role => [ name, short name ]. The short name reads
+	 * in "all pages except ..." (never a raw role key such as services_hub).
+	 */
+	const ROLE_NAMES = [
+		'home'         => [ 'Home page', 'home' ],
+		'page'         => [ 'Standard pages', 'standard' ],
+		'service'      => [ 'Service pages', 'service' ],
+		'area'         => [ 'Service area pages', 'service area' ],
+		'category'     => [ 'Service category pages', 'category' ],
+		'services_hub' => [ 'Services hub page', 'services hub' ],
+		'areas_hub'    => [ 'Service areas hub page', 'areas hub' ],
+		'conversion'   => [ 'Conversion pages', 'conversion' ],
+		'thanks'       => [ 'Thank-you pages', 'thank-you' ],
+		'legal'        => [ 'Legal pages', 'legal' ],
+		'post'         => [ 'Blog posts', 'blog post' ],
+		'blog'         => [ 'Blog and archive pages', 'blog' ],
+		'search'       => [ 'Search results', 'search' ],
+		'notfound'     => [ '404 page', '404' ],
+	];
+
+	/** Every Launch Builder title starts like this, so the Elements list reads as one outline. */
+	const TITLE_PREFIX = 'Launch Builder · ';
 
 	/** Native rule(s) that select each role (a superset; the display filter decides exactly). */
 	const ROLE_RULES = [
@@ -283,6 +326,122 @@ final class Chrome {
 	/** Roles chrome serves (every role but 'other'). @return string[] */
 	public static function roles(): array {
 		return array_values( array_diff( array_keys( Roles::ROLES ), [ 'other' ] ) );
+	}
+
+	/* ================================================================== names (post titles, Elements screens) */
+
+	/** The plain name of a slot ("Hero", "Breadcrumbs"). */
+	public static function slot_name( string $slot ): string {
+		return self::SLOT_NAMES[ $slot ] ?? ucfirst( str_replace( '_', ' ', $slot ) );
+	}
+
+	/** Page types a slot can serve at all (a template is for services and areas, the 404 body for the 404 page). @return string[] */
+	private static function slot_roles( string $slot ): array {
+		if ( 'template' === $slot ) {
+			return [ 'service', 'area' ];
+		}
+		return 'notfound_body' === $slot ? [ 'notfound' ] : self::roles();
+	}
+
+	/**
+	 * Names in a sentence: "A", "A and b", "A, b and c". When every name ends in "pages" only the last keeps the word
+	 * ("Conversion and thank-you pages").
+	 *
+	 * @param string[] $names
+	 */
+	private static function join_names( array $names ): string {
+		$names = array_values( $names );
+		$n = count( $names );
+		if ( $n > 1 && ! array_filter( $names, static function ( $x ) { return ' pages' !== substr( $x, -6 ); } ) ) {
+			for ( $i = 0; $i < $n - 1; $i++ ) {
+				$names[ $i ] = substr( $names[ $i ], 0, -6 );
+			}
+		}
+		foreach ( $names as $i => $x ) {
+			$names[ $i ] = 0 === $i ? $x : lcfirst( $x );
+		}
+		return 1 === $n ? $names[0] : implode( ', ', array_slice( $names, 0, -1 ) ) . ' and ' . $names[ $n - 1 ];
+	}
+
+	/**
+	 * The page types a design covers, in plain words: "Service pages", "Conversion and thank-you pages", "All pages except
+	 * conversion". brief true is the shorter form for post titles: the breadcrumb bar and the notice bar are one design
+	 * for the site, so they read "All pages" whenever nearly every page type uses them (the Used for column keeps the
+	 * exact list).
+	 *
+	 * @param string[] $roles
+	 */
+	public static function page_types( string $slot, array $roles, bool $brief = false ): string {
+		$all = self::slot_roles( $slot );
+		$have = array_values( array_intersect( array_keys( self::ROLE_NAMES ), array_map( 'strval', $roles ) ) );
+		$n = count( $have );
+		if ( ! $n ) {
+			return 'No page types';
+		}
+		$missing = array_values( array_diff( array_intersect( array_keys( self::ROLE_NAMES ), $all ), $have ) );
+		if ( ! $missing && count( $all ) === count( self::roles() ) ) {
+			return 'All pages';
+		}
+		if ( $brief && $n >= 10 && in_array( $slot, [ 'crumbs', 'notice' ], true ) ) {
+			return 'All pages';
+		}
+		if ( $n >= 8 && $missing ) {
+			return 'All pages except ' . self::join_names( array_map( static function ( $r ) { return self::ROLE_NAMES[ $r ][1]; }, $missing ) );
+		}
+		return self::join_names( array_map( static function ( $r ) { return self::ROLE_NAMES[ $r ][0]; }, $have ) );
+	}
+
+	/**
+	 * The title Launch Builder gives a design's posts (the Kadence Element, the synced pattern, the block header): slot
+	 * first, then the page types, so the Elements list reads like an outline. English on purpose: it is stored data, and
+	 * the same title keeps the same post recognisable whatever language the admin uses.
+	 *
+	 * @param string[] $roles
+	 */
+	public static function title( string $slot, array $roles ): string {
+		return self::TITLE_PREFIX . self::slot_name( $slot ) . ' · ' . self::page_types( $slot, $roles, true );
+	}
+
+	/** Has a person edited this Launch Builder design post since LB wrote it? False for anything LB does not own. */
+	public static function edited( int $post_id ): bool {
+		$m = self::managed( $post_id );
+		if ( ! $m || 'design' !== $m['kind'] ) {
+			return false;
+		}
+		$lkey = self::ledger_key( $m['type'], $m['key'] );
+		return null !== Ledger::get( $lkey ) && Ledger::is_edited( $lkey, self::hash_of( $post_id, 'kadence_element' === $m['type'] ? self::KAD_META : [] ) );
+	}
+
+	/**
+	 * What a Kadence Element, synced pattern or block header is for, when Launch Builder manages it; null for any other post.
+	 * kind: design (Launch Builder made it for a group of page types), adopted (an element you already had, placed as it
+	 * was) or legacy (an element from an older Launch Builder that is not placed through the map).
+	 *
+	 * @return array{kind:string,type:string,key:string,slot:string,roles:string[],element:int,store:int}|null
+	 */
+	public static function managed( int $post_id ): ?array {
+		$type = (string) get_post_type( $post_id );
+		if ( ! in_array( $type, [ 'kadence_element', 'wp_block', 'kadence_header' ], true ) ) {
+			return null;
+		}
+		$key = (string) get_post_meta( $post_id, '_lb_key', true );
+		$slot = (string) get_post_meta( $post_id, '_lb_slot', true );
+		$roles = get_post_meta( $post_id, '_lb_roles', true );
+		$kind = '';
+		if ( 'kadence_element' === $type && '' !== $slot && metadata_exists( 'post', $post_id, '_lb_adopted' ) ) {
+			$kind = 'adopted';
+		} elseif ( 0 === strpos( $key, 'chrome-' ) && '' !== $slot ) {
+			$kind = 'design';
+		} elseif ( 'kadence_element' === $type && 0 === strpos( $key, 'element-' ) ) {
+			$kind = 'legacy';
+			$slot = self::HOOK_SLOTS[ (string) get_post_meta( $post_id, '_kad_element_hook', true ) ] ?? '';
+			$roles = '' === $slot ? [] : self::rules_roles( (array) json_decode( (string) get_post_meta( $post_id, '_kad_element_show_conditionals', true ), true ), (array) json_decode( (string) get_post_meta( $post_id, '_kad_element_hide_conditionals', true ), true ) );
+		}
+		if ( '' === $kind || ! isset( self::SLOTS[ $slot ] ) ) {
+			return null;
+		}
+		$g = (array) ( self::index()['slots'][ $slot ]['groups'][ $key ] ?? [] );
+		return [ 'kind' => $kind, 'type' => $type, 'key' => $key, 'slot' => $slot, 'roles' => array_values( array_map( 'strval', (array) $roles ) ), 'element' => (int) ( $g['element'] ?? ( 'kadence_element' === $type ? $post_id : 0 ) ), 'store' => (int) ( $g['store'] ?? ( 'kadence_element' === $type ? 0 : $post_id ) ) ];
 	}
 
 	/**
@@ -1312,12 +1471,12 @@ final class Chrome {
 	 * @return array|\WP_Error
 	 */
 	private static function write_group( string $slot, string $key, array $c, array $roles, int $order, array &$ctx, array &$r ) {
-		$label = 'Launch Builder chrome: ' . $slot . ' (' . implode( ', ', $roles ) . ')';
+		$label = self::title( $slot, $roles );
 		$entry = [ 'kind' => $c['kind'], 'roles' => $roles, 'store' => 0, 'element' => 0, 'flags' => (array) ( $c['flags'] ?? [] ), 'design' => $c['design'] ?? null ];
 		if ( ! empty( $c['extra']['expires'] ) ) {
 			$entry['expires'] = $c['extra']['expires'];
 		}
-		$row = [ 'key' => $key, 'slot' => $slot, 'roles' => $roles, 'kind' => $c['kind'] ];
+		$row = [ 'key' => $key, 'slot' => $slot, 'roles' => $roles, 'kind' => $c['kind'], 'title' => $label ];
 		if ( 'kept' === $c['kind'] ) { // A failing design: keep the previous group as it was, only its roles follow the map.
 			$entry = array_merge( (array) $c['prev'], [ 'roles' => $roles ] );
 			$row['kind'] = $entry['kind'] ?? 'kept';
@@ -1362,6 +1521,9 @@ final class Chrome {
 				update_post_meta( $entry['element'], '_lb_slot', $slot );
 				update_post_meta( $entry['element'], '_lb_roles', $roles );
 				update_post_meta( $entry['element'], '_lb_adopted', 1 );
+				if ( 'draft' === get_post_status( $entry['element'] ) ) { // Changed away and changed back (undo): the adopted element prints again.
+					wp_update_post( [ 'ID' => $entry['element'], 'post_status' => 'publish' ] );
+				}
 			}
 			$row['element'] = [ 'id' => $entry['element'], 'action' => 'adopted' ];
 		} elseif ( 'elements' === $ctx['mode'] && post_type_exists( 'kadence_element' ) ) {
@@ -1527,6 +1689,8 @@ final class Chrome {
 		}
 		if ( $p ) {
 			$id = (int) $p->ID;
+			// The title follows the page types the design covers, unless a person changed it (force takes LB's back).
+			$ours = $forced || self::title_is_ours( $lkey, (string) $p->post_title );
 			$edited = Ledger::is_edited( $lkey, self::hash_of( $id, $hash_keys ) );
 			if ( $edited && ! $forced ) {
 				$r['kept_edits'][] = [ 'key' => $key, 'type' => $type, 'id' => $id ];
@@ -1534,19 +1698,29 @@ final class Chrome {
 					wp_update_post( [ 'ID' => $id, 'post_status' => 'publish' ] );
 					Ledger::record( $lkey, $type, $id, (string) Ledger::get( $lkey )['hash'], 'publish' );
 				}
-				return [ 'id' => $id, 'action' => 'kept_edits' ];
+				$renamed = $ours && (string) $p->post_title !== $title;
+				if ( $renamed && ! $ctx['dry'] ) { // Only the name moves; the edited design and its hash stay as they are.
+					global $wpdb;
+					$wpdb->update( $wpdb->posts, [ 'post_title' => $title ], [ 'ID' => $id ] ); // The title only: wp_update_post() would run the content filters over the person's edited markup.
+					clean_post_cache( $id );
+					Ledger::record( $lkey, $type, $id, (string) Ledger::get( $lkey )['hash'], 'publish', $title );
+				}
+				return [ 'id' => $id, 'action' => 'kept_edits' ] + ( $renamed ? [ 'renamed' => true ] : [] );
 			}
 			$new = $rekey ? Unique_Ids::rekey( $content, $id, $key ) : $content;
 			if ( is_wp_error( $new ) ) {
 				return $new;
 			}
-			$same = (string) $p->post_content === $new && self::meta_same( $id, $meta ) && (string) $p->post_title === $title && ( $order <= 0 || (int) $p->menu_order === $order );
+			$same = (string) $p->post_content === $new && self::meta_same( $id, $meta ) && ( ! $ours || (string) $p->post_title === $title ) && ( $order <= 0 || (int) $p->menu_order === $order );
 			$action = $republish ? 'republish' : ( $same ? 'keep' : 'update' );
 			if ( $ctx['dry'] ) {
 				return [ 'id' => $id, 'action' => $action ];
 			}
 			if ( ! $same || $republish ) {
-				$args = [ 'ID' => $id, 'post_title' => $title, 'post_content' => wp_slash( $new ), 'post_status' => 'publish' ];
+				$args = [ 'ID' => $id, 'post_content' => wp_slash( $new ), 'post_status' => 'publish' ];
+				if ( $ours ) {
+					$args['post_title'] = wp_slash( $title );
+				}
 				if ( $order > 0 ) {
 					$args['menu_order'] = $order;
 				}
@@ -1557,13 +1731,14 @@ final class Chrome {
 				self::write_meta( $id, $meta );
 			}
 			update_post_meta( $id, '_lb_key', $key );
-			Ledger::record( $lkey, $type, $id, self::hash_of( $id, $hash_keys ), 'publish' );
+			Ledger::record( $lkey, $type, $id, self::hash_of( $id, $hash_keys ), 'publish', $ours ? $title : null );
 			return [ 'id' => $id, 'action' => $action ];
 		}
 		if ( $ctx['dry'] ) {
 			return [ 'id' => 0, 'action' => 'create' ];
 		}
-		$args = [ 'post_type' => $type, 'post_title' => $title, 'post_status' => $rekey ? 'draft' : 'publish', 'post_content' => $rekey ? '' : wp_slash( $content ) ];
+		// The address comes from the key, not the title (a title holds spaces and a middle dot, which make an ugly slug).
+		$args = [ 'post_type' => $type, 'post_title' => $title, 'post_name' => sanitize_title( 'launch-builder-' . preg_replace( '/^chrome-/', '', $key ) ), 'post_status' => $rekey ? 'draft' : 'publish', 'post_content' => $rekey ? '' : wp_slash( $content ) ];
 		if ( $order > 0 ) {
 			$args['menu_order'] = $order;
 		}
@@ -1585,8 +1760,20 @@ final class Chrome {
 			}
 		}
 		self::write_meta( $id, $meta );
-		Ledger::record( $lkey, $type, $id, self::hash_of( $id, $hash_keys ), 'publish' );
+		Ledger::record( $lkey, $type, $id, self::hash_of( $id, $hash_keys ), 'publish', $title );
 		return [ 'id' => $id, 'action' => 'create' ];
+	}
+
+	/**
+	 * May Launch Builder rename this post? Only while its title is still the one LB wrote (the ledger remembers it); a row
+	 * from before titles were tracked counts only when the title is exactly the old machine label.
+	 */
+	private static function title_is_ours( string $lkey, string $current ): bool {
+		$last = Ledger::title( $lkey );
+		if ( null !== $last ) {
+			return $current === $last;
+		}
+		return 1 === preg_match( '/^Launch Builder chrome: [a-z_]+ \([a-z_, ]*\)$/', $current );
 	}
 
 	private static function write_meta( int $id, array $meta ): void {
@@ -1707,9 +1894,21 @@ final class Chrome {
 	 */
 	private static function replace_legacy( array $index, array &$ctx, array &$r ): void {
 		$els = get_posts( [ 'post_type' => 'kadence_element', 'post_status' => 'publish', 'numberposts' => 100, 'meta_query' => [ [ 'key' => '_lb_key', 'value' => 'element-', 'compare' => 'LIKE' ] ], 'suppress_filters' => true ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
+		$adopted = [];
+		$walk = static function ( $v ) use ( &$walk, &$adopted ) { // An element the map adopts is in use: never draft it.
+			if ( is_array( $v ) ) {
+				if ( isset( $v['adopt'] ) ) {
+					$adopted[ (int) $v['adopt'] ] = true;
+				}
+				foreach ( $v as $x ) {
+					$walk( $x );
+				}
+			}
+		};
+		$walk( self::get() );
 		foreach ( $els as $p ) {
 			$slot = self::HOOK_SLOTS[ (string) get_post_meta( $p->ID, '_kad_element_hook', true ) ] ?? '';
-			if ( '' === $slot || ! isset( $index['slots'][ $slot ] ) || '' !== (string) get_post_meta( $p->ID, '_lb_slot', true ) ) {
+			if ( '' === $slot || ! isset( $index['slots'][ $slot ] ) || '' !== (string) get_post_meta( $p->ID, '_lb_slot', true ) || isset( $adopted[ (int) $p->ID ] ) ) {
 				continue;
 			}
 			$r['released'][] = [ 'key' => (string) get_post_meta( $p->ID, '_lb_key', true ), 'slot' => $slot, 'element' => (int) $p->ID, 'what' => 'legacy element drafted (replace_legacy)' ];
@@ -1770,14 +1969,15 @@ final class Chrome {
 				$kind = (string) ( $g['kind'] ?? '' );
 				$store_lkey = 'pattern' === $kind ? $key : ( 'header' === $kind ? self::ledger_key( 'kadence_header', $key ) : '' ); // synced/adopt stores are referenced, not owned.
 				$rows[] = [
-					'key'     => $key,
-					'kind'    => $kind,
-					'roles'   => $g['roles'] ?? [],
-					'design'  => $g['design'] ?? null,
-					'store'   => self::obj_status( (int) ( $g['store'] ?? 0 ), $store_lkey ),
-					'element' => empty( $g['element'] ) ? null : self::obj_status( (int) $g['element'], 'adopt' === $kind ? '' : self::ledger_key( 'kadence_element', $key ), self::KAD_META ),
-					'flags'   => $g['flags'] ?? [],
-					'expires' => $g['expires'] ?? null,
+					'key'      => $key,
+					'kind'     => $kind,
+					'roles'    => $g['roles'] ?? [],
+					'used_for' => self::page_types( (string) $slot, (array) ( $g['roles'] ?? [] ) ),
+					'design'   => $g['design'] ?? null,
+					'store'    => self::obj_status( (int) ( $g['store'] ?? 0 ), $store_lkey ),
+					'element'  => empty( $g['element'] ) ? null : self::obj_status( (int) $g['element'], 'adopt' === $kind ? '' : self::ledger_key( 'kadence_element', $key ), self::KAD_META ),
+					'flags'    => $g['flags'] ?? [],
+					'expires'  => $g['expires'] ?? null,
 				];
 			}
 			$failed = array_keys( array_filter( (array) ( $s['roles'] ?? [] ), static function ( $v ) { return 'failed' === $v; } ) );
@@ -1964,7 +2164,7 @@ final class Chrome {
 	}
 
 	public static function playbook( array &$pb ): void {
-		$pb['chrome'] = 'CHROME = the shared designs every page of a role gets: header, notice bar, hero, breadcrumbs, entry template (services/areas), 404 body, before-footer stack, footer, mobile sticky bar. One map says which design each role uses (get-chrome shows it; set-chrome changes and applies it). A design is a pattern slug, a stack of patterns, a synced pattern, "theme" (Kadence\'s own) or false. With Kadence Pro the designs are placed as Elements (one per design, holding a synced pattern), without Pro Launch Builder prints the same synced patterns. Pages never carry their own hero or breadcrumbs: a page whose content opens with its own hero has _lb_hero "content" (set-page-layout title "hide" does that), so the chrome hero and crumbs step aside.';
+		$pb['chrome'] = 'CHROME = the shared designs every page of a role gets: header, notice bar, hero, breadcrumbs, entry template (services/areas), 404 body, before-footer stack, footer, mobile sticky bar. One map says which design each role uses (get-chrome shows it; set-chrome changes and applies it). A design is a pattern slug, a stack of patterns, a synced pattern, "theme" (Kadence\'s own) or false. With Kadence Pro the designs are placed as Elements (one per design, holding a synced pattern), without Pro Launch Builder prints the same synced patterns. Page types that use the same design share one Element. Each Element and synced pattern is named "Launch Builder · part of the page · page types" (for example "Launch Builder · Hero · Service pages"), a name you change yourself is kept, and the Elements list has a Launch Builder view and a Used for column. Pages never carry their own hero or breadcrumbs: a page whose content opens with its own hero has _lb_hero "content" (set-page-layout title "hide" does that), so the chrome hero and crumbs step aside.';
 		$pb['tools_by_job']['Chrome'] = 'get-chrome, set-chrome';
 	}
 

@@ -1,0 +1,71 @@
+Review site logos used by the Rating widget
+=============================================
+
+Every file here holds the original vector shapes published by its source, listed below.
+Nothing was redrawn, traced or recoloured. Only three things were changed:
+  - the viewBox is set so each logo is centred with the same space around it inside the
+    round badge (the shapes themselves are untouched);
+  - editor metadata and unused attributes were removed;
+  - where a file also holds a wordmark (BBB, Nextdoor), only the symbol shapes are kept.
+
+All logos are trademarks of their owners. They are included only so a site can point to
+its own profile on that review site. If a logo needs to be replaced, keep the file name
+(google, facebook, yelp, bbb, angi, nextdoor, houzz, thumbtack) so saved blocks keep working.
+
+Files and sources (checked 2026-10-12)
+--------------------------------------
+
+google.svg     Flat four-colour "G" (blue #4285F4, green #34A853, yellow #FBBC05, red #EA4335).
+               Source:  https://commons.wikimedia.org/wiki/File:Google_%22G%22_logo.svg
+               Credit:  Google LLC (the Google icon file on google.com).
+               Licence: Public domain on Wikimedia Commons; trademark of Google LLC.
+               Note:    This is the 2015 version of the G. Google introduced a gradient version in 2025;
+                        no official vector file of that one was available.
+
+facebook.svg   The "f" in a circle, #0866FF.
+               Source:  Simple Icons 16.35.0, icons/facebook.svg
+                        https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/facebook.svg
+               Brand:   https://about.meta.com/brand/resources/facebook/logo
+               Licence: Simple Icons is CC0 1.0; the logo is a trademark of Meta Platforms, Inc.
+
+yelp.svg       The Yelp burst with the registered mark, #FF1A1A.
+               Source:  Simple Icons 16.35.0, icons/yelp.svg
+                        https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/yelp.svg
+               Brand:   https://www.yelp.com/brand
+               Licence: Simple Icons is CC0 1.0; the logo is a trademark of Yelp Inc.
+
+bbb.svg        The current Better Business Bureau mark (three stacked B shapes: #032160, #0055ca, #0077bf).
+               Source:  BBB's own logo file, linked from bbb.org:
+                        https://m.bbb.org/brand/logos/BBB_SecondaryLogo_Blue_RGB.svg
+               Kept:    the seven shapes that make the mark (the first seven shapes of that file). The
+                        "Better Business Bureau" lettering beside it is left out because it cannot be read
+                        at badge size. The mark matches the logo in the header of www.bbb.org.
+               Licence: No open licence; trademark of the Better Business Bureau.
+               Note:    The older BBB torch logo is not used: BBB no longer shows it.
+
+angi.svg       The Angi logo, coral #FC5647 with the darker fold #9B150A.
+               Source:  The logo in the page header of Angi's own pro sign-up page
+                        https://signup.angi.com/pro (inline SVG, copied unchanged).
+               Licence: No open licence; trademark of Angi Inc.
+
+nextdoor.svg   The Nextdoor house mark, #1B8751 (the house shape only, one path of the logo file).
+               Source:  https://about.nextdoor.com/hubfs/next-door-logo-color.svg
+                        (linked from https://about.nextdoor.com/nextdoor-brand-use-guidelines/)
+               Licence: No open licence; trademark of Nextdoor, Inc. See their brand use guidelines.
+
+houzz.svg      The Houzz "h", #4DBC15.
+               Source:  Simple Icons 16.35.0, icons/houzz.svg
+                        https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/houzz.svg
+               Brand:   https://www.houzz.com/logoGuidelines
+               Licence: Simple Icons is CC0 1.0; the logo is a trademark of Houzz Inc.
+
+thumbtack.svg  The Thumbtack tack in a circle, #009FD9.
+               Source:  Simple Icons 16.35.0, icons/thumbtack.svg
+                        https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/thumbtack.svg
+               Brand:   https://www.thumbtack.com/press/media-resources/
+               Licence: Simple Icons is CC0 1.0; the logo is a trademark of Thumbtack, Inc.
+
+Placement
+---------
+The widget shows each logo on a white circle, filling the circle (the space around the logo
+is part of the file). The editor lists the same files.

@@ -213,13 +213,16 @@ final class Branding_Client {
 		return $report;
 	}
 
-	/** Migration step (every plugin version): keep the role in line with the settings. */
+	/**
+	 * Migration step (every plugin version): keep the role in line with the settings. It answers in the shape Migrate
+	 * documents (done, report); any other shape is "not done", and the runner would call the step again and again.
+	 */
 	public static function migrate_role( $cursor = null, int $batch = 50 ) {
 		if ( Branding::active() && ! empty( Branding::section( 'client' )['role']['enabled'] ) ) {
 			$report = self::sync_role( Branding::settings(), Branding::settings() );
-			return [ true, null, $report ];
+			return [ 'done' => true, 'report' => $report ];
 		}
-		return [ true, null, [ 'skipped' => 'role not enabled' ] ];
+		return [ 'done' => true, 'report' => [ 'skipped' => 'role not enabled' ] ];
 	}
 
 	/** The role as it is now. @return array{exists:bool,label:string,user_count:int,caps_extra:string[],flags:array} */

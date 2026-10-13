@@ -67,6 +67,7 @@ final class Plugin {
 		Roles::class,       // page roles
 		Breadcrumbs::class, // breadcrumb trail
 		Chrome::class,      // per-role chrome map and placement
+		Chrome_Admin::class, // Elements and synced patterns lists and edit screens: Launch Builder view, Used for column, notes
 		Tokens::class,      // dynamic text engine
 		Style::class,       // design tokens and compiled CSS
 		Cache::class,       // coalesced page-cache purge (flushed before REST responses and redirects)

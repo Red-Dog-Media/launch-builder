@@ -10,8 +10,10 @@ defined( 'ABSPATH' ) || exit;
  * v2 attributes: type badge|card|pill|stars (stacked: legacy, render-only), useGlobal (Business Info, default false so
  * existing blocks keep their numbers), source ('' = overall, or a platform key of Business Info reviews[]), rating and
  * text (overrides), link (blank + a platform source = that platform's link), platforms (bundled round logos), size
- * sm|md|lg (md = the old defaults, sm = the old pill, lg = the old card), contentAlign, block styles
- * plain|soft|outline|dark|brand, the legacy media "logos" as custom logos.
+ * sm|md|lg (md = the old defaults, sm = the old pill, lg = the old card), contentAlign, phoneAlign auto|center|match
+ * (phones: auto centres the content inside a box and leaves a plain widget with the alignment around it, center centres
+ * the whole widget, match changes nothing), block styles plain|soft|outline|dark|brand, the legacy media "logos" as
+ * custom logos.
  *
  * Back-compat: every legacy attribute (LEGACY) is still declared with its old default, and render applies one only
  * when it is present in the block's parsed attributes (the editor never saves defaults), so default-only blocks follow
@@ -143,6 +145,7 @@ final class Rating {
 		$align = self::enum( $a['contentAlign'] ?? '', [ 'start', 'center', 'end' ], 'start' );
 		if ( 'start' !== $align ) {
 			$vars['--lbr-justify'] = [ 'center' => 'center', 'end' => 'flex-end' ][ $align ];
+			$vars['--lbr-ta'] = [ 'center' => 'center', 'end' => 'end' ][ $align ]; // The caption's text alignment when it sits on its own line.
 		}
 		$style = '';
 		foreach ( $vars as $k => $v ) {
@@ -163,6 +166,15 @@ final class Rating {
 		}
 		if ( $has( 'density' ) ) {
 			$classes[] = 'lb-rating--d-' . self::enum( $a['density'], [ 'compact', 'default', 'airy' ], 'default' );
+		}
+		// Phones: the default (content centred inside a box style) is decided by the stylesheet from the block style class, so
+		// the editor preview, which never receives className, shows it too. Only the two explicit choices add a class here.
+		$phone = $has( 'phoneAlign' ) ? self::enum( $a['phoneAlign'], [ 'auto', 'center', 'match' ], 'auto' ) : 'auto';
+		if ( 'center' === $phone ) {
+			$classes[] = 'lb-rating--phc';
+			$classes[] = 'lb-rating--phone-center';
+		} elseif ( 'match' === $phone ) {
+			$classes[] = 'lb-rating--ph-match';
 		}
 		if ( ! empty( $a['logoDivider'] ) && $has( 'logoDivider' ) ) {
 			$classes[] = 'lb-rating--divider';
@@ -361,7 +373,7 @@ final class Rating {
 	/* ------------------------------------------------------------------ module hooks */
 
 	public static function playbook( array &$pb ): void {
-		$pb['rating_widget'] = 'Rating widget (launch/rating): set useGlobal true so the numbers come from Business Info (set-company reviews[] per platform: rating, count, url; the overall rating is count-weighted). type badge|card|pill (the hero rating row: round logos, score and stars, caption below)|stars, size sm|md|lg, source "" (overall) or a platform key (google, facebook, yelp, bbb, angi, nextdoor, houzz, thumbtack: caption and link from that platform), platforms [keys] for the round overlapping logos, contentAlign, block styles plain|soft|outline|dark|brand. Colours follow the surrounding text, so it needs no colour settings on dark heroes. Without Business Info reviews it shows demo numbers (the audit flags them). Never type ratings or counts you were not given.';
+		$pb['rating_widget'] = 'Rating widget (launch/rating): set useGlobal true so the numbers come from Business Info (set-company reviews[] per platform: rating, count, url; the overall rating is count-weighted). type badge|card|pill (the hero rating row: round logos, score and stars, caption below)|stars, size sm|md|lg, source "" (overall) or a platform key (google, facebook, yelp, bbb, angi, nextdoor, houzz, thumbtack: caption and link from that platform), platforms [keys] for the round overlapping logos, contentAlign, phoneAlign auto (default: on phones the content is centred inside a boxed style) | center (the whole widget is centred) | match (no change on phones), block styles plain|soft|outline|dark|brand. Colours follow the surrounding text, so it needs no colour settings on dark heroes. Without Business Info reviews it shows demo numbers (the audit flags them). Never type ratings or counts you were not given.';
 	}
 
 	public static function audit_checks(): array {

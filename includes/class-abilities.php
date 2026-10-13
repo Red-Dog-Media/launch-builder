@@ -679,7 +679,7 @@ final class Abilities {
 		if ( ! empty( $rec['ledger_key'] ) ) {
 			$row = $rec['ledger_row'] ?? null;
 			if ( is_array( $row ) && isset( $row['type'], $row['hash'], $row['status'] ) ) {
-				Ledger::record( (string) $rec['ledger_key'], (string) $row['type'], $row['id'] ?? $id, (string) $row['hash'], (string) $row['status'] );
+				Ledger::record( (string) $rec['ledger_key'], (string) $row['type'], $row['id'] ?? $id, (string) $row['hash'], (string) $row['status'], (string) get_post_field( 'post_title', (int) ( $row['id'] ?? $id ) ) );
 				if ( ! empty( $row['pruned_by_lb'] ) ) {
 					Ledger::mark_pruned( (string) $rec['ledger_key'] );
 				}

@@ -65,7 +65,9 @@ final class Avatars {
 	const MIMES        = [ 'image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif' ];
 	const SIZES        = [ 192, 640 ];
 	const CHOICES      = [ 'initials', 'logo', 'silhouette', 'blank' ];
-	const DEFAULTS     = [ 'gravatar' => true, 'default' => 'initials', 'anchor' => 'top', 'self_service' => true ];
+	const PRESET_PREFIX = 'preset:'; // A default (or a choice) that names one of the ready-made pictures: preset:<slug>.
+	const META_PRESET  = '_lb_avatar_preset'; // A user's own pick among the ready-made pictures (a photo of their own wins over it).
+	const DEFAULTS     = [ 'gravatar' => true, 'default' => 'preset:launchlocal', 'anchor' => 'top', 'self_service' => true ];
 	const COLORS       = [ '#1d4ed8', '#047857', '#b91c1c', '#7e22ce', '#c2410c', '#0f766e', '#4338ca', '#be185d' ]; // White text >= 4.5:1 on each.
 
 	/** @var array|null settings, per request. */
@@ -117,6 +119,53 @@ final class Avatars {
 	}
 
 	/** @return array{gravatar:bool,default:string|int,anchor:string,self_service:bool} */
+	/**
+	 * The ready-made pictures that ship with the plugin, slug => [ label, url ]. Updates add more files under assets/avatars
+	 * and more entries here; other code can add its own with the launch_builder_avatar_presets filter (slug, label and a
+	 * file name under assets/avatars, or a full https URL).
+	 *
+	 * @return array<string,array{label:string,url:string}>
+	 */
+	public static function presets(): array {
+		$list = [
+			'launchlocal' => [ 'label' => __( 'LaunchLocal', 'launch-builder' ), 'file' => 'launchlocal.svg' ],
+		];
+		$list = (array) apply_filters( 'launch_builder_avatar_presets', $list );
+		$out = [];
+		foreach ( $list as $slug => $p ) {
+			$slug = is_string( $slug ) ? $slug : '';
+			if ( 1 !== preg_match( '/^[a-z0-9][a-z0-9-]{0,39}$/', $slug ) || ! is_array( $p ) ) {
+				continue;
+			}
+			$url = '';
+			if ( ! empty( $p['url'] ) && 0 === strpos( (string) $p['url'], 'https://' ) ) {
+				$url = esc_url_raw( (string) $p['url'], [ 'https' ] );
+			} elseif ( ! empty( $p['file'] ) && 1 === preg_match( '/^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/', (string) $p['file'] ) ) {
+				$url = LB_URL . 'assets/avatars/' . $p['file'];
+			}
+			if ( '' !== $url ) {
+				$out[ $slug ] = [ 'label' => sanitize_text_field( (string) ( $p['label'] ?? $slug ) ), 'url' => $url ];
+			}
+		}
+		return $out;
+	}
+
+	/** The slug of a ready-made picture from "preset:<slug>" or a bare slug; '' when there is no such picture. */
+	public static function preset_slug( string $value ): string {
+		$slug = 0 === strpos( $value, self::PRESET_PREFIX ) ? substr( $value, strlen( self::PRESET_PREFIX ) ) : $value;
+		return ( '' !== $slug && isset( self::presets()[ $slug ] ) ) ? $slug : '';
+	}
+
+	public static function preset_url( string $slug ): string {
+		$p = self::presets();
+		return isset( $p[ $slug ] ) ? $p[ $slug ]['url'] : '';
+	}
+
+	/** The ready-made picture this user chose ('' = none). */
+	public static function user_preset( int $user_id ): string {
+		return $user_id > 0 ? self::preset_slug( (string) get_user_meta( $user_id, self::META_PRESET, true ) ) : '';
+	}
+
 	public static function settings(): array {
 		if ( null === self::$settings ) {
 			$s = get_option( self::OPT, [] );
@@ -130,11 +179,15 @@ final class Avatars {
 		if ( array_key_exists( 'gravatar', $in ) ) {
 			$out['gravatar'] = (bool) $in['gravatar'];
 		}
-		$d = $in['default'] ?? 'initials';
+		$d = $in['default'] ?? self::DEFAULTS['default'];
 		if ( is_int( $d ) || ( is_string( $d ) && ctype_digit( $d ) ) ) {
 			$out['default'] = (int) $d > 0 ? (int) $d : 'initials';
 		} elseif ( in_array( $d, self::CHOICES, true ) ) {
 			$out['default'] = $d;
+		} elseif ( is_string( $d ) && '' !== self::preset_slug( $d ) ) {
+			$out['default'] = self::PRESET_PREFIX . self::preset_slug( $d );
+		} elseif ( is_string( $d ) && 0 === strpos( $d, self::PRESET_PREFIX ) ) {
+			$out['default'] = 'initials'; // A ready-made picture a later version no longer ships.
 		}
 		if ( isset( $in['anchor'] ) && in_array( $in['anchor'], [ 'top', 'center' ], true ) ) {
 			$out['anchor'] = $in['anchor'];
@@ -391,11 +444,41 @@ final class Avatars {
 				return $args;
 			}
 		}
+		if ( $user_id && empty( $args['force_default'] ) ) {
+			$preset = self::user_preset( $user_id ); // Their own pick among the ready-made pictures (a photo of their own was handled above).
+			if ( '' !== $preset ) {
+				$args['url'] = self::preset_url( $preset );
+				$args['found_avatar'] = true;
+				return $args;
+			}
+		}
 		if ( self::local_default( $args ) ) {
 			$args['url'] = self::default_url( $name, $px, $args );
 			$args['found_avatar'] = false;
+		} else {
+			$fallback = self::gravatar_fallback( $args );
+			if ( '' !== $fallback ) {
+				$args['default'] = $fallback; // Gravatar shows this picture for anyone it does not know.
+			}
 		}
 		return $args;
+	}
+
+	/**
+	 * With Gravatar on, anyone Gravatar does not know gets the site's default picture too, when that is a ready-made picture
+	 * (a public file Gravatar can fetch). A default another person chose under Settings > Discussion is left alone.
+	 */
+	private static function gravatar_fallback( array $args ): string {
+		$d = self::settings()['default'];
+		if ( ! is_string( $d ) || 0 !== strpos( $d, self::PRESET_PREFIX ) ) {
+			return '';
+		}
+		$core = (string) ( $args['default'] ?? '' );
+		if ( ! in_array( $core, [ '', 'mm', 'mystery', 'mysteryman', 'gravatar_default', self::CORE_DEFAULT ], true ) ) {
+			return '';
+		}
+		$u = self::preset_url( substr( $d, strlen( self::PRESET_PREFIX ) ) );
+		return 0 === strpos( $u, 'https://' ) ? $u : ''; // Gravatar only fetches https pictures it can reach.
 	}
 
 	/**
@@ -552,6 +635,13 @@ final class Avatars {
 				return $u;
 			}
 			$d = 'initials'; // The chosen image is gone.
+		}
+		if ( is_string( $d ) && 0 === strpos( $d, self::PRESET_PREFIX ) ) {
+			$u = self::preset_url( substr( $d, strlen( self::PRESET_PREFIX ) ) );
+			if ( '' !== $u ) {
+				return $u;
+			}
+			$d = 'initials'; // The picture is gone.
 		}
 		if ( 'logo' === $d ) {
 			list( $u, $square ) = self::logo( $px );
@@ -1189,7 +1279,7 @@ final class Avatars {
 	private static function controls( \WP_User $user ): string {
 		$self = get_current_user_id() === $user->ID;
 		if ( ! self::ui_allowed( $user->ID ) ) {
-			return esc_html( $self ? __( 'Your profile photo is managed by the site administrators.', 'launch-builder' ) : __( 'You cannot change this user\'s photo.', 'launch-builder' ) );
+			return esc_html( $self ? __( 'Your profile photo is managed by the site administrators.', 'launch-builder' ) : __( 'You cannot change this user\'s photo.', 'launch-builder' ) ) . self::preset_picker( $user );
 		}
 		$has = self::current_attachment( $user->ID ) > 0;
 		$out = '<span class="lb-avatar-field" data-title="' . esc_attr__( 'Choose a profile photo', 'launch-builder' ) . '" data-button="' . esc_attr__( 'Use this photo', 'launch-builder' ) . '" data-chosen="' . esc_attr__( 'Photo chosen. Save the profile to apply it.', 'launch-builder' ) . '" data-removed="' . esc_attr__( 'Photo removed. Save the profile to apply it.', 'launch-builder' ) . '">';
@@ -1198,7 +1288,47 @@ final class Avatars {
 		$out .= '<input type="hidden" name="lb_avatar" value="">' . wp_nonce_field( 'lb_avatar_' . $user->ID, '_lb_avatar_nonce', false, false );
 		$out .= ' <span class="lb-avatar-status" aria-live="polite"></span><br>';
 		$out .= esc_html__( 'Pick a photo from the Media Library. It is cropped to a square and used wherever your avatar shows; it is never loaded from Gravatar.', 'launch-builder' );
+		return $out . '</span>' . self::preset_picker( $user );
+	}
+
+	/** Radio buttons for the ready-made pictures (only when there is more than one to choose from). */
+	private static function preset_picker( \WP_User $user ): string {
+		$presets = self::presets();
+		if ( count( $presets ) < 2 || true !== self::can_set( $user->ID ) ) {
+			return '';
+		}
+		$cur = self::user_preset( $user->ID );
+		$out = '<br><span class="lb-avatar-presets" role="radiogroup" aria-label="' . esc_attr__( 'Ready-made pictures', 'launch-builder' ) . '">';
+		$out .= esc_html__( 'Or pick a ready-made picture (shown when you have no photo of your own):', 'launch-builder' ) . '<br>';
+		$out .= '<input type="hidden" name="lb_avatar_preset_sent" value="1">' . wp_nonce_field( 'lb_avatar_preset_' . $user->ID, '_lb_avatar_preset_nonce', false, false );
+		$out .= '<label style="display:inline-block;margin:6px 14px 0 0"><input type="radio" name="lb_avatar_preset" value=""' . checked( '' === $cur, true, false ) . '> ' . esc_html__( 'The site default', 'launch-builder' ) . '</label>';
+		foreach ( $presets as $slug => $p ) {
+			$out .= '<label style="display:inline-block;margin:6px 14px 0 0"><input type="radio" name="lb_avatar_preset" value="' . esc_attr( $slug ) . '"' . checked( $slug === $cur, true, false ) . '> <img src="' . esc_url( $p['url'] ) . '" alt="" width="32" height="32" style="border-radius:50%;vertical-align:middle"> ' . esc_html( $p['label'] ) . '</label>';
+		}
 		return $out . '</span>';
+	}
+
+	/** The ready-made picture a person chose on their profile. Same rules as the photo: the nonce is not authorization. */
+	private static function save_preset( int $user_id ): void {
+		// phpcs:disable WordPress.Security.NonceVerification -- verified below.
+		if ( empty( $_POST['lb_avatar_preset_sent'] ) ) {
+			return;
+		}
+		$nonce = sanitize_text_field( wp_unslash( $_POST['_lb_avatar_preset_nonce'] ?? '' ) );
+		$raw = isset( $_POST['lb_avatar_preset'] ) ? sanitize_key( wp_unslash( $_POST['lb_avatar_preset'] ) ) : '';
+		// phpcs:enable
+		if ( ! wp_verify_nonce( $nonce, 'lb_avatar_preset_' . $user_id ) || true !== self::can_set( $user_id ) ) {
+			return;
+		}
+		if ( '' === $raw ) {
+			delete_user_meta( $user_id, self::META_PRESET );
+		} elseif ( '' !== self::preset_slug( $raw ) ) {
+			update_user_meta( $user_id, self::META_PRESET, self::preset_slug( $raw ) );
+		} else {
+			return;
+		}
+		self::$memo = [];
+		Cache::purge_later();
 	}
 
 	public static function enqueue( $hook ): void {
@@ -1247,6 +1377,9 @@ JS;
 
 	/** personal_options_update / edit_user_profile_update. Re-checks everything the tool checks; the nonce is not authorization. */
 	public static function save_profile( $user_id ): void {
+		if ( ! self::sla_active() ) {
+			self::save_preset( (int) $user_id );
+		}
 		// phpcs:disable WordPress.Security.NonceVerification -- verified below.
 		if ( ! isset( $_POST['lb_avatar'] ) || self::sla_active() ) {
 			return;
@@ -1317,6 +1450,8 @@ JS;
 		$d = (string) ( $in['default'] ?? '' );
 		if ( in_array( $d, self::CHOICES, true ) ) {
 			$out['default'] = $d;
+		} elseif ( 0 === strpos( $d, self::PRESET_PREFIX ) && '' !== self::preset_slug( $d ) ) {
+			$out['default'] = self::PRESET_PREFIX . self::preset_slug( $d );
 		} elseif ( ! ( ctype_digit( $d ) && (int) $d === $out['default'] ) ) {
 			$out['default'] = 'initials';
 		}
@@ -1357,11 +1492,21 @@ JS;
 			/* translators: %d: attachment id */
 			echo '<option value="' . esc_attr( (string) $s['default'] ) . '" selected>' . esc_html( sprintf( __( 'Chosen image (#%d)', 'launch-builder' ), $s['default'] ) ) . '</option>';
 		}
+		if ( self::presets() ) {
+			echo '<optgroup label="' . esc_attr__( 'Ready-made pictures', 'launch-builder' ) . '">';
+			foreach ( self::presets() as $slug => $p ) {
+				$v = self::PRESET_PREFIX . $slug;
+				echo '<option value="' . esc_attr( $v ) . '"' . selected( $s['default'], $v, false ) . '>' . esc_html( $p['label'] ) . '</option>';
+			}
+			echo '</optgroup><optgroup label="' . esc_attr__( 'Drawn for each person', 'launch-builder' ) . '">';
+		} else {
+			echo '<optgroup label="' . esc_attr__( 'Other', 'launch-builder' ) . '">';
+		}
 		foreach ( $labels as $k => $label ) {
 			echo '<option value="' . esc_attr( $k ) . '"' . selected( $s['default'], $k, false ) . '>' . esc_html( $label ) . '</option>';
 		}
-		echo '</select></label>';
-		echo '<p class="description">' . esc_html__( 'The silhouette, blank image and site icon are plain files. Initials are drawn by this site: the first time a visitor\'s browser meets a pair of letters it asks the site once for that small image (one per pair, cached for a year).', 'launch-builder' ) . '</p><br>';
+		echo '</optgroup></select></label>';
+		echo '<p class="description">' . esc_html__( 'Ready-made pictures, the silhouette, blank image and site icon are plain files; with Gravatar on, anyone Gravatar does not know also gets a ready-made default (on https sites). Initials are drawn by this site: the first time a visitor\'s browser meets a pair of letters it asks the site once for that small image (one per pair, cached for a year).', 'launch-builder' ) . '</p><br>';
 		echo '<label>' . esc_html__( 'Square crop keeps', 'launch-builder' ) . ' <select name="' . esc_attr( $n ) . '[anchor]"><option value="top"' . selected( $s['anchor'], 'top', false ) . '>' . esc_html__( 'the top (faces)', 'launch-builder' ) . '</option><option value="center"' . selected( $s['anchor'], 'center', false ) . '>' . esc_html__( 'the centre', 'launch-builder' ) . '</option></select></label><br><br>';
 		echo '<label><input type="checkbox" name="' . esc_attr( $n ) . '[self_service]" value="1"' . checked( $s['self_service'], true, false ) . '> ' . esc_html__( 'Users who can upload files may set their own photo', 'launch-builder' ) . '</label></fieldset>';
 	}
@@ -1392,6 +1537,14 @@ JS;
 				];
 			}
 		}
+		if ( $user && '' !== self::user_preset( (int) $user->ID ) ) {
+			$data[] = [
+				'group_id'    => 'launch-builder-avatar',
+				'group_label' => __( 'Profile photo', 'launch-builder' ),
+				'item_id'     => 'launch-builder-avatar-preset-' . $user->ID,
+				'data'        => [ [ 'name' => __( 'Ready-made picture', 'launch-builder' ), 'value' => self::user_preset( (int) $user->ID ) ] ],
+			];
+		}
 		return [ 'data' => $data, 'done' => true ];
 	}
 
@@ -1399,6 +1552,11 @@ JS;
 	public static function erase( $email, $page = 1 ): array {
 		$user = get_user_by( 'email', (string) $email );
 		$removed = false;
+		if ( $user && '' !== self::user_preset( (int) $user->ID ) ) {
+			delete_user_meta( (int) $user->ID, self::META_PRESET );
+			self::$memo = [];
+			$removed = true;
+		}
 		if ( $user && self::current_attachment( (int) $user->ID ) ) {
 			self::unassign( (int) $user->ID );
 			$removed = true;
@@ -1426,12 +1584,13 @@ JS;
 				'alt'           => [ 'type' => 'string', 'description' => 'Alt text written to the image (only if you may edit it).' ],
 				'anchor'        => [ 'type' => 'string', 'enum' => [ 'top', 'center' ] ],
 				'remove'        => [ 'type' => 'boolean', 'description' => 'Take the photo away.' ],
+				'preset'        => [ 'type' => 'string', 'description' => 'A ready-made picture (a slug from the presets in get-user-avatars) shown when the user has no photo of their own; none clears it.' ],
 			], 'required' => [ 'user_id' ] ], [ __CLASS__, 'set_user_avatar_tool' ], 'upload_files' );
 
-		Abilities::add( 'set-avatar-settings', 'Profile photo settings', 'gravatar: false = never load anything from Gravatar (users without a photo get the default image; also sets WordPress\' default avatar). default: initials | logo (site icon, else logo) | silhouette | blank | attachment (with default_attachment_id). anchor: top | center (square crop of new photos). self_service: users who can upload may set their own photo. While the other avatars plugin is active it keeps rendering: the settings are saved and apply once it is deactivated (warnings say so). Snapshotted (restore-snapshot undoes it).',
+		Abilities::add( 'set-avatar-settings', 'Profile photo settings', 'gravatar: false = never load anything from Gravatar (users without a photo get the default image; also sets WordPress\' default avatar). default: initials | logo (site icon, else logo) | silhouette | blank | preset:<slug> (a ready-made picture; preset:launchlocal is the LaunchLocal mark and the result lists every preset) | attachment (with default_attachment_id). anchor: top | center (square crop of new photos). self_service: users who can upload may set their own photo. While the other avatars plugin is active it keeps rendering: the settings are saved and apply once it is deactivated (warnings say so). Snapshotted (restore-snapshot undoes it).',
 			[ 'properties' => [
 				'gravatar'              => [ 'type' => 'boolean' ],
-				'default'               => [ 'type' => 'string', 'enum' => array_merge( self::CHOICES, [ 'attachment' ] ) ],
+				'default'               => [ 'type' => 'string', 'description' => 'initials | logo | silhouette | blank | attachment | preset:<slug> (see presets in the result).' ],
 				'default_attachment_id' => [ 'type' => 'integer' ],
 				'anchor'                => [ 'type' => 'string', 'enum' => [ 'top', 'center' ] ],
 				'self_service'          => [ 'type' => 'boolean' ],
@@ -1464,6 +1623,8 @@ JS;
 		foreach ( [ 96, 192, 640 ] as $px ) {
 			if ( $src ) {
 				$out[ $px ] = self::source_url( $src, $px );
+			} elseif ( '' !== self::user_preset( $user_id ) ) {
+				$out[ $px ] = self::preset_url( self::user_preset( $user_id ) );
 			} elseif ( self::local_default( [ 'default' => get_option( 'avatar_default' ) ] ) ) {
 				$u = get_userdata( $user_id );
 				$name = $u ? (string) $u->display_name : '';
@@ -1476,7 +1637,11 @@ JS;
 
 	private static function settings_out(): array {
 		$s = self::settings();
-		return $s + [ 'core_avatar_default' => (string) get_option( 'avatar_default', 'mystery' ), 'show_avatars' => (bool) get_option( 'show_avatars' ) ];
+		$presets = [];
+		foreach ( self::presets() as $slug => $p ) {
+			$presets[] = [ 'slug' => $slug, 'value' => self::PRESET_PREFIX . $slug, 'label' => $p['label'], 'url' => $p['url'] ];
+		}
+		return $s + [ 'core_avatar_default' => (string) get_option( 'avatar_default', 'mystery' ), 'show_avatars' => (bool) get_option( 'show_avatars' ), 'presets' => $presets ];
 	}
 
 	public static function get_user_avatars_tool( $input = [] ): array {
@@ -1509,6 +1674,7 @@ JS;
 				'roles'         => array_values( (array) $u->roles ),
 				'source'        => $source,
 				'attachment_id' => $att,
+				'preset'        => self::user_preset( $uid ),
 				'urls'          => 'gravatar' === $source ? new \stdClass() : self::urls( $uid, $src ),
 				'alt'           => $att ? (string) get_post_meta( $att, '_wp_attachment_image_alt', true ) : '',
 				'can_edit'      => current_user_can( 'upload_files' ) && true === self::can_set( $uid ),
@@ -1554,8 +1720,23 @@ JS;
 		$att = (int) ( $input['attachment_id'] ?? 0 );
 		$url = trim( (string) ( $input['url'] ?? '' ) );
 		$remove = ! empty( $input['remove'] );
-		if ( 1 !== count( array_filter( [ $att > 0, '' !== $url, $remove ] ) ) ) {
-			return new \WP_Error( 'lb_bad_args', 'Give exactly one of attachment_id, url or remove.', [ 'status' => 400 ] );
+		$preset = sanitize_key( (string) ( $input['preset'] ?? '' ) );
+		if ( 1 !== count( array_filter( [ $att > 0, '' !== $url, $remove, '' !== $preset ] ) ) ) {
+			return new \WP_Error( 'lb_bad_args', 'Give exactly one of attachment_id, url, preset or remove.', [ 'status' => 400 ] );
+		}
+		if ( '' !== $preset ) {
+			if ( 'none' !== $preset && '' === self::preset_slug( $preset ) ) {
+				return new \WP_Error( 'lb_bad_preset', 'That ready-made picture does not exist (see the presets in get-user-avatars).', [ 'status' => 400 ] );
+			}
+			$prev = self::user_preset( $uid );
+			if ( 'none' === $preset ) {
+				delete_user_meta( $uid, self::META_PRESET );
+			} else {
+				update_user_meta( $uid, self::META_PRESET, self::preset_slug( $preset ) );
+			}
+			self::$memo = [];
+			Cache::purge_later();
+			return [ 'user_id' => $uid, 'preset' => self::user_preset( $uid ), 'previous_preset' => $prev, 'urls' => self::urls( $uid ), 'warnings' => [], 'provider' => self::provider() ];
 		}
 		if ( $remove ) {
 			$prev = self::unassign( $uid );
@@ -1602,6 +1783,11 @@ JS;
 		} elseif ( in_array( $d, self::CHOICES, true ) ) {
 			$s['default'] = $d;
 			$changed[] = 'default';
+		} elseif ( '' !== $d && '' !== self::preset_slug( $d ) ) {
+			$s['default'] = self::PRESET_PREFIX . self::preset_slug( $d );
+			$changed[] = 'default';
+		} elseif ( '' !== $d && 'attachment' !== $d ) {
+			return new \WP_Error( 'lb_bad_default', 'default must be initials, logo, silhouette, blank, attachment or preset:<slug> (see presets in get-user-avatars).', [ 'status' => 400 ] );
 		}
 		foreach ( [ 'anchor', 'self_service' ] as $k ) {
 			if ( array_key_exists( $k, $input ) ) {

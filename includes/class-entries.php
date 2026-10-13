@@ -86,6 +86,7 @@ final class Entries {
 		foreach ( [ 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ] as $hook ) {
 			add_action( $hook, [ __CLASS__, 'on_meta' ], 10, 3 );
 		}
+		add_action( 'rwmb_after_save_post', [ __CLASS__, 'on_meta_box_saved' ] ); // A Meta Box field a card shows ({{meta.x}}) may have changed.
 		// Where "View all" links go: the hubs and the category pages.
 		add_action( 'add_option_' . Roles::OPT_HUBS, [ __CLASS__, 'term_changed' ], 10, 0 );
 		add_action( 'update_option_' . Roles::OPT_HUBS, [ __CLASS__, 'term_changed' ], 10, 0 );
@@ -320,7 +321,7 @@ final class Entries {
 		if ( '' === $s ) {
 			$s = wp_trim_words( wp_strip_all_tags( strip_shortcodes( $p->post_content ) ), 22 );
 		}
-		return $s;
+		return Tokens::for_entry( $s, $p );
 	}
 
 	/* ------------------------------------------------------------------ admin fields (plain post meta) */
@@ -350,6 +351,31 @@ final class Entries {
 		return array_filter( $fields, static function ( $meta ) use ( $post_type ) { return ! self::meta_box_owns( $meta, $post_type ); } );
 	}
 
+	/**
+	 * One line about Meta Box for the Card details box: what it edits instead of this box, or how to hand a field over.
+	 *
+	 * @param array<string,string> $shown box_fields() of the type
+	 */
+	private static function meta_box_note( string $post_type, array $shown ): string {
+		if ( ! function_exists( 'rwmb_meta' ) ) {
+			return '';
+		}
+		$taken = [];
+		if ( ! isset( $shown['icon'] ) ) {
+			$taken[] = __( 'Icon', 'launch-builder' );
+		}
+		if ( self::AREA === $post_type && ! isset( $shown['services'] ) ) {
+			$taken[] = __( 'Services offered', 'launch-builder' );
+		}
+		if ( $taken ) {
+			/* translators: %s: field names, for example "Icon" */
+			return sprintf( __( 'Meta Box edits %s, so this box leaves it out.', 'launch-builder' ), implode( ', ', $taken ) );
+		}
+		return self::AREA === $post_type
+			? __( 'Using Meta Box? A field with the id _lb_icon or _lb_services takes over from this box.', 'launch-builder' )
+			: __( 'Using Meta Box? A field with the id _lb_icon takes over from this box.', 'launch-builder' );
+	}
+
 	public static function meta_boxes(): void {
 		foreach ( [ self::SERVICE, self::AREA ] as $pt ) {
 			if ( self::box_fields( $pt ) ) {
@@ -362,6 +388,10 @@ final class Entries {
 		$fields = self::box_fields( $post->post_type );
 		wp_nonce_field( 'lb_entry', 'lb_entry_nonce' );
 		echo '<p class="description">' . esc_html__( 'The short summary on cards and in the page banner is the Excerpt.', 'launch-builder' ) . '</p>';
+		$note = self::meta_box_note( $post->post_type, $fields );
+		if ( '' !== $note ) {
+			echo '<p class="description">' . esc_html( $note ) . '</p>';
+		}
 		if ( isset( $fields['icon'] ) ) {
 			echo '<p><label><strong>' . esc_html__( 'Icon', 'launch-builder' ) . '</strong> ' . esc_html__( '(optional Kadence icon name, e.g. fe_settings or fe_mapPin; letters, digits and _)', 'launch-builder' ) . '<br><input type="text" name="lb_icon" style="width:100%" value="' . esc_attr( (string) get_post_meta( $post->ID, '_lb_icon', true ) ) . '"></label></p>';
 		}
@@ -547,6 +577,14 @@ final class Entries {
 			if ( self::ours( $p ) && 'publish' === $p->post_status ) {
 				self::changed( false );
 			}
+		}
+	}
+
+	/** Meta Box saved a service or area: its fields can show on cards, so the lists that show it refresh. */
+	public static function on_meta_box_saved( $post_id ): void {
+		$p = get_post( (int) $post_id );
+		if ( self::ours( $p ) && 'publish' === $p->post_status ) {
+			self::changed( false );
 		}
 	}
 

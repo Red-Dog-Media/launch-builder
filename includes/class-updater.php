@@ -45,6 +45,7 @@ final class Updater {
 	const MIN_RETRY = 900;    // First retry 15 minutes after an error, then doubling up to TTL.
 	const NONCE     = 'lb_check_updates';
 	const ACTION    = 'launch_builder_check_updates';
+	const CRON      = 'launch_builder_update_refresh';
 	const API       = 'https://api.github.com';
 
 	/** @var array|null this request's copy of the cache. */
@@ -63,6 +64,7 @@ final class Updater {
 		add_filter( 'plugin_action_links_' . self::basename(), [ __CLASS__, 'action_links' ] );
 		add_filter( 'network_admin_plugin_action_links_' . self::basename(), [ __CLASS__, 'action_links' ] );
 		add_action( 'admin_post_' . self::ACTION, [ __CLASS__, 'check_now' ] );
+		add_action( self::CRON, [ __CLASS__, 'refresh' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'notice' ] );
 		add_action( 'network_admin_notices', [ __CLASS__, 'notice' ] );
 	}
@@ -70,6 +72,7 @@ final class Updater {
 	/** Module hook (plugin deactivation, so also before deletion): forget the cached answer. */
 	public static function deactivate(): void {
 		delete_site_transient( self::CACHE );
+		wp_clear_scheduled_hook( self::CRON );
 		self::$state = null;
 	}
 
@@ -385,6 +388,12 @@ final class Updater {
 		return 1 === self::compare( $release['version'], self::installed_version() ) ? 'available' : 'current';
 	}
 
+	/** The plugin icon shown on the Plugins and Updates screens (the LaunchLocal mark). */
+	private static function icons(): array {
+		$svg = LB_URL . 'assets/logo/launchlocal-icon.svg';
+		return [ 'svg' => $svg, 'default' => $svg ];
+	}
+
 	/** The zip WordPress installs for a release ('' for a git checkout). */
 	public static function package( array $release ): string {
 		if ( self::vcs_locked() ) {
@@ -403,7 +412,7 @@ final class Updater {
 			'new_version'  => $release ? $release['version'] : self::installed_version(),
 			'url'          => 'https://github.com/' . self::repo(),
 			'package'      => $release ? self::package( $release ) : '',
-			'icons'        => [],
+			'icons'        => self::icons(),
 			'banners'      => [],
 			'banners_rtl'  => [],
 			'requires'     => $release ? $release['requires'] : (string) ( $headers['requires at least'] ?? '' ),
@@ -425,7 +434,15 @@ final class Updater {
 			return $transient;
 		}
 		$basename = self::basename();
-		$release  = self::fetch()['release'] ?? null;
+		if ( self::may_wait() ) {
+			$release = self::fetch()['release'] ?? null;
+		} else {
+			$state   = self::cached();
+			$release = $state['release'] ?? null; // A page view is never held up by GitHub: use the last answer and refresh it from WP-Cron.
+			if ( ! $state || time() >= (int) ( $state['next'] ?? 0 ) ) {
+				self::queue_refresh();
+			}
+		}
 		if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
 			$transient->response = [];
 		}
@@ -439,6 +456,35 @@ final class Updater {
 			$transient->no_update[ $basename ] = self::item( null );
 		}
 		return $transient;
+	}
+
+	/**
+	 * May this request wait for GitHub? Yes for WP-Cron, WP-CLI, front-end and AJAX requests, the Updates screens (the
+	 * person asked for a check there, including "Check again") and sites without WP-Cron. An ordinary wp-admin page
+	 * view says no: it would sit through the request (up to 8 seconds) before the screen appears.
+	 */
+	private static function may_wait(): bool {
+		if ( ! is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) || ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) ) {
+			return true;
+		}
+		$page = isset( $GLOBALS['pagenow'] ) ? (string) $GLOBALS['pagenow'] : '';
+		return in_array( $page, [ 'update-core.php', 'update.php' ], true ) || ! empty( $_GET['force-check'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- only decides whether to wait.
+	}
+
+	/** Ask WP-Cron to refresh the cached answer as soon as it can (once; nothing happens when one is already waiting). */
+	private static function queue_refresh(): void {
+		if ( ! wp_next_scheduled( self::CRON ) ) {
+			wp_schedule_single_event( time(), self::CRON );
+		}
+	}
+
+	/** WP-Cron event: ask GitHub when the next check is due, then let WordPress rebuild its list of plugin updates. */
+	public static function refresh(): void {
+		self::fetch();
+		$updates = get_site_transient( 'update_plugins' );
+		if ( is_object( $updates ) ) {
+			set_site_transient( 'update_plugins', $updates ); // Runs inject() with the new answer.
+		}
 	}
 
 	/**
@@ -489,7 +535,7 @@ final class Updater {
 			'download_link'  => $newer ? self::package( $release ) : '',
 			'sections'       => $sections,
 			'banners'        => [],
-			'icons'          => [],
+			'icons'          => self::icons(),
 			'external'       => true, // No "WordPress.org Plugin Page" link.
 		];
 	}

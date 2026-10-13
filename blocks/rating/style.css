@@ -7,6 +7,7 @@
 	--lbr-s: 1;
 	--lbr-d: 1;
 	--lbr-pad: 20;
+	--lbr-padx: 1.5; /* side padding = pad x this */
 	--lbr-r: var(--lb-radius-card, 14px);
 	--lbr-star: 34;
 	--lbr-star-gap: 4;
@@ -87,8 +88,10 @@
 	background: #fff;
 	box-shadow: 0 0 0 2px var(--lbr-ring, #fff), 0 1px 4px rgba(0, 0, 0, .2);
 }
-.lb-rating__badge svg { display: block; width: 66%; height: 66%; }
+/* The logo files carry their own even space around the mark, so the SVG fills the whole round badge. */
+.lb-rating__badge svg { display: block; width: 100%; height: 100%; }
 .lb-rating__logos > .lb-rating__badge + .lb-rating__badge { margin-inline-start: calc(var(--lbr-logo-h) * -.26px * var(--lbr-s)); }
+.lb-rating__logos > .lb-rating__badge--angi + .lb-rating__badge { margin-inline-start: calc(var(--lbr-logo-h) * -.1px * var(--lbr-s)); } /* Angi's mark is a wide word: overlap less so the next badge does not cut it */
 .lb-rating--fx-grayscale :is(.lb-rating__logo, .lb-rating__badge svg),
 .lb-rating--fx-grayscale-hover :is(.lb-rating__logo, .lb-rating__badge svg) { filter: grayscale(1); opacity: .75; }
 .lb-rating--fx-grayscale-hover .lb-rating__logo-link:hover .lb-rating__logo,
@@ -164,7 +167,7 @@ a.lb-rating__main:focus-visible { outline: 2px solid currentColor; outline-offse
 
 /* Block styles: soft | outline | dark | brand (the editor wrapper carries the class too, so the preview matches) */
 :is(.lb-rating, .wp-block-launch-rating):is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating__inner {
-	padding: calc(var(--lbr-pad) * 1px * var(--lbr-s) * var(--lbr-d)) calc(var(--lbr-pad) * 1.5px * var(--lbr-s) * var(--lbr-d));
+	padding: calc(var(--lbr-pad) * 1px * var(--lbr-s) * var(--lbr-d)) calc(var(--lbr-pad) * var(--lbr-padx) * 1px * var(--lbr-s) * var(--lbr-d));
 	border-radius: var(--lbr-r);
 }
 :is(.lb-rating, .wp-block-launch-rating).is-style-soft .lb-rating__inner { background: var(--global-palette8, #f6f7f8); }
@@ -178,10 +181,54 @@ a.lb-rating__main:focus-visible { outline: 2px solid currentColor; outline-offse
 	--lbr-c-score: #fff; --lbr-c-text: rgba(255, 255, 255, .9); --lbr-c-empty: rgba(255, 255, 255, .32);
 }
 
-/* Narrow (the one container query): logos stack above the score, on the side the content is aligned to (a left-aligned
-   hero stays left-aligned on phones). Blocks with a saved breakpoint use legacy.css. */
+/* Narrow containers: the logos stack above the score, on the side the content is aligned to (the phone rules below
+   centre it inside a box). Blocks with a saved breakpoint use legacy.css for that. The pill's score, stars and caption
+   fit on two lines, and a box's corners stop being a full capsule so the stacked lines stay inside the shape. */
 @container lbr (width < 420px) {
 	.lb-rating:not([data-bp]) .lb-rating__inner { --lbr-s: var(--lbr-ms, 1); flex-direction: column; align-items: var(--lbr-justify, flex-start); }
 	.lb-rating--lp-bottom:not([data-bp]) .lb-rating__inner { flex-direction: column-reverse; }
 	.lb-rating:not([data-bp]) .lb-rating__logos { padding: 0; border: 0; }
+	.lb-rating:not([data-mobile="keep"]) .lb-rating__inner { --lbr-padx: 1.15; }
+	.lb-rating:not([data-mobile="keep"]):is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating__inner,
+	.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not([data-mobile="keep"]) .lb-rating__inner { border-radius: min(var(--lbr-r), 28px); }
+	/* The older pill (stars, score, caption in one row) wraps to two lines: stars and score, then the caption. */
+	.lb-rating--legacy.lb-rating--pill:not([data-mobile="keep"]) .lb-rating__main { display: flex; flex-wrap: wrap; align-items: center; justify-content: var(--lbr-justify, flex-start); column-gap: calc(10px * var(--lbr-s)); row-gap: calc(4px * var(--lbr-s)); }
+	.lb-rating--legacy.lb-rating--pill:not([data-mobile="keep"]) .lb-rating__stars { order: 1; }
+	.lb-rating--legacy.lb-rating--pill:not([data-mobile="keep"]) .lb-rating__score { order: 2; }
+	.lb-rating--legacy.lb-rating--pill:not([data-mobile="keep"]) .lb-rating__text { order: 3; flex-basis: 100%; text-align: var(--lbr-ta, start); }
+}
+
+/* Phones. A widget with a visible box (soft, outline, dark, brand) keeps its place and everything inside the box is
+   centred: logos, score, stars and caption. A plain widget has no box, so it follows the alignment around it (a hero
+   row stays with its hero text) unless "On phones" is set to centre the whole widget. The box default comes from the
+   block style class, so the editor preview (where that class sits on the outer block wrapper) shows it too. The markup
+   adds lb-rating--phc and lb-rating--phone-center for "Center the whole widget" (these also win over the old "keep"
+   setting) and lb-rating--ph-match for "Same as above", which turns the box default off. The long selector below is
+   "the widget whose content is centred on phones": the explicit choice, or a box style. */
+@media (max-width: 600px) {
+	:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) :is(.lb-rating__inner, .lb-rating__main, .lb-rating__logos, .lb-rating__text) { align-items: center; justify-content: center; justify-items: center; text-align: center; }
+	:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__logos { row-gap: calc(6px * var(--lbr-s)); }
+	/* Each round logo overlaps its neighbours by the same amount on both sides, so a wrapped second row stays centred (the
+	   one-sided overlap used elsewhere would pull it to the left). Angi's wide mark overlaps less. */
+	:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__logos > .lb-rating__badge { margin-inline: calc(var(--lbr-logo-h) * -.13px * var(--lbr-s)); }
+	:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__logos > .lb-rating__badge--angi { margin-inline: calc(var(--lbr-logo-h) * -.05px * var(--lbr-s)); }
+	.lb-rating.lb-rating--phone-center { justify-content: center; }
+	/* The pill's score and stars sit side by side around the middle, the caption on its own line below. */
+	.lb-rating--pill:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__score { justify-self: end; }
+	.lb-rating--pill:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__stars { justify-self: start; }
+	.lb-rating--pill.lb-rating--no-score:is(.lb-rating.lb-rating--phc,
+		.lb-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand):not(.lb-rating--ph-match):not([data-mobile="keep"]),
+		.wp-block-launch-rating:is(.is-style-soft, .is-style-outline, .is-style-dark, .is-style-brand) .lb-rating:not(.lb-rating--ph-match):not([data-mobile="keep"])) .lb-rating__stars { justify-self: center; }
 }

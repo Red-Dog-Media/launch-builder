@@ -505,12 +505,25 @@ final class Roles {
 		}
 		echo '</select></p>';
 		echo '<p class="description">Currently: <strong>' . esc_html( self::label( $role ) ) . '</strong> (' . esc_html( self::WHY[ $source ] ?? $source ) . '). The role decides the page hero, breadcrumbs and header/footer variant. Conversion pages (contact, quote, booking) get no breadcrumbs.</p>';
+		$hero = (string) get_post_meta( $post->ID, Chrome::HERO_META, true );
+		echo '<p><label for="lb-hero"><strong>Hero on this page</strong></label><br><select id="lb-hero" name="lb_hero" style="width:100%">';
+		foreach ( [ '' => 'The shared hero', 'content' => 'Its own hero', 'none' => 'No hero' ] as $v => $l ) {
+			echo '<option value="' . esc_attr( $v ) . '"' . selected( $hero, $v, false ) . '>' . esc_html( $l ) . '</option>';
+		}
+		echo '</select></p><p class="description">The shared hero is set once for every page of this role in Launch Builder &gt; Design hub. &quot;Its own hero&quot; lets this page carry a different hero in its content: the shared hero and the breadcrumbs step aside here.</p>';
 	}
 
 	/** Classic-editor save. Writes only when the role changed (the purge comes from meta_changed()). */
 	public static function save_box( int $post_id, \WP_Post $post ): void {
 		if ( empty( $_POST['lb_page_role_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['lb_page_role_nonce'] ) ), 'lb_page_role' ) || ! current_user_can( 'edit_post', $post_id ) || wp_is_post_revision( $post_id ) ) {
 			return;
+		}
+		if ( isset( $_POST['lb_hero'] ) ) {
+			$hero = sanitize_key( wp_unslash( $_POST['lb_hero'] ) );
+			$hero = in_array( $hero, [ 'content', 'none' ], true ) ? $hero : '';
+			if ( (string) get_post_meta( $post_id, Chrome::HERO_META, true ) !== $hero ) {
+				'' === $hero ? delete_post_meta( $post_id, Chrome::HERO_META ) : update_post_meta( $post_id, Chrome::HERO_META, $hero );
+			}
 		}
 		if ( ! isset( $_POST['lb_role'] ) ) {
 			return; // Disabled select (front or posts page): nothing posted, nothing to change.
@@ -526,27 +539,46 @@ final class Roles {
 	/**
 	 * Block editor: a "Page role" panel in the document sidebar, bound to the registered _lb_role meta (saved with the
 	 * post over REST, so no legacy meta box). The page's current and automatic roles are passed in for the help text.
+	 * Pages, posts and entries also get the hero choice (_lb_hero: the shared hero, its own hero, none): the way one page
+	 * differs from the page type it belongs to (a page with its own hero makes the shared hero and breadcrumbs step aside).
 	 */
 	public static function editor_panel(): void {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		$post = get_post();
-		if ( ! $screen || 'page' !== $screen->post_type || ! $post || 'page' !== $post->post_type ) {
+		if ( ! $screen || ! $post || $screen->post_type !== $post->post_type || ! in_array( $post->post_type, [ 'page', 'post', Entries::SERVICE, Entries::AREA ], true ) ) {
 			return;
 		}
-		[ $role, $source ] = self::explain_page( $post->ID );
-		[ $auto, $auto_source ] = self::explain_page( $post->ID, false );
-		$labels = [];
-		foreach ( self::PAGE_ROLES as $r ) {
-			$labels[ $r ] = self::ROLES[ $r ];
+		// Every type gets the hero choice (the shared hero, its own, none): it is how one page differs from its page type.
+		$data = [
+			'type' => $post->post_type,
+			'hero' => [
+				'meta'    => Chrome::HERO_META,
+				'label'   => __( 'Hero on this page', 'launch-builder' ),
+				'options' => [
+					[ 'label' => __( 'The shared hero', 'launch-builder' ), 'value' => '' ],
+					[ 'label' => __( 'Its own hero', 'launch-builder' ), 'value' => 'content' ],
+					[ 'label' => __( 'No hero', 'launch-builder' ), 'value' => 'none' ],
+				],
+				'help'    => __( 'The shared hero is set once for every page of this type in Launch Builder > Design hub. Choose "Its own hero" to put a different hero design in this page\'s content: the shared hero and the breadcrumbs then step aside here.', 'launch-builder' ),
+			],
+		];
+		if ( 'page' === $post->post_type ) {
+			[ $role, $source ] = self::explain_page( $post->ID );
+			[ $auto, $auto_source ] = self::explain_page( $post->ID, false );
+			$labels = [];
+			foreach ( self::PAGE_ROLES as $r ) {
+				$labels[ $r ] = self::ROLES[ $r ];
+			}
+			$data += [
+				'meta'    => self::META,
+				'locked'  => in_array( $source, [ 'front_page', 'posts_page' ], true ),
+				'current' => [ 'label' => self::label( $role ), 'why' => self::WHY[ $source ] ?? $source ],
+				'auto'    => [ 'label' => self::label( $auto ), 'why' => self::WHY[ $auto_source ] ?? $auto_source ],
+				'roles'   => $labels,
+			];
 		}
 		wp_enqueue_script( 'lb-page-role', LB_URL . 'assets/js/page-role.js', [ 'wp-plugins', 'wp-element', 'wp-components', 'wp-data', 'wp-editor', 'wp-edit-post' ], (string) @filemtime( LB_DIR . 'assets/js/page-role.js' ), true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
-		wp_add_inline_script( 'lb-page-role', 'window.lbPageRole = ' . wp_json_encode( [
-			'meta'    => self::META,
-			'locked'  => in_array( $source, [ 'front_page', 'posts_page' ], true ),
-			'current' => [ 'label' => self::label( $role ), 'why' => self::WHY[ $source ] ?? $source ],
-			'auto'    => [ 'label' => self::label( $auto ), 'why' => self::WHY[ $auto_source ] ?? $auto_source ],
-			'roles'   => $labels,
-		] ) . ';', 'before' );
+		wp_add_inline_script( 'lb-page-role', 'window.lbPageRole = ' . wp_json_encode( $data ) . ';', 'before' );
 	}
 
 	/** Any write that changes a page's role (meta box, editor panel over REST, tools) purges the page caches once. */

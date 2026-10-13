@@ -204,7 +204,7 @@ final class Branding_Admin {
 			echo '</div>';
 		}
 		if ( ! $configured ) {
-			echo '<div class="notice notice-info inline"><p><strong>' . esc_html__( 'Not switched on yet.', 'launch-builder' ) . '</strong> ' . esc_html__( 'Nothing on this site has changed. The recommended setup is ticked below: review it, then press Save and switch on.', 'launch-builder' ) . '</p></div>';
+			echo '<div class="notice notice-info inline"><p><strong>' . esc_html__( 'Nothing is branded yet.', 'launch-builder' ) . '</strong> ' . esc_html__( 'Branding is on, but it changes nothing on this site until you save. The recommended setup is ticked below: review it, then press Save settings.', 'launch-builder' ) . '</p></div>';
 		}
 		foreach ( Branding::all_warnings() as $w ) {
 			echo '<div class="notice notice-warning inline"><p>' . esc_html( $w ) . '</p></div>';
@@ -228,7 +228,7 @@ final class Branding_Admin {
 		echo self::section_lb( $form );
 		echo self::section_kadence( $form );
 
-		echo '<div class="lbb-savebar"><button type="submit" class="button button-primary button-large">' . esc_html( $configured ? __( 'Save changes', 'launch-builder' ) : __( 'Save and switch on', 'launch-builder' ) ) . '</button><span class="lbb-dirty" role="status" aria-live="polite" hidden></span></div></form>';
+		echo '<div class="lbb-savebar"><button type="submit" class="button button-primary button-large">' . esc_html__( 'Save settings', 'launch-builder' ) . '</button><span class="lbb-dirty" role="status" aria-live="polite" hidden></span></div></form>';
 
 		echo self::section_tools();
 		echo '</div>';
@@ -310,7 +310,7 @@ final class Branding_Admin {
 		$h .= '<div class="lb-br-mock" id="lbb-mock" role="img" aria-label="' . esc_attr__( 'Preview of the sign-in screen', 'launch-builder' ) . '"><div class="lbb-mock-box">';
 		$h .= '<h1><a href="#" tabindex="-1" id="lbb-mock-logo">' . esc_html( $name ) . '</a></h1>';
 		$h .= '<p class="lb-login-message" id="lbb-mock-message"' . ( '' === (string) ( $login['message'] ?? '' ) ? ' hidden' : '' ) . '>' . esc_html( (string) ( $login['message'] ?? '' ) ) . '</p>';
-		$h .= '<form onsubmit="return false"><p><label>' . esc_html__( 'Username or Email Address', 'launch-builder' ) . '</label><input type="text" class="input" tabindex="-1" disabled aria-label="' . esc_attr__( 'Username or Email Address', 'launch-builder' ) . '"></p><p><label>' . esc_html__( 'Password', 'launch-builder' ) . '</label><input type="password" class="input" tabindex="-1" disabled aria-label="' . esc_attr__( 'Password', 'launch-builder' ) . '"></p><p class="submit"><input type="button" class="button button-primary" tabindex="-1" disabled value="' . esc_attr__( 'Log In', 'launch-builder' ) . '"></p></form>';
+		$h .= '<div class="lbb-mock-form"><p><label>' . esc_html__( 'Username or Email Address', 'launch-builder' ) . '</label><input type="text" class="input" tabindex="-1" disabled aria-label="' . esc_attr__( 'Username or Email Address', 'launch-builder' ) . '"></p><p><label>' . esc_html__( 'Password', 'launch-builder' ) . '</label><input type="password" class="input" tabindex="-1" disabled aria-label="' . esc_attr__( 'Password', 'launch-builder' ) . '"></p><p class="submit"><input type="button" class="button button-primary" tabindex="-1" disabled value="' . esc_attr__( 'Log In', 'launch-builder' ) . '"></p></div>';
 		$h .= '<p id="nav"><a href="#" tabindex="-1">' . esc_html__( 'Lost your password?', 'launch-builder' ) . '</a></p><p id="backtoblog"><a href="#" tabindex="-1">' . esc_html__( '&larr; Go to site', 'launch-builder' ) . '</a></p>';
 		$h .= '<p class="lb-login-credit" id="lbb-mock-credit">' . sprintf( /* translators: %s: agency name */ esc_html__( 'Website by %s', 'launch-builder' ), '<a href="#" tabindex="-1">' . esc_html( $agency['name'] ) . '</a>' ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above.
 		$h .= '</div></div>';

@@ -12,6 +12,8 @@ defined( 'ABSPATH' ) || exit;
  *   hash   hash of the STORED state right after LB wrote it (hash_post / hash_option / hash_mods, read back after saving,
  *          so kses or other save filters do not make a fresh object look edited)
  *   status the status LB left it in (publish, draft...; 'set' for options)
+ *   title  optional: the post title LB last wrote, so a later write can tell its own title from one a person changed
+ *          (record() keeps it when a caller does not pass one)
  *
  * Writers' rules: before overwriting, if is_edited() -> report kept_edits and skip; never resurrect
  * an object that is trashed or that an admin drafted; prune only rows whose hash still matches, and mark_pruned() them;
@@ -60,19 +62,31 @@ final class Ledger {
 	 * @param int|string $id     post id or option name.
 	 * @param string     $hash   hash of the stored state after the write.
 	 * @param string     $status status LB left the object in.
+	 * @param string|null $title the post title LB wrote (null keeps the one already recorded, if any).
 	 */
-	public static function record( string $key, string $type, $id, string $hash, string $status ): void {
-		self::put(
-			$key,
-			[
-				'type'         => $type,
-				'id'           => is_numeric( $id ) ? (int) $id : (string) $id,
-				'hash'         => $hash,
-				'status'       => $status,
-				'pruned_by_lb' => false,
-				'last_write'   => time(),
-			]
-		);
+	public static function record( string $key, string $type, $id, string $hash, string $status, ?string $title = null ): void {
+		$row = [
+			'type'         => $type,
+			'id'           => is_numeric( $id ) ? (int) $id : (string) $id,
+			'hash'         => $hash,
+			'status'       => $status,
+			'pruned_by_lb' => false,
+			'last_write'   => time(),
+		];
+		if ( null === $title ) {
+			$old = self::get( $key );
+			$title = $old && isset( $old['title'] ) ? (string) $old['title'] : null;
+		}
+		if ( null !== $title ) {
+			$row['title'] = $title;
+		}
+		self::put( $key, $row );
+	}
+
+	/** The post title LB last wrote for $key (null when none was recorded, e.g. a row from before titles were tracked). */
+	public static function title( string $key ): ?string {
+		$row = self::get( $key );
+		return $row && isset( $row['title'] ) ? (string) $row['title'] : null;
 	}
 
 	/**

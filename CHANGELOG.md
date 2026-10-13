@@ -7,6 +7,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-13
+
+Preview release: the plugin is not in everyday use yet, so expect rough edges and report them.
+
+### Added
+- Design hub: every card says which pages a change reaches (with real page titles), a "This will change" line sits next to Apply, and Change design opens a window with live previews of each design before you choose. Breadcrumbs can be limited to the page types you pick, and a page can be given a hero of its own from the editor.
+- Elements and synced patterns have outline names ("Launch Builder · Hero · Service pages"), a "Launch Builder" view and a "Used for" column in the Elements list, and a note on each design's edit screen that says what it covers and links to the Design hub.
+- Business Info is shorter and friendlier: the everyday fields first, the rest under More options, and values that are not valid are refused with a reason instead of wiping what was saved.
+- "Fill Rank Math from Business Info": a preview of exactly which Rank Math Local SEO settings would change, then a fill that never overwrites what you set and can be undone.
+- Meta Box fields can be shown with {{meta.field}} tokens (pictures, rich text, embeds, posts and categories included) and only fields Meta Box registers for the page can be read.
+- Tokens now also resolve in page titles, classic menu labels and links, legacy text widgets, image alt text and structured data, on the server, so visitors and search engines never see a raw token. {{LB.Phone}} works like {{lb.phone}}. The audit also flags mistyped tokens in titles and SEO fields.
+- go-live fetches the home page and one page, service and area, and refuses to launch while unresolved tokens or copy placeholders are printed.
+- Rating widget: the real platform logos from their own sources (see assets/logos/LOGOS.txt), and on phones the content is centred inside boxed styles, with an "On phones" setting.
+- Duplicate and URLs have the same look as the other Launch Builder screens.
+
+### Changed
+- A blank Business Info field prints nothing once the site is public; demo text shows only while search engines are asked to stay away (Settings > Reading).
+- Detokenize bakes fallbacks, blank values on a public site and tokens typed into SEO fields.
+- Opening Launch Builder screens is faster: the dashboard caches its compatibility facts, update checks never hold up a page, and Site health reads its posts in one query.
+- The LaunchLocal mark is now the plugin logo: the admin menu icon, the header of every Launch Builder screen and the icon in update notices.
+- Local avatars: people without a photo of their own now get the LaunchLocal mark by default, and ready-made pictures can be chosen for the whole site or for each person.
+
+### Fixed
+- Branding: the Save button works again. The sign-in preview no longer cuts the settings form short, and the screen wording is clearer.
+
 ## [0.10.0] - 2026-10-12
 
 ### Added
@@ -58,6 +83,7 @@ First public draft.
 - A secure MCP endpoint and REST tools, so an AI assistant or a dashboard can build and maintain the site, with an activity log.
 - Updates from GitHub releases through the normal WordPress update screens, including automatic updates and a "Check for updates" link.
 
-[Unreleased]: https://github.com/Red-Dog-Media/launch-builder/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Red-Dog-Media/launch-builder/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Red-Dog-Media/launch-builder/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Red-Dog-Media/launch-builder/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Red-Dog-Media/launch-builder/releases/tag/v0.9.0

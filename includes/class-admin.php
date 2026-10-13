@@ -225,7 +225,7 @@ final class Admin {
 		foreach ( $files as $fl ) {
 			$stamp = max( $stamp, is_file( $fl ) ? (int) filemtime( $fl ) : 0 );
 		}
-		$key = 'lb_pv_' . md5( implode( '|', [ $raw, 'pv3', $role, LB_VERSION, $stamp, count( $files ), wp_json_encode( get_option( Company::OPT ) ), wp_json_encode( get_option( Company::OPT_SRC ) ), (string) get_option( 'kadence_global_palette' ), md5( wp_json_encode( get_theme_mods() ) ), md5( wp_json_encode( get_option( 'active_plugins' ) ) ), (string) get_option( 'kadence_blocks_config_blocks' ) ] ) );
+		$key = 'lb_pv_' . md5( implode( '|', [ $raw, 'pv4', $role, LB_VERSION, $stamp, count( $files ), wp_json_encode( get_option( Company::OPT ) ), wp_json_encode( get_option( Company::OPT_SRC ) ), (string) get_option( 'kadence_global_palette' ), md5( wp_json_encode( get_theme_mods() ) ), md5( wp_json_encode( get_option( 'active_plugins' ) ) ), (string) get_option( 'kadence_blocks_config_blocks' ) ] ) );
 		$hit = get_transient( $key );
 		if ( is_string( $hit ) && '' !== $hit && empty( $_GET['lb_fresh'] ) ) { // phpcs:ignore
 			header( 'X-LB-Preview: cached' );
@@ -255,17 +255,24 @@ final class Admin {
 		if ( ! $items ) {
 			echo '<p style="padding:24px;font-family:sans-serif">Nothing to preview here. Header patterns are applied with <code>set-header</code> and show on your site once set.</p>';
 		}
+		$drawn = 0;
 		foreach ( $items as $p ) {
 			if ( in_array( 'launch-builder-headers', (array) $p['categories'], true ) ) {
 				echo '<p style="padding:24px;font-family:sans-serif">Header patterns are applied with <code>set-header</code>; they show on your site once set.</p>';
 				continue;
 			}
 			$sl = substr( $p['name'], 15 );
+			$drawn++;
 			echo '<section class="lb-pv-item" id="p-' . esc_attr( $sl ) . '">';
 			if ( $is_cat ) {
 				echo '<div class="lb-pv-label">' . esc_html( $p['title'] ) . ' <code>' . esc_html( $sl ) . '</code></div>';
 			}
 			echo '<div class="entry-content single-content">' . do_blocks( $p['content'] ) . '</div></section>'; // phpcs:ignore -- admin-only preview of trusted pattern files.
+		}
+		if ( $drawn && ! $is_cat ) {
+			// Tells the Design hub that a design was drawn. A frame on another host cannot be looked into, so this message is
+			// how the hub knows the page is not an error page; it carries only the pattern name and the hub checks who sent it.
+			echo '<script>try{parent.postMessage({lbPv:1,p:' . wp_json_encode( $slug, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) . '},"*")}catch(e){}</script>';
 		}
 		wp_footer();
 		echo '</body></html>';
@@ -289,6 +296,17 @@ final class Admin {
 
 	/** Findings made safe and useful for the screen: plain strings, an edit link for posts. */
 	private static function decorate( array $findings ): array {
+		// Load the posts the findings point at in one go: each edit check below would otherwise fetch its own post.
+		$ids = [];
+		foreach ( $findings as $f ) {
+			$f = (array) $f;
+			if ( isset( $f['object_type'], $f['id'] ) && 'post' === $f['object_type'] && is_scalar( $f['id'] ) && ctype_digit( (string) $f['id'] ) ) {
+				$ids[ (int) $f['id'] ] = (int) $f['id'];
+			}
+		}
+		if ( $ids ) {
+			_prime_post_caches( array_values( $ids ), false, false );
+		}
 		$out = [];
 		foreach ( $findings as $f ) {
 			$f = (array) $f;
