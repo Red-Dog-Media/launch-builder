@@ -1082,6 +1082,15 @@ final class Entries {
 	}
 
 	/**
+	 * The style attribute of a card grid: as many columns as there are cards, up to the configured number (3 cards in a
+	 * 4-column list fill the row instead of leaving an empty column), and the tablet count (two at most).
+	 */
+	private static function grid_style( int $cols, int $count ): string {
+		$n = max( 1, min( $cols, $count ) );
+		return ' style="--lb-cols:' . $n . ';--lb-cols-t:' . min( $n, 2 ) . '"';
+	}
+
+	/**
 	 * HTML for the launch/entries block.
 	 *
 	 * @param array          $a     block attributes (see block.json and query()).
@@ -1116,6 +1125,7 @@ final class Entries {
 		$more_label = esc_html( '' !== trim( (string) ( $a['linkLabel'] ?? '' ) ) ? (string) $a['linkLabel'] : __( 'Learn more', 'launch-builder' ) );
 		$show = ! isset( $a['showSummary'] ) || $a['showSummary'];
 		$style = ' style="--lb-cols:' . $cols . '"';
+		$grid = self::grid_style( $cols, count( $posts ) ); // Card and tile grids use as many columns as there are cards.
 		$link = static function ( \WP_Post $p ): string { return esc_url( get_permalink( $p ) ); };
 		$title = static function ( \WP_Post $p ): string { return esc_html( get_the_title( $p ) ); };
 		$icon = static function ( \WP_Post $p ) use ( $icons ): string { return $icons ? self::icon_html( $p ) : ''; };
@@ -1135,7 +1145,7 @@ final class Entries {
 			case 'tiles':
 			case 'footer-links':
 				$cls = [ 'links' => 'lb-links', 'checklist' => 'lb-check', 'columns' => 'lb-cols', 'tiles' => 'lb-tiles', 'footer-links' => 'lb-footer-links' ][ $layout ];
-				$h = '<ul class="lb-entries ' . $cls . $variant . '"' . ( 'footer-links' === $layout ? '' : $style ) . '>';
+				$h = '<ul class="lb-entries ' . $cls . $variant . '"' . ( 'footer-links' === $layout ? '' : ( 'tiles' === $layout ? $grid : $style ) ) . '>';
 				foreach ( $posts as $p ) {
 					$h .= '<li' . ( 'footer-links' === $layout ? '' : self::anchor( $p ) ) . '><a href="' . $link( $p ) . '">' . ( $icons ? self::icon_html( $p ) : ( 'columns' === $layout && 'area' === $type ? self::pin() : '' ) ) . $title( $p ) . '</a></li>';
 				}
@@ -1156,7 +1166,7 @@ final class Entries {
 			case 'columns-links':
 				return self::render_grouped( $type, $posts, $cols, $variant );
 			case 'image-cards':
-				$h = '<div class="lb-entries lb-cards lb-image-cards' . $variant . '"' . $style . '>';
+				$h = '<div class="lb-entries lb-cards lb-image-cards' . $variant . '"' . $grid . '>';
 				foreach ( $posts as $p ) {
 					$img = has_post_thumbnail( $p ) ? get_the_post_thumbnail( $p, 'medium_large', [ 'loading' => 'lazy' ] ) : '<span class="lb-entry-media-empty"></span>';
 					$sum = $show ? self::summary( $p ) : '';
@@ -1165,7 +1175,7 @@ final class Entries {
 				return $h . '</div>';
 		}
 		// cards, icon-cards
-		$h = '<div class="lb-entries lb-cards' . ( 'icon-cards' === $layout ? ' lb-icon-cards' : '' ) . $variant . '"' . $style . '>';
+		$h = '<div class="lb-entries lb-cards' . ( 'icon-cards' === $layout ? ' lb-icon-cards' : '' ) . $variant . '"' . $grid . '>';
 		foreach ( $posts as $p ) {
 			$img = 'cards' === $layout && has_post_thumbnail( $p ) ? get_the_post_thumbnail( $p, 'medium_large' ) : '';
 			$sum = $show ? self::summary( $p ) : '';
@@ -1274,7 +1284,7 @@ final class Entries {
 	 * {{entry.title}} {{entry.summary}} {{entry.image}} {{entry.url}}; use href="#entry-url" for the link.
 	 */
 	private static function render_custom( array $posts, string $raw, int $cols ): string {
-		$h = '<div class="lb-entries lb-custom" style="--lb-cols:' . $cols . '">';
+		$h = '<div class="lb-entries lb-custom"' . self::grid_style( $cols, count( $posts ) ) . '>';
 		foreach ( $posts as $p ) {
 			$img = get_the_post_thumbnail_url( $p, 'large' );
 			Tokens::push( $p ); // Inner blocks resolve entry.* tokens against this entry.
@@ -1310,7 +1320,7 @@ final class Entries {
 			return current_user_can( 'edit_posts' ) ? '<p class="lb-entries-empty">' . esc_html__( 'No service categories with services yet.', 'launch-builder' ) . '</p>' : '';
 		}
 		$more = esc_html( '' !== trim( (string) ( $a['linkLabel'] ?? '' ) ) ? (string) $a['linkLabel'] : __( 'View services', 'launch-builder' ) );
-		$h = '<div class="lb-entries lb-cards lb-catcards' . $variant . '" style="--lb-cols:' . $cols . '">';
+		$h = '<div class="lb-entries lb-cards lb-catcards' . $variant . '"' . self::grid_style( $cols, count( $terms ) ) . '>';
 		foreach ( $terms as $t ) {
 			$page = (int) get_term_meta( $t->term_id, '_lb_page', true );
 			$url = $page && 'publish' === get_post_status( $page ) ? get_permalink( $page ) : get_term_link( $t );

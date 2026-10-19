@@ -52,7 +52,7 @@ final class Audit {
 	/** Demo copy besides Business Info's demo values. */
 	const DEMO_EXTRA = [ 'Lorem ipsum', '887+ Combined Reviews', '555-0123', 'yourbusiness.com', 'Your City, ST' ];
 
-	/** Business Info fields a live site must not leave at the demo value. */
+	/** Business Info fields a live site must not leave at the demo value (the name reads the site title, so it shows here only while that is a WordPress placeholder). */
 	const ESSENTIAL = [ 'name', 'phone', 'email', 'address', 'city', 'hours' ];
 
 	/** Slot fields that hold copy (default_copy_left). */
@@ -111,6 +111,10 @@ final class Audit {
 			'demo_left'               => $c( 'content', 'check_demo', true ),
 			'default_copy_left'       => $c( 'content', 'check_default_copy', true ),
 			'placeholder_image'       => $c( 'content', 'check_placeholder_images', true ),
+			'demo_claims_left'        => $c( 'content', 'check_demo_claims', true ),
+			'form_embed_placeholder'  => $c( 'company', 'check_form_embed' ),
+			'brand_missing'           => $c( 'company', 'check_brand' ),
+			'wordpress_sample_content' => $c( 'content', 'check_wordpress_samples' ),
 			'duplicate_uniqueid'      => $c( 'content', 'check_uniqueids', true ),
 			'company_default'         => $c( 'company', 'check_company' ),
 			'menu_dead_link'          => $c( 'menus', 'check_menus' ),
@@ -499,8 +503,21 @@ final class Audit {
 		return $out;
 	}
 
-	/** md5( normalised default text ) => pattern slug, for every built-in pattern's copy slots (cached per pattern set). */
+	/** md5( normalised default text ) => pattern slug(s), for every built-in pattern's copy slots (cached per pattern set). */
 	public static function default_texts(): array {
+		return self::pattern_defaults()['copy'];
+	}
+
+	/**
+	 * md5( normalised text ) => pattern slug(s), for default texts that make a claim a visitor takes as fact: a number or a
+	 * price ("Backed by 2,500+ five-star reviews", "$50 off"), and a count-up number with its label ("887" "Google reviews").
+	 */
+	public static function demo_claims(): array {
+		return self::pattern_defaults()['claims'];
+	}
+
+	/** The default copy of every built-in pattern: { copy, claims }, each md5 => "slug, slug" (at most three slugs). */
+	private static function pattern_defaults(): array {
 		if ( isset( self::$memo['defaults'] ) ) {
 			return self::$memo['defaults'];
 		}
@@ -509,25 +526,46 @@ final class Audit {
 		foreach ( $files as $f ) {
 			$stamp = max( $stamp, (int) filemtime( $f ) );
 		}
-		$key = 'lb_audit_defaults_' . md5( LB_VERSION . '|' . $stamp . '|' . count( $files ) . '|' . implode( ',', (array) get_option( 'active_plugins', [] ) ) );
+		$key = 'lb_audit_defaults2_' . md5( LB_VERSION . '|' . $stamp . '|' . count( $files ) . '|' . implode( ',', (array) get_option( 'active_plugins', [] ) ) );
 		$hit = get_transient( $key );
-		if ( ! is_array( $hit ) ) {
-			$hit = [];
+		if ( ! is_array( $hit ) || ! isset( $hit['copy'], $hit['claims'] ) ) {
+			$list = [ 'copy' => [], 'claims' => [] ];
+			$add = static function ( string $kind, string $hash, string $slug ) use ( &$list ) {
+				$have = isset( $list[ $kind ][ $hash ] ) ? explode( ', ', $list[ $kind ][ $hash ] ) : [];
+				if ( ! in_array( $slug, $have, true ) && count( $have ) < 3 ) {
+					$have[] = $slug;
+				}
+				$list[ $kind ][ $hash ] = implode( ', ', $have );
+			};
 			foreach ( Patterns::all() as $slug => $p ) {
 				if ( ! empty( $p['custom'] ) ) {
 					continue; // Per-site patterns are this site's own copy.
 				}
-				foreach ( Patterns::slots( parse_blocks( (string) ( $p['content'] ?? '' ) ) ) as $s ) {
+				$slots = Patterns::slots( parse_blocks( (string) ( $p['content'] ?? '' ) ) );
+				$by_path = [];
+				foreach ( $slots as $s ) {
+					$by_path[ strstr( $s['id'], ':', true ) ][ $s['field'] ] = (string) $s['value'];
+				}
+				foreach ( $slots as $s ) {
 					$v = (string) $s['value'];
-					if ( ! in_array( $s['field'], self::COPY_FIELDS, true ) || false !== strpos( $v, '{{' ) || false !== strpos( $v, '[[' ) ) {
+					if ( false !== strpos( $v, '{{' ) || false !== strpos( $v, '[[' ) ) {
 						continue;
 					}
 					$n = self::norm_text( $v );
-					if ( strlen( $n ) >= 30 && str_word_count( $n ) >= 5 ) {
-						$hit[ md5( $n ) ] = $hit[ md5( $n ) ] ?? (string) $slug;
+					if ( in_array( $s['field'], self::COPY_FIELDS, true ) ) {
+						if ( strlen( $n ) >= 30 && str_word_count( $n ) >= 5 ) {
+							$add( 'copy', md5( $n ), (string) $slug );
+						}
+						if ( strlen( $n ) >= 4 && preg_match( '/\d|\$/', $n ) ) {
+							$add( 'claims', md5( $n ), (string) $slug );
+						}
+					} elseif ( 'number' === $s['field'] ) {
+						$label = self::norm_text( (string) ( $by_path[ strstr( $s['id'], ':', true ) ]['label'] ?? '' ) );
+						$add( 'claims', md5( $label . '|' . $n ), (string) $slug );
 					}
 				}
 			}
+			$hit = $list;
 			set_transient( $key, $hit, DAY_IN_SECONDS );
 		}
 		self::$memo['defaults'] = $hit;
@@ -549,11 +587,11 @@ final class Audit {
 				}
 				$n = self::norm_text( (string) $s['value'] );
 				if ( strlen( $n ) >= 30 && isset( $defaults[ md5( $n ) ] ) ) {
-					$hits[] = [ 'slot' => $s['id'], 'pattern' => $defaults[ md5( $n ) ], 'text' => mb_substr( $n, 0, 70 ) ];
+					$hits[] = [ 'slot' => $s['id'], 'pattern' => $defaults[ md5( $n ) ], 'text' => mb_substr( $n, 0, 160 ) ];
 				}
 			}
 			if ( $hits ) {
-				$out[] = self::post_finding( $p, 'warning', 'default_copy_left', count( $hits ) . ' text slot(s) still carry a pattern\'s default copy, e.g. "' . $hits[0]['text'] . '" (' . $hits[0]['pattern'] . ').', 'Rewrite it for this business (apply-pattern slots or replace on the page, set-synced-pattern for shared designs).', [ 'slots' => array_slice( $hits, 0, 10 ) ] );
+				$out[] = self::post_finding( $p, 'warning', 'default_copy_left', count( $hits ) . ' text slot(s) in ' . ( 'wp_block' === $p->post_type ? 'this saved design' : 'this content' ) . ' still carry a stock pattern\'s default copy, e.g. "' . mb_substr( $hits[0]['text'], 0, 70 ) . '" (same text in the stock pattern ' . $hits[0]['pattern'] . ').', 'Rewrite it for this business (apply-pattern slots or replace on the page, set-synced-pattern for shared designs).', [ 'slots' => array_slice( $hits, 0, 10 ) ] );
 			}
 		}
 		return $out;
@@ -565,6 +603,73 @@ final class Audit {
 			$n = substr_count( $p->post_content, 'assets/placeholders/' );
 			if ( $n ) {
 				$out[] = self::post_finding( $p, 'warning', 'placeholder_image', $n . ' placeholder image(s) left.', 'Import real photos (sideload-media) and fill the image slots.' );
+			}
+		}
+		return $out;
+	}
+
+	/** Default text of a stock pattern that states a number or a price (a review count, "$50 off", a count-up figure) and is still on the page. */
+	public static function check_demo_claims( array $args ): array {
+		$claims = self::demo_claims();
+		$out = [];
+		foreach ( self::window_posts( $args, [], [ 'publish', 'future', 'private', 'draft' ] ) as $p ) {
+			if ( false === strpos( (string) $p->post_content, '<!-- wp:' ) ) {
+				continue;
+			}
+			$slots = Patterns::slots( self::blocks( $p ) );
+			$by_path = [];
+			foreach ( $slots as $s ) {
+				$by_path[ strstr( $s['id'], ':', true ) ][ $s['field'] ] = (string) $s['value'];
+			}
+			$hits = [];
+			foreach ( $slots as $s ) {
+				$n = self::norm_text( (string) $s['value'] );
+				if ( in_array( $s['field'], self::COPY_FIELDS, true ) && strlen( $n ) >= 4 && isset( $claims[ md5( $n ) ] ) ) {
+					$hits[] = [ 'slot' => $s['id'], 'text' => mb_substr( $n, 0, 100 ), 'pattern' => $claims[ md5( $n ) ] ];
+				} elseif ( 'number' === $s['field'] ) {
+					$key = md5( self::norm_text( (string) ( $by_path[ strstr( $s['id'], ':', true ) ]['label'] ?? '' ) ) . '|' . $n );
+					if ( isset( $claims[ $key ] ) ) {
+						$hits[] = [ 'slot' => $s['id'], 'text' => $n . ' ' . self::norm_text( (string) ( $by_path[ strstr( $s['id'], ':', true ) ]['label'] ?? '' ) ), 'pattern' => $claims[ $key ] ];
+					}
+				}
+			}
+			if ( $hits ) {
+				$live = in_array( $p->post_status, self::LIVE, true );
+				$out[] = self::post_finding( $p, $live ? 'warning' : 'info', 'demo_claims_left', count( $hits ) . ' demo claim(s) a visitor would take as fact (a count, a rating or a price from the stock pattern), e.g. "' . $hits[0]['text'] . '".', 'Replace them with the business\'s real figures, or take the design off until it has real content (build-from-brief leaves the testimonial and offer designs out of the default stack until content.testimonials and content.offers exist).', [ 'slots' => array_slice( $hits, 0, 10 ) ] );
+			}
+		}
+		return $out;
+	}
+
+	/** The form embed in Business Info is a stand-in (REPLACE_WITH_FORM_ID, an example host): the forms do not work. */
+	public static function check_form_embed(): array {
+		$html = (string) ( Company::values()['form_html'] ?? '' );
+		if ( ! Launch::placeholder_embed( $html ) ) {
+			return [];
+		}
+		return [ [ 'severity' => 'warning', 'code' => 'form_embed_placeholder', 'object_type' => 'option', 'id' => Company::OPT, 'title' => 'Business Info: form embed', 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => 'The form embed is a stand-in (it still holds a placeholder such as REPLACE_WITH_FORM_ID), so the quote, contact and booking forms do not work.', 'fix' => 'Paste the real embed code: forms.quote.embed in the brief, or set-company values.form_html.' ] ];
+	}
+
+	/** No logo or no site icon. */
+	public static function check_brand(): array {
+		$out = [];
+		$base = [ 'object_type' => 'option', 'url' => admin_url( 'customize.php?autofocus[section]=title_tagline' ), 'severity' => 'warning', 'code' => 'brand_missing' ];
+		if ( ! (int) get_theme_mod( 'custom_logo' ) ) {
+			$out[] = $base + [ 'id' => 'custom_logo', 'title' => 'Logo', 'message' => 'No logo is set, so the header shows the site title as text.', 'fix' => 'Import the logo (media entry with use "logo") or set it in Appearance, Customize, Site identity.' ];
+		}
+		if ( ! (int) get_option( 'site_icon' ) ) {
+			$out[] = $base + [ 'id' => 'site_icon', 'title' => 'Site icon', 'message' => 'No site icon is set (the small picture in browser tabs and search results).', 'fix' => 'Import it (media entry with use "site_icon") or set it in Appearance, Customize, Site identity.' ];
+		}
+		return $out;
+	}
+
+	/** The sample page and the first post WordPress made, still published (and in the sitemap). */
+	public static function check_wordpress_samples( array $args ): array {
+		unset( $args );
+		$out = [];
+		foreach ( Launch::wordpress_defaults() as $p ) {
+			if ( in_array( $p->post_status, self::LIVE, true ) ) {
+				$out[] = self::post_finding( $p, 'warning', 'wordpress_sample_content', '"' . $p->post_title . '" is WordPress sample content, still published: visitors and search engines can find it.', 'Trash it (a build-from-brief does this on its first run).' );
 			}
 		}
 		return $out;
@@ -659,6 +764,11 @@ final class Audit {
 				continue;
 			}
 			$essential = in_array( $k, self::ESSENTIAL, true );
+			if ( 'name' === $k ) { // Nothing is typed and the site title is empty or a WordPress placeholder: a public page prints no name at all.
+				$public = ! Company::setup_mode();
+				$out[] = $f( $public ? 'error' : 'warning', $k, 'The site title is empty or still a WordPress placeholder, so ' . ( $public ? 'pages print no business name.' : 'pages show the demo name "' . $def[2] . '".' ), 'Set the site title (Settings, General), or set-company values.name.' );
+				continue;
+			}
 			$out[] = $f( $essential ? 'warning' : 'info', $k, $def[0] . ' is still the demo value "' . $def[2] . '"' . ( $essential ? ', and every page that shows it prints that.' : '.' ), 'set-company values.' . $k . ' (or Launch Builder > Business Info).' );
 		}
 		$socials = [];
@@ -833,8 +943,35 @@ final class Audit {
 		return self::$memo['samples'];
 	}
 
-	/** One H1 per page: loads the sample page of each role in this window (the routes without a page on the last window). */
+	/**
+	 * One H1 per page, read from the stored content for EVERY page and entry in this window (no request needed): two H1s in
+	 * the page itself, an own hero next to the shared one, or a page set to use its own hero that has none.
+	 */
+	public static function check_h1_static( array $args ): array {
+		$out = [];
+		foreach ( self::window_posts( $args, [ 'page', Entries::SERVICE, Entries::AREA ], [ 'publish' ] ) as $p ) {
+			$role = Roles::of( (int) $p->ID );
+			if ( '' === $role || 'other' === $role ) {
+				continue;
+			}
+			$n = Chrome::h1_count( (string) $p->post_content );
+			$flag = (string) get_post_meta( $p->ID, Chrome::HERO_META, true );
+			$shared = '' === $flag && ! in_array( Chrome::design( 'hero', $role ), [ false, null, '', 'theme' ], true );
+			if ( $n >= 2 ) {
+				$out[] = self::post_finding( $p, 'error', 'one_h1', 'The page itself prints ' . $n . ' H1 headings (exactly one expected).', 'Keep one H1; the others become H2.', [ 'h1_count' => $n ] );
+			} elseif ( 1 === $n && $shared ) {
+				$out[] = self::post_finding( $p, 'error', 'one_h1', 'Two H1 headings: the shared hero for ' . $role . ' pages prints one and the page has its own hero.', 'Set the page to use its own hero (set-page-layout with title hide), or take the hero section out of the page; a build-from-brief does this by itself.', [ 'h1_count' => 2 ] );
+			} elseif ( 0 === $n && 'content' === $flag ) {
+				$out[] = self::post_finding( $p, 'error', 'one_h1', 'No H1: the page is set to use its own hero but its content has no heading level 1.', 'Add the hero section back, or let the page follow its role again (set-page-layout with title show).', [ 'h1_count' => 0 ] );
+			}
+		}
+		return $out;
+	}
+
+	/** One H1 per page: the stored content of every page (see check_h1_static), then the page a visitor gets for the sample of each role in this window (the routes without a page on the last window). */
 	public static function check_one_h1( array $args ): array {
+		$static = self::check_h1_static( $args );
+		$flagged = array_column( $static, 'id' );
 		[ $posts, $routes ] = self::role_samples();
 		$until = (int) ( $args['until_id'] ?? PHP_INT_MAX );
 		$after = (int) ( $args['after_id'] ?? 0 );
@@ -850,11 +987,14 @@ final class Audit {
 				$todo[] = [ 'id' => null, 'roles' => [ $role ], 'url' => $url ];
 			}
 		}
-		$out = [];
+		$out = $static;
 		$t0 = microtime( true );
 		foreach ( $todo as $i => $t ) {
 			if ( $i > 0 && null !== $t['id'] && microtime( true ) - $t0 > 15 ) {
 				return [ 'findings' => $out, 'next_after_id' => (int) $todo[ $i - 1 ]['id'] ]; // Out of time: the page ends at the last page loaded.
+			}
+			if ( null !== $t['id'] && in_array( $t['id'], $flagged, true ) ) {
+				continue; // The stored content already says what is wrong with this page.
 			}
 			$r = Inspect::inspect( $t['url'], [ 'check_links' => false, 'post_id' => $t['id'] ] );
 			$base = [ 'code' => 'one_h1', 'object_type' => $t['id'] ? 'post' : 'route', 'id' => $t['id'] ? $t['id'] : $t['roles'][0], 'title' => ( $t['id'] ? get_the_title( $t['id'] ) . ' ' : '' ) . '(' . implode( ', ', $t['roles'] ) . ')', 'url' => $t['url'] ];

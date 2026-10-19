@@ -367,6 +367,7 @@ final class Blueprint {
 		if ( isset( $site['tagline'] ) ) {
 			update_option( 'blogdescription', sanitize_text_field( $site['tagline'] ) );
 		}
+		Company::follow_site(); // A business name or tagline that is the same text as the title or tagline just set follows them instead of being a second copy.
 		if ( ! empty( $site['permalink'] ) ) {
 			$structure = sanitize_text_field( $site['permalink'] );
 			if ( preg_match( '#%[a-z_]+%#', $structure ) ) {

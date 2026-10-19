@@ -5,8 +5,8 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The visible branding surfaces of the Branding module: the sign-in screen, the admin bar logo and greeting, the admin
- * footer, page titles, the editor accent colour, the sender of WordPress emails and Launch Builder's own menu label,
- * icon, plugin row and block category. Nothing here runs unless Branding::active() and the surface's own switch are on.
+ * footer, page titles, the editor accent colour and the sender of WordPress emails. Nothing here runs unless
+ * Branding::active() and the surface's own switch are on.
  *
  * Sign-in screen: only core filters and one inline stylesheet on the "login" handle (no script, no jQuery, nothing
  * printed late). Every rule is scoped to body.login, so interim-login, two-factor and limit-login screens keep their own
@@ -15,18 +15,6 @@ defined( 'ABSPATH' ) || exit;
  * combinations and reports them.
  */
 final class Branding_Chrome {
-
-	/** Elements and attributes an agency icon may use (nothing that can run code or load anything). */
-	const SVG_TAGS = [
-		'svg'      => [ 'xmlns' => true, 'viewbox' => true, 'width' => true, 'height' => true, 'fill' => true, 'aria-hidden' => true, 'focusable' => true ],
-		'g'        => [ 'fill' => true, 'stroke' => true, 'transform' => true, 'fill-rule' => true, 'clip-rule' => true ],
-		'path'     => [ 'd' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'transform' => true, 'fill-rule' => true, 'clip-rule' => true ],
-		'circle'   => [ 'cx' => true, 'cy' => true, 'r' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true ],
-		'rect'     => [ 'x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'ry' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true ],
-		'polygon'  => [ 'points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true ],
-		'polyline' => [ 'points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true ],
-		'line'     => [ 'x1' => true, 'y1' => true, 'x2' => true, 'y2' => true, 'stroke' => true, 'stroke-width' => true ],
-	];
 
 	/* ------------------------------------------------------------------ colours */
 
@@ -367,7 +355,6 @@ final class Branding_Chrome {
 			return;
 		}
 		$a = Branding::section( 'admin' );
-		$lb = Branding::section( 'lb' );
 		if ( '' !== $a['footer_text'] ) {
 			add_filter( 'admin_footer_text', [ __CLASS__, 'footer_text' ], 9999 );
 		}
@@ -379,11 +366,6 @@ final class Branding_Chrome {
 		}
 		if ( ! empty( $a['menu_logo'] ) || ! empty( $a['editor_accent'] ) ) {
 			add_action( 'admin_head', [ __CLASS__, 'admin_head' ] );
-		}
-		if ( ! empty( $lb['enabled'] ) ) {
-			add_action( 'admin_menu', [ __CLASS__, 'lb_menu' ], 999 );
-			add_filter( 'all_plugins', [ __CLASS__, 'lb_plugin_row' ] );
-			add_filter( 'block_categories_all', [ __CLASS__, 'lb_block_category' ], 20 );
 		}
 	}
 
@@ -436,8 +418,10 @@ final class Branding_Chrome {
 		$a = Branding::section( 'admin' );
 		$css = '';
 		if ( ! empty( $a['menu_logo'] ) ) {
-			$inv = Company::resolve()['logo_inverse'] ?? [];
-			$id = 'client' === $a['menu_logo_source'] && ! empty( $inv['id'] ) ? Branding::usable_attachment( (int) $inv['id'] ) : 0;
+			// The client's logo can have its own image made for the dark menu; an old Business Info value counts until the tidy has moved it.
+			$own = Branding::usable_attachment( (int) $a['menu_logo_image'] );
+			$old = $own ? [] : (array) ( Company::resolve()['logo_inverse'] ?? [] );
+			$id = 'client' === $a['menu_logo_source'] ? ( $own ?: ( ! empty( $old['id'] ) ? Branding::usable_attachment( (int) $old['id'] ) : 0 ) ) : 0;
 			$choice = $id ? [ 'id' => $id, 'url' => Branding::attachment_url( $id, 'medium' ) ] : self::bar_logo_choice( (string) $a['menu_logo_source'] );
 			if ( $choice['id'] && '' !== $choice['url'] ) {
 				$icon = Branding::attachment_url( Branding::site_icon_id(), 'thumbnail' );
@@ -459,62 +443,6 @@ final class Branding_Chrome {
 		if ( '' !== $css ) {
 			echo '<style id="lb-branding-admin">' . $css . '</style>'; // phpcs:ignore WordPress.Security.EscapeOutput -- built from validated colours and encoded URLs.
 		}
-	}
-
-	/* ------------------------------------------------------------------ Launch Builder's own name */
-
-	public static function lb_menu(): void {
-		global $menu;
-		$lb = Branding::section( 'lb' );
-		foreach ( (array) $menu as $k => $item ) {
-			if ( ! isset( $item[2] ) || Admin::SLUG !== $item[2] ) {
-				continue;
-			}
-			if ( '' !== $lb['menu_label'] ) {
-				$menu[ $k ][0] = esc_html( $lb['menu_label'] );
-				$menu[ $k ][3] = $lb['menu_label'];
-			}
-			$icon = (string) $lb['menu_icon'];
-			if ( 'agency' === $icon && '' !== Branding::agency()['icon_svg'] ) {
-				$menu[ $k ][6] = 'data:image/svg+xml;base64,' . base64_encode( Branding::agency()['icon_svg'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions -- WordPress expects a base64 data URI for SVG menu icons.
-			} elseif ( 0 === strpos( $icon, 'dashicons-' ) ) {
-				$menu[ $k ][6] = $icon;
-			}
-		}
-	}
-
-	/** The plugin's row on the Plugins screen: name, author and description. Version and update source are untouched. */
-	public static function lb_plugin_row( $plugins ) {
-		$file = plugin_basename( LB_DIR . 'launch-builder.php' );
-		if ( ! is_array( $plugins ) || ! isset( $plugins[ $file ] ) ) {
-			return $plugins;
-		}
-		$lb = Branding::section( 'lb' );
-		$agency = Branding::agency();
-		if ( '' !== $lb['menu_label'] ) {
-			$plugins[ $file ]['Name'] = $lb['menu_label'];
-			$plugins[ $file ]['Title'] = $lb['menu_label'];
-		}
-		$plugins[ $file ]['Author'] = $agency['name'];
-		$plugins[ $file ]['AuthorName'] = $agency['name'];
-		$plugins[ $file ]['AuthorURI'] = $agency['url'];
-		if ( '' !== $lb['description'] ) {
-			$plugins[ $file ]['Description'] = $lb['description'];
-		}
-		return $plugins;
-	}
-
-	public static function lb_block_category( $categories ) {
-		$label = (string) Branding::section( 'lb' )['menu_label'];
-		if ( '' === $label || ! is_array( $categories ) ) {
-			return $categories;
-		}
-		foreach ( $categories as $i => $cat ) {
-			if ( is_array( $cat ) && 'launch-builder' === ( $cat['slug'] ?? '' ) ) {
-				$categories[ $i ]['title'] = $label;
-			}
-		}
-		return $categories;
 	}
 
 	/* ------------------------------------------------------------------ email sender */
@@ -581,27 +509,5 @@ final class Branding_Chrome {
 			return 'post_smtp';
 		}
 		return '';
-	}
-
-	/* ------------------------------------------------------------------ svg */
-
-	/**
-	 * An agency icon reduced to the allowed shapes, with fill="currentColor" on the root unless it sets one. '' when
-	 * nothing usable is left. Never stored or used unless it passes this.
-	 */
-	public static function clean_svg( string $svg ): string {
-		$svg = (string) preg_replace( [ '/<\?xml.*?\?>/s', '/<!DOCTYPE.*?>/is', '/<!--.*?-->/s' ], '', $svg );
-		$svg = trim( $svg );
-		if ( 0 !== stripos( $svg, '<svg' ) ) {
-			return '';
-		}
-		$clean = trim( wp_kses( $svg, self::SVG_TAGS ) );
-		if ( 0 !== stripos( $clean, '<svg' ) || false === stripos( $clean, '</svg>' ) ) {
-			return '';
-		}
-		if ( ! preg_match( '/^<svg\b[^>]*\sfill=/i', $clean ) ) {
-			$clean = (string) preg_replace( '/^<svg\b/i', '<svg fill="currentColor"', $clean, 1 );
-		}
-		return $clean;
 	}
 }

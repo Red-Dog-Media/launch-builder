@@ -13,6 +13,9 @@ defined( 'ABSPATH' ) || exit;
  *    A class that declares the array can be switched on and off unless it says 'toggle' => false ('id' is read as an
  *    alias of 'slug'; a plain string constant is just the slug, always on). Without the constant a module is always
  *    on. The core modules (CORE) are never toggleable, whatever their constant says.
+ *  - 'new_install' => true on a default-off module switches it on when the plugin is activated on a site that has no
+ *    Launch Builder state yet (first_activation()). A site that already has state keeps the module's default, so an update
+ *    never changes what a site does.
  *  - A disabled module is not booted and none of its hooks run: Plugin::modules() skips it, so it registers no tools,
  *    WordPress hooks, site-state keys, playbook entries, audit checks, blueprint steps or migrations.
  *  - Storage: the small autoloaded option launch_builder_disabled_modules holds only the choices that differ from a
@@ -79,7 +82,7 @@ final class Modules {
 	/**
 	 * What a module class says about itself (its MODULE constant), with defaults.
 	 *
-	 * @return array{class:string,slug:string,label:string,description:string,note:string,toggle:bool,default:bool,core:bool}
+	 * @return array{class:string,slug:string,label:string,description:string,note:string,toggle:bool,default:bool,core:bool,new_install:bool}
 	 */
 	public static function info( string $class ): array {
 		$class = ltrim( $class, '\\' );
@@ -109,6 +112,7 @@ final class Modules {
 			'toggle'      => ! $core && $declared && ( ! array_key_exists( 'toggle', $m ) || ! empty( $m['toggle'] ) ),
 			'default'     => array_key_exists( 'default', $m ) ? (bool) $m['default'] : true,
 			'core'        => $core,
+			'new_install' => ! empty( $m['new_install'] ),
 		];
 		if ( ! $info['toggle'] ) {
 			$info['default'] = true; // A module that cannot be switched off is on.
@@ -170,6 +174,40 @@ final class Modules {
 			$store['enabled'] = array_map( 'strval', $on );
 		}
 		return $store;
+	}
+
+	/**
+	 * Does this site already have Launch Builder state? Any option named launch_builder_* counts (the database version, the
+	 * module choices, a token, settings): the plugin writes one the first time it runs. One indexed lookup.
+	 */
+	public static function has_state(): bool {
+		global $wpdb;
+		return null !== $wpdb->get_var( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 1", $wpdb->esc_like( 'launch_builder_' ) . '%' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	}
+
+	/**
+	 * Plugin activation, before any module's activate(): on a site with no Launch Builder state, switch on the default-off
+	 * modules that ask for it ('new_install'), through the same explicit choice the Modules screen writes. A site that
+	 * already has state (an update, a reactivation) is left exactly as it is.
+	 *
+	 * @return bool true when this was a new install
+	 */
+	public static function first_activation(): bool {
+		if ( self::has_state() ) {
+			return false;
+		}
+		$choices = self::choices();
+		foreach ( self::classes() as $class ) {
+			$i = self::info( $class );
+			if ( $i['toggle'] && $i['new_install'] && ! $i['default'] && ! array_key_exists( $i['slug'], $choices ) ) {
+				$choices[ $i['slug'] ] = 1;
+			}
+		}
+		if ( $choices ) {
+			update_option( self::OPT, self::stored_form( $choices ), true );
+		}
+		self::$choices = null;
+		return true;
 	}
 
 	/** Is this module class on? Modules that cannot be toggled always are. */

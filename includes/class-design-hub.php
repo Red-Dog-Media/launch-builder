@@ -718,7 +718,7 @@ final class Design_Hub {
 		$open = $entry
 			? sprintf( /* translators: 1: name of the sidebar panel in the block editor, 2: the choice to make */ __( 'Open it in the block editor. In the sidebar, find the %1$s panel and set “Hero on this page” to “%2$s”.', 'launch-builder' ), __( 'Shared hero', 'launch-builder' ), __( 'Its own hero', 'launch-builder' ) )
 			: sprintf( /* translators: 1: name of the sidebar box in the editor, 2: the choice to make */ __( 'Open it in the editor. In the sidebar, find the %1$s box and set “Hero on this page” to “%2$s”.', 'launch-builder' ), __( 'Page role', 'launch-builder' ), __( 'Its own hero', 'launch-builder' ) );
-		$out .= '<li><b>' . esc_html__( 'Give that page its own hero.', 'launch-builder' ) . '</b> ' . esc_html( $open . ' ' . __( 'The shared hero and the shared breadcrumbs step aside on that page, so you can place any hero design in its own content (Patterns > Launch Builder). Choose “No hero” to show none.', 'launch-builder' ) ) . '</li>';
+		$out .= '<li><b>' . esc_html__( 'Give that page its own hero.', 'launch-builder' ) . '</b> ' . esc_html( $open . ' ' . __( 'The shared hero and breadcrumbs step aside on this page. Add any hero from Patterns > Launch Builder, or choose “No hero”.', 'launch-builder' ) ) . '</li>';
 		if ( ! $entry && ! $fixed ) {
 			// The names the hub uses; the editor's own list says "Conversion page" for the contact and quote pages.
 			$norm = static function ( $x ) {
@@ -865,7 +865,7 @@ final class Design_Hub {
 			'widths'  => [ __( 'Desktop', 'launch-builder' ) => self::WIDTHS['desktop'], __( 'Tablet', 'launch-builder' ) => self::WIDTHS['tablet'], __( 'Mobile', 'launch-builder' ) => self::WIDTHS['mobile'] ],
 			'loading' => __( 'Loading the page…', 'launch-builder' ),
 		] );
-		$out .= '<p class="lb-note">' . esc_html__( 'This is the real page, as a visitor gets it. A part that is not applied yet shows nothing here. If the frame stays blank, the site or its host does not allow being framed: use the open-in-new-tab button.', 'launch-builder' ) . '</p></section>';
+		$out .= '<p class="lb-note">' . esc_html__( 'This is the live page, as a visitor sees it. Parts you have not applied yet show nothing. If the frame stays blank, open the page in a new tab.', 'launch-builder' ) . '</p></section>';
 		return $out;
 	}
 
@@ -1957,7 +1957,7 @@ final class Design_Hub {
 		if ( ! $groups ) {
 			$out .= '<p class="lb-empty">' . esc_html__( 'No patterns are registered. Kadence Blocks has to be active for the patterns to load.', 'launch-builder' ) . '</p>';
 		}
-		$out .= '</div></aside><section class="lb-panel lb-lib__main" aria-labelledby="lb-t"><div class="lb-panel__head"><h2 id="lb-t">' . esc_html__( 'Pattern library', 'launch-builder' ) . '</h2></div><p class="lb-lib__desc" id="lb-d">' . esc_html__( 'Every pattern, rendered with your theme, colours and Business Info. Click a group name to render that whole group in one go, then click patterns to jump between them. Your AI assistant picks from these; a person can insert any of them in the editor (Patterns > Launch Builder).', 'launch-builder' ) . '</p><p class="lb-lib__used" id="lb-used" hidden></p>';
+		$out .= '</div></aside><section class="lb-panel lb-lib__main" aria-labelledby="lb-t"><div class="lb-panel__head"><h2 id="lb-t">' . esc_html__( 'Pattern library', 'launch-builder' ) . '</h2></div><p class="lb-lib__desc" id="lb-d">' . esc_html__( 'Every pattern, drawn with your colours and Business Info. Click a group to load it, then click a pattern to jump to it.', 'launch-builder' ) . '</p><p class="lb-lib__used" id="lb-used" hidden></p>';
 		$out .= self::stage( [
 			'id'      => 'lb-stage-lib',
 			'title'   => __( 'Pattern preview', 'launch-builder' ),

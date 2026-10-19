@@ -1,0 +1,20 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "launch/menu-links",
+	"title": "Menu links",
+	"category": "launch-builder",
+	"icon": "menu",
+	"description": "The links of your footer menu or legal menu as a plain list. Add or change a menu item and every list updates.",
+	"keywords": ["menu", "footer", "links", "legal", "navigation", "quick links"],
+	"textdomain": "launch-builder",
+	"attributes": {
+		"menu": { "type": "string", "default": "footer" },
+		"layout": { "type": "string", "default": "list" },
+		"limit": { "type": "number", "default": 8 }
+	},
+	"supports": { "html": false, "spacing": { "margin": true } },
+	"render": "file:./render.php",
+	"editorScript": "file:./edit.js",
+	"style": "file:./style.css"
+}

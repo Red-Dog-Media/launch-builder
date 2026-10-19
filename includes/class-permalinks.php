@@ -2292,7 +2292,7 @@ final class Permalinks {
 	}
 
 	public static function playbook( array &$pb ): void {
-		$pb['urls'] = 'URLs: every page, entry and term can have its own URL path. Set a pattern per type with set-permastructure (services "/%lb_service_cat%/%postname%/" puts a service under its category, e.g. /plumbing/drain-cleaning/; areas "/service-areas/%parent%/%postname%/"), one object with set-uri, many with regenerate-uris / find-replace-uris (dry_run first; both default to dry runs). Every URL change leaves a 301 (Rank Math Redirections when its module is on, else our table) and chains are collapsed. Moving a site: import-url-map with the old sitemap maps old URLs to the new pages. get-permalinks lists URLs; audit check uri_duplicate flags two objects on one URL.';
+		$pb['urls'] = 'URLs: every page, entry and term can have its own URL path. Set a pattern per type with set-permastructure (services "/%lb_service_cat%/%postname%/" puts a service under its category, e.g. /plumbing/drain-cleaning/; areas "/service-areas/%parent%/%postname%/"), one object with set-uri, many with regenerate-uris / find-replace-uris (dry_run first; both default to dry runs). Every URL change leaves a 301 (Rank Math Redirections when its module is on, else our table) and chains are collapsed. Moving a site: import-url-map with the old sitemap maps old URLs to the new pages. get-permalinks lists URLs; audit check uri_duplicate flags two objects on one URL. A service category and its landing page (the page mapped to the category) share one URL on purpose: the category archive redirects to the page, so that pair is not reported.';
 		$pb['tools_by_job']['URLs and redirects'] = 'get-permalinks, set-uri, set-permastructure, regenerate-uris, find-replace-uris, import-url-map, set-permalink-settings, get-redirects, set-redirect, delete-redirect';
 	}
 
@@ -2369,6 +2369,17 @@ final class Permalinks {
 		}
 		$out = [];
 		foreach ( $groups as $list ) {
+			// A service category and the landing page it is mapped to (the term's _lb_page) share one URL on purpose: the category archive redirects to the page.
+			$pages = [];
+			foreach ( $list as $r ) {
+				'post' === $r['object_type'] ? $pages[ (int) $r['object_id'] ] = true : null;
+			}
+			$list = array_values( array_filter( $list, static function ( $r ) use ( $pages ) {
+				return 'term' !== $r['object_type'] || ! isset( $pages[ (int) get_term_meta( (int) $r['object_id'], '_lb_page', true ) ] );
+			} ) );
+			if ( count( $list ) < 2 ) {
+				continue;
+			}
 			usort( $list, [ __CLASS__, 'rank' ] );
 			$names = array_map( static function ( $r ) { $d = self::describe( (string) $r['object_type'], (int) $r['object_id'] ); return $d['object'] . ' "' . $d['title'] . '" (' . $d['type'] . ', ' . $r['source'] . ')'; }, $list );
 			$winner = self::describe( (string) $list[0]['object_type'], (int) $list[0]['object_id'] );

@@ -31,7 +31,7 @@ final class Duplicate {
 	const MODULE = [
 		'slug'        => 'duplicate',
 		'label'       => 'Duplicate',
-		'description' => 'Duplicate pages, posts, services, service areas and synced patterns as drafts (row action, bulk action, admin bar, block editor menu and the duplicate-post tool). SEO and Launch Builder identity meta are reset and Kadence block IDs are re-keyed on every copy.',
+		'description' => 'Copy pages, posts, services, service areas and shared designs as drafts. SEO settings reset on every copy.',
 		'toggle'      => true,
 		'default'     => true,
 	];

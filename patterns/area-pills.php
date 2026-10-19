@@ -2,9 +2,10 @@
 /**
  * Title: Service area: city pills
  * Slug: launch-builder/area-pills
- * Description: Row of city buttons that link to location pages.
+ * Description: Row of city buttons that link to location pages. Kept for existing pages; the live version (areas-dynamic-pills) is the one to use.
  * Categories: launch-builder-areas, launch-builder
  * Keywords: service area, cities, locations, pills
+ * Inserter: no
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_3e273e-84","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

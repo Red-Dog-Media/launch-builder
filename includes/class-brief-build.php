@@ -12,10 +12,11 @@ defined( 'ABSPATH' ) || exit;
  *   entries     service categories, services and service areas (keyed, so re-runs update in place)
  *   media       images imported once per URL, then bound to the logo, site icon and entries
  *   pages       the sitemap: content, roles, hubs, category pages, front page, legal texts
+ *   menus       the header menu and the footer / legal menus (before the chrome: the shared header points at the menu)
  *   chrome      the shared designs per page role (set-chrome)
- *   menus       the header menu and the footer / legal menus
  *   seo         SEO templates, local SEO, URL structure and redirects
  *   conversions Kadence Conversions items (the exit-intent popup is on unless the brief turns it off)
+ *   branding    the Branding module and its settings, when the brief has a branding section
  *
  * Every part reuses the module that owns it (Company, Design, Style, Entries, Content, Patterns, Chrome, Nav, Compat,
  * Conversions, Permalinks, Redirects, Roles) and nothing is written twice: pages and entries carry a stable key, a hash of the
@@ -28,7 +29,7 @@ final class Brief_Build {
 	const OPT = 'launch_builder_build_job';
 
 	/** Parts in the order they run. */
-	const PHASES = [ 'identity', 'design', 'entries', 'media', 'pages', 'chrome', 'menus', 'seo', 'conversions' ];
+	const PHASES = [ 'identity', 'design', 'entries', 'media', 'pages', 'menus', 'chrome', 'seo', 'conversions', 'branding' ];
 
 	/** Seconds of work per call, and items per call for the parts that go object by object. */
 	const BUDGET = 20.0;
@@ -38,6 +39,16 @@ final class Brief_Build {
 
 	/** Rows kept in the stored job report. */
 	const MAX_ROWS = 400;
+
+	/** Patterns that show a list from the brief's content: pattern => [ directive, content key ]. */
+	const FEEDS = [
+		'testimonials-carousel' => [ '@testimonials', 'testimonials' ],
+		'testimonials'          => [ '@testimonials', 'testimonials' ],
+		'offers-cards'          => [ '@offers', 'offers' ],
+	];
+
+	/** Hits kept per copy_needed item. */
+	const MAX_HITS = 12;
 
 	/** @var array<string,array>|null the stored job of this request. */
 	private static $job = null;
@@ -148,6 +159,9 @@ final class Brief_Build {
 				'deferred'     => $chk['deferred'],
 				'modules_off'  => $chk['modules_off'],
 				'notes'        => [],
+				'retired'      => [],
+				'left_out'     => [],
+				'needs_human'  => [],
 			],
 		];
 	}
@@ -252,10 +266,27 @@ final class Brief_Build {
 			$out['report']['modules_off'] = $r['modules_off'];
 			$out['report']['notes'] = $r['notes'];
 			$out['report']['indexing_held_back'] = self::held_back();
+			// The last call carries everything the earlier calls found: the assistant does not merge rows and warnings itself.
+			$out['report']['warnings'] = array_slice( $r['warnings'], 0, 100 );
+			$out['report']['warning_count'] = count( $r['warnings'] );
+			$errs = [];
+			foreach ( $r['rows'] as $row ) {
+				if ( 'error' === ( $row['action'] ?? '' ) && count( $errs ) < 30 ) {
+					$errs[] = [ 'type' => (string) ( $row['type'] ?? '' ), 'key' => (string) ( $row['key'] ?? '' ), 'detail' => (string) ( $row['detail'] ?? '' ) ];
+				}
+			}
+			$out['report']['errors'] = $errs;
+			$out['report']['error_count'] = (int) ( $r['totals']['error'] ?? 0 );
+			$out['report']['retired_designs'] = $r['retired'] ?? [];
+			$out['report']['left_out'] = $r['left_out'] ?? [];
+			if ( ! $job['dry_run'] ) {
+				$out['report']['needs_a_human'] = $r['needs_human'] ?? [];
+			}
 			if ( $job['dry_run'] ) {
 				$out['next'] = $changes ? 'This was a dry run: nothing was written. Fix the copy_needed list in the brief, then call build-from-brief again with dry_run false.' : 'Nothing would change.';
 			} else {
-				$out['next'] = 'Built. Run audit-site (or inspect-page on each role), write the remaining copy, then go-live.';
+				$ne = (int) ( $r['totals']['error'] ?? 0 );
+				$out['next'] = $ne ? 'Built with ' . $ne . ' error(s): see report.errors, fix them in the brief and run the build again (it only redoes what is missing). Then audit-site and go-live.' : 'Built. Run audit-site (or inspect-page on each role), write the remaining copy (report.copy_needed names every slot), do the report.needs_a_human items, then go-live.';
 			}
 		} else {
 			$out['next'] = 'Not finished: call build-from-brief again with job "' . $job['id'] . '" (the cursor is stored).';
@@ -275,6 +306,12 @@ final class Brief_Build {
 			return;
 		}
 		flush_rewrite_rules( false );
+		self::run_migrations( $job ); // Whatever is still pending (a step that waited for the pages): site-state shows none left.
+		$left = Migrate::pending();
+		if ( $left ) {
+			$job['report']['warnings'][] = 'Data migrations still pending: ' . implode( ', ', $left ) . ' (sync-site with dry_run false runs them).';
+		}
+		$job['report']['needs_human'] = Launch::needs_human();
 		$ids = Nav::flush();
 		if ( $ids ) {
 			$job['report']['notes'][] = 'Menus rebuilt: ' . count( $ids ) . '.';
@@ -308,6 +345,8 @@ final class Brief_Build {
 					return self::phase_seo( $job );
 				case 'conversions':
 					return self::phase_conversions( $job );
+				case 'branding':
+					return self::phase_branding( $job );
 			}
 		} catch ( \Throwable $e ) {
 			self::add( $job, $rows, [ 'type' => $phase, 'key' => $phase, 'action' => 'error', 'detail' => $e->getMessage() ] );
@@ -337,9 +376,9 @@ final class Brief_Build {
 	}
 
 	private static function copy_needed( array &$job, array $item ): void {
-		foreach ( (array) $item['needs'] as $k => $v ) { // A few examples per reason keep the report small.
+		foreach ( (array) $item['needs'] as $k => $v ) { // A few examples per reason keep the report small (a slot list keeps more: each entry names the slot, the text and where to write the new one).
 			if ( is_array( $v ) ) {
-				$item['needs'][ $k ] = array_slice( $v, 0, 3 );
+				$item['needs'][ $k ] = array_slice( $v, 0, isset( $v[0] ) && is_array( $v[0] ) ? self::MAX_HITS : 3 );
 			}
 		}
 		if ( count( $job['report']['copy_needed'] ) < 300 ) {
@@ -354,7 +393,7 @@ final class Brief_Build {
 	/** One snapshot of everything the build may change, taken before the first write. */
 	private static function snapshot( array $b ): string {
 		$mods = [ 'custom_logo', 'base_font', 'heading_font', 'blocks_header', 'blocks_header_id' ];
-		$options = [ 'blogname', 'blogdescription', 'page_on_front', 'show_on_front', 'permalink_structure', 'blog_public', 'site_icon', Company::OPT, 'kadence_global_palette', Roles::OPT_HUBS, Chrome::OPT_MODE, Chrome::OPT_MAP, Chrome::OPT_INDEX, Style::OPT, Compat::OPT_TEMPLATES, Permalinks::OPT ];
+		$options = [ 'blogname', 'blogdescription', 'page_on_front', 'show_on_front', 'permalink_structure', 'blog_public', 'site_icon', Company::OPT, Branding::OPT, 'kadence_global_palette', Roles::OPT_HUBS, Chrome::OPT_MODE, Chrome::OPT_MAP, Chrome::OPT_INDEX, Style::OPT, Compat::OPT_TEMPLATES, Permalinks::OPT ];
 		$posts = [];
 		foreach ( $b['sitemap']['pages'] ?? [] as $pg ) {
 			$id = self::find_page( $pg );
@@ -518,8 +557,97 @@ final class Brief_Build {
 		return $out;
 	}
 
+	/**
+	 * What in a built design still needs a human, with the slot that holds it: the stock pattern's default copy, demo claims
+	 * (a count, a rating or a price from the pattern), and links that go nowhere ("#"). Slot ids are those of this content
+	 * (get-pattern lists the same ids for a pattern built on its own).
+	 *
+	 * @return array{default_copy:array,demo_claims:array,dead_links:array}
+	 */
+	public static function copy_hits( string $content ): array {
+		$out = [ 'default_copy' => [], 'demo_claims' => [], 'dead_links' => [] ];
+		if ( false === strpos( $content, '<!-- wp:' ) ) {
+			return $out;
+		}
+		$defaults = Audit::default_texts();
+		$claims = Audit::demo_claims();
+		$slots = Patterns::slots( parse_blocks( $content ) );
+		$by_path = [];
+		foreach ( $slots as $s ) {
+			$by_path[ strstr( $s['id'], ':', true ) ][ $s['field'] ] = (string) $s['value'];
+		}
+		foreach ( $slots as $s ) {
+			$path = (string) strstr( $s['id'], ':', true );
+			$v = (string) $s['value'];
+			if ( 'link' === $s['field'] ) {
+				if ( '#' === trim( $v ) ) {
+					$out['dead_links'][] = [ 'slot' => $s['id'], 'text' => mb_substr( Audit::norm_text( (string) ( $by_path[ $path ]['text'] ?? '' ) ), 0, 80 ) ];
+				}
+				continue;
+			}
+			if ( 'number' === $s['field'] ) {
+				$label = Audit::norm_text( (string) ( $by_path[ $path ]['label'] ?? '' ) );
+				$k = md5( $label . '|' . Audit::norm_text( $v ) );
+				if ( isset( $claims[ $k ] ) ) {
+					$out['demo_claims'][] = [ 'slot' => $s['id'], 'text' => Audit::norm_text( $v ) . ' ' . $label, 'pattern' => $claims[ $k ] ];
+				}
+				continue;
+			}
+			if ( ! in_array( $s['field'], Audit::COPY_FIELDS, true ) || false !== strpos( $v, '{{' ) ) {
+				continue;
+			}
+			$n = Audit::norm_text( $v );
+			if ( strlen( $n ) >= 4 && isset( $claims[ md5( $n ) ] ) ) {
+				$out['demo_claims'][] = [ 'slot' => $s['id'], 'text' => mb_substr( $n, 0, 240 ), 'pattern' => $claims[ md5( $n ) ] ];
+			} elseif ( strlen( $n ) >= 30 && isset( $defaults[ md5( $n ) ] ) ) {
+				$out['default_copy'][] = [ 'slot' => $s['id'], 'text' => mb_substr( $n, 0, 240 ), 'pattern' => $defaults[ md5( $n ) ] ];
+			}
+		}
+		return $out;
+	}
+
 	private static function has_placeholder( $v ): bool {
 		return is_string( $v ) && false !== strpos( $v, '[[' );
+	}
+
+	/** The same text once entities are decoded (WordPress stores a title with & as &amp;): what the brief means, not how it was saved. */
+	private static function same_text( string $a, string $b ): bool {
+		return trim( wp_specialchars_decode( $a, ENT_QUOTES ) ) === trim( wp_specialchars_decode( $b, ENT_QUOTES ) );
+	}
+
+	/** Run the pending data migrations until none is left (or one fails, or the time is up). */
+	private static function run_migrations( array &$job ): void {
+		$t0 = microtime( true );
+		do {
+			$r = Migrate::run( 8.0 );
+			if ( ! empty( $r['busy'] ) ) {
+				self::warn( $job, 'migrations: another run holds the lock; the data migrations finish on a later call of sync-site.' );
+				return;
+			}
+			foreach ( (array) $r['errors'] as $id => $msg ) {
+				self::warn( $job, 'migration ' . $id . ': ' . $msg );
+			}
+		} while ( empty( $r['complete'] ) && empty( $r['errors'] ) && microtime( true ) - $t0 < 45 );
+	}
+
+	/** The sample page and the first post WordPress made go to the trash when nobody touched them (never when edited, never on a live site). */
+	private static function wordpress_defaults( array &$job, array &$rows ): void {
+		if ( Launch::is_live() ) {
+			return;
+		}
+		$paths = [];
+		foreach ( $job['brief']['sitemap']['pages'] as $pg ) {
+			$paths[ (string) $pg['path'] ] = true;
+		}
+		foreach ( Launch::wordpress_defaults() as $p ) {
+			if ( 'page' === $p->post_type && isset( $paths[ $p->post_name ] ) ) {
+				continue; // The brief builds this page itself.
+			}
+			if ( empty( $job['dry_run'] ) ) {
+				wp_trash_post( (int) $p->ID );
+			}
+			self::add( $job, $rows, [ 'type' => 'wordpress-sample', 'key' => (string) $p->post_name, 'title' => $p->post_title, 'action' => 'prune', 'detail' => 'moved to the trash: WordPress sample content nobody edited' ] );
+		}
 	}
 
 	/* ------------------------------------------------------------------ identity */
@@ -528,19 +656,30 @@ final class Brief_Build {
 		$dry = (bool) $job['dry_run'];
 		$b = $job['brief'];
 		$rows = [];
+		if ( ! $dry ) {
+			self::run_migrations( $job ); // First: on a new site they have nothing to convert, and the pages built below must not be rewritten by them later.
+		}
 		$biz = $b['business'];
 		$title = (string) ( $biz['site_title'] ?? $biz['name'] ?? '' );
 		$tag = (string) ( $biz['site_tagline'] ?? $biz['tagline'] ?? '' );
 		unset( $biz['site_title'], $biz['site_tagline'] );
-		if ( '' !== $title && get_option( 'blogname' ) !== $title ) {
+		if ( '' !== $title && ! self::same_text( (string) get_option( 'blogname' ), $title ) ) {
 			$dry || update_option( 'blogname', $title );
 			self::add( $job, $rows, [ 'type' => 'site', 'key' => 'title', 'action' => 'update', 'detail' => $title ] );
 		} else {
 			self::add( $job, $rows, [ 'type' => 'site', 'key' => 'title', 'action' => 'keep' ] );
 		}
-		if ( '' !== $tag && get_option( 'blogdescription' ) !== $tag ) {
+		if ( '' !== $tag && ! self::same_text( (string) get_option( 'blogdescription' ), $tag ) ) {
 			$dry || update_option( 'blogdescription', $tag );
 			self::add( $job, $rows, [ 'type' => 'site', 'key' => 'tagline', 'action' => 'update', 'detail' => $tag ] );
+		}
+		// The business name and tagline are the site title and tagline: one copy, kept in WordPress. Writing an empty value clears an
+		// older, different one typed in Business Info, so it stops overriding the title (an empty value saves nothing when none is there).
+		if ( '' !== $title && isset( $biz['name'] ) && trim( (string) $biz['name'] ) === trim( $title ) ) {
+			$biz['name'] = '';
+		}
+		if ( '' !== $tag && isset( $biz['tagline'] ) && trim( (string) $biz['tagline'] ) === trim( $tag ) ) {
+			$biz['tagline'] = '';
 		}
 		if ( '' === (string) get_option( 'permalink_structure' ) ) {
 			if ( ! $dry ) {
@@ -594,13 +733,24 @@ final class Brief_Build {
 		} else {
 			self::add( $job, $rows, [ 'type' => 'business', 'key' => 'business', 'action' => 'keep' ] );
 		}
-		// While the brief says indexing is off the site stays hidden from search engines.
-		if ( isset( $b['launch']['indexing'] ) && false === $b['launch']['indexing'] ) {
-			if ( '0' !== (string) get_option( 'blog_public', '1' ) ) {
-				$dry || update_option( 'blog_public', '0' );
-				self::add( $job, $rows, [ 'type' => 'site', 'key' => 'search-engines', 'action' => 'update', 'detail' => 'discouraged until go-live' ] );
+		// While the brief says indexing is off the site stays hidden from search engines, until go-live. A live site is never hidden again.
+		if ( isset( $b['launch']['indexing'] ) ) {
+			$public = '0' !== (string) get_option( 'blog_public', '1' );
+			if ( Launch::is_live() ) {
+				if ( false === $b['launch']['indexing'] ) {
+					self::warn( $job, 'launch.indexing: the site is live, so indexing was left on. To hide it again use Settings, Reading; go-live is what turns it on.' );
+					self::add( $job, $rows, [ 'type' => 'site', 'key' => 'search-engines', 'action' => 'keep', 'detail' => 'the site is live: indexing left on' ] );
+				}
+			} elseif ( false === $b['launch']['indexing'] ) {
+				if ( $public ) {
+					$dry || update_option( 'blog_public', '0' );
+					self::add( $job, $rows, [ 'type' => 'site', 'key' => 'search-engines', 'action' => 'update', 'detail' => 'discouraged until go-live' ] );
+				}
+			} elseif ( ! $public ) {
+				self::warn( $job, 'launch.indexing is true, but only go-live makes the site public: it checks the site first and refuses on errors. Call go-live when the site is ready.' );
 			}
 		}
+		self::wordpress_defaults( $job, $rows );
 		return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
 	}
 
@@ -749,16 +899,23 @@ final class Brief_Build {
 		$t = get_term_by( 'slug', $c['slug'], Entries::CAT );
 		if ( $t instanceof \WP_Term ) {
 			$job['state']['cats'][ $c['slug'] ] = (int) $t->term_id;
-			if ( $t->name !== $c['name'] ) {
-				$dry || wp_update_term( $t->term_id, Entries::CAT, [ 'name' => $c['name'] ] );
-				self::add( $job, $rows, [ 'type' => 'category', 'key' => $c['slug'], 'title' => $c['name'], 'action' => 'update', 'detail' => 'renamed' ] );
+			$diff = [];
+			if ( ! self::same_text( (string) $t->name, (string) $c['name'] ) ) { // WordPress stores & as &amp;: the same name is not a change
+				$diff['name'] = $c['name'];
+			}
+			if ( '' !== (string) ( $c['summary'] ?? '' ) && ! self::same_text( wp_strip_all_tags( (string) $t->description ), (string) $c['summary'] ) ) {
+				$diff['description'] = $c['summary']; // The category's summary: the term description, and the excerpt of its landing page.
+			}
+			if ( $diff ) {
+				$dry || wp_update_term( $t->term_id, Entries::CAT, $diff );
+				self::add( $job, $rows, [ 'type' => 'category', 'key' => $c['slug'], 'title' => $c['name'], 'action' => 'update', 'detail' => implode( ', ', array_map( static function ( $k ) { return 'name' === $k ? 'renamed' : 'summary'; }, array_keys( $diff ) ) ) ] );
 			} else {
 				self::add( $job, $rows, [ 'type' => 'category', 'key' => $c['slug'], 'title' => $c['name'], 'action' => 'keep' ] );
 			}
 			return;
 		}
 		if ( ! $dry ) {
-			$r = wp_insert_term( $c['name'], Entries::CAT, [ 'slug' => $c['slug'] ] );
+			$r = wp_insert_term( $c['name'], Entries::CAT, [ 'slug' => $c['slug'], 'description' => (string) ( $c['summary'] ?? '' ) ] );
 			if ( is_wp_error( $r ) ) {
 				self::add( $job, $rows, [ 'type' => 'category', 'key' => $c['slug'], 'action' => 'error', 'detail' => $r->get_error_message() ] );
 				return;
@@ -1144,8 +1301,7 @@ final class Brief_Build {
 				self::add( $job, $rows, [ 'type' => 'brand', 'key' => $use, 'action' => $dry ? 'update' : 'error', 'detail' => 'media ' . $key ] );
 				continue;
 			}
-			$saved = (array) get_option( Company::OPT, [] );
-			$cur = 'logo' === $use ? (int) get_theme_mod( 'custom_logo' ) : ( 'site_icon' === $use ? (int) get_option( 'site_icon' ) : (int) ( $saved['logo_inverse'] ?? 0 ) );
+			$cur = 'logo' === $use ? (int) get_theme_mod( 'custom_logo' ) : ( 'site_icon' === $use ? (int) get_option( 'site_icon' ) : (int) ( Branding::stored()['admin']['menu_logo_image'] ?? 0 ) );
 			if ( $cur === $id ) {
 				self::add( $job, $rows, [ 'type' => 'brand', 'key' => $use, 'action' => 'keep' ] );
 				continue;
@@ -1154,10 +1310,9 @@ final class Brief_Build {
 				if ( 'logo' === $use ) {
 					Design::set_brand( [ 'logo_attachment_id' => $id ] );
 				} elseif ( 'site_icon' === $use ) {
-					update_option( 'site_icon', $id );
-					Company::update( [ 'site_icon' => (string) $id ] );
+					update_option( 'site_icon', $id ); // The WordPress site icon is the only copy; Business Info reads it from there.
 				} else {
-					Company::update( [ 'logo_inverse' => (string) $id ] );
+					Branding::store_menu_logo_image( $id ); // The dark-background logo is the Branding logo above the admin menu.
 				}
 			}
 			self::add( $job, $rows, [ 'type' => 'brand', 'key' => $use, 'action' => 'update', 'id' => $id ] );
@@ -1210,25 +1365,53 @@ final class Brief_Build {
 	}
 
 	/**
+	 * The sections of a page spec: the ones the brief names, else the recipe's (the shared set when the chrome supplies the hero), else its text.
+	 *
+	 * @return array{0:array,1:bool} The sections, and whether one of them takes the page text.
+	 */
+	private static function page_sections( array $spec, bool $strip ): array {
+		$sections = $spec['sections'];
+		$recipe = Content::recipes()[ $spec['recipe'] ] ?? null;
+		$md = (string) $spec['markdown'];
+		$md_taken = false;
+		if ( ! $sections && $recipe ) {
+			foreach ( $strip && ! empty( $recipe['shared'] ) ? $recipe['shared'] : $recipe['sections'] as $rs ) { // 'shared': the sections for a page whose hero the chrome supplies.
+				if ( '{markdown}' === $rs ) {
+					'' !== $md ? $sections[] = [ 'markdown' => $md ] : null;
+					$md_taken = true;
+				} elseif ( ! ( $strip && self::is_hero_section( $rs ) ) ) {
+					$sections[] = 'service-body' === $rs && '' !== $md ? [ 'pattern' => $rs, 'markdown' => $md ] : [ 'pattern' => $rs ];
+					$md_taken = $md_taken || ( 'service-body' === $rs );
+				}
+			}
+		} elseif ( ! $sections && '' !== $md ) {
+			$sections[] = [ 'markdown' => $md ];
+			$md_taken = true;
+		}
+		return [ $sections, $md_taken ];
+	}
+
+	/** The brief's reviews and offers a page shows, by content key: only when one of its designs is fed by them (an unrelated page has none). */
+	private static function fed_lists( array $spec, bool $strip, array $job ): array {
+		$fed = [];
+		foreach ( self::page_sections( $spec, $strip )[0] as $sec ) {
+			$feed = self::FEEDS[ (string) ( $sec['pattern'] ?? '' ) ] ?? null;
+			if ( $feed && ! isset( $sec['slots'][ $feed[0] ] ) && ! empty( $job['brief']['content'][ $feed[1] ] ) ) {
+				$fed[ $feed[1] ] = $job['brief']['content'][ $feed[1] ];
+			}
+		}
+		return $fed;
+	}
+
+	/**
 	 * The content of one page spec.
 	 *
 	 * @return array{content:string,type:string,sections:int,warnings:string[]}
 	 */
 	private static function build_page( array $spec, array $vars, bool $strip, array $job ): array {
-		$sections = $spec['sections'];
 		$recipe = Content::recipes()[ $spec['recipe'] ] ?? null;
 		$md = (string) $spec['markdown'];
-		if ( ! $sections && $recipe ) {
-			foreach ( $recipe['sections'] as $rs ) {
-				if ( '{markdown}' === $rs ) {
-					'' !== $md ? $sections[] = [ 'markdown' => $md ] : null;
-				} elseif ( ! ( $strip && self::is_hero_section( $rs ) ) ) {
-					$sections[] = 'service-body' === $rs && '' !== $md ? [ 'pattern' => $rs, 'markdown' => $md ] : [ 'pattern' => $rs ];
-				}
-			}
-		} elseif ( ! $sections && '' !== $md ) {
-			$sections[] = [ 'markdown' => $md ];
-		}
+		list( $sections, $md_taken ) = self::page_sections( $spec, $strip ); // $md_taken: does a section take the page text?
 		$has_md = false;
 		foreach ( $sections as $s ) {
 			$has_md = $has_md || ! empty( $s['markdown'] );
@@ -1239,11 +1422,12 @@ final class Brief_Build {
 		$chunks = [];
 		$warnings = [];
 		$used = [];
+		$hits = [ 'default_copy' => [], 'demo_claims' => [], 'dead_links' => [] ];
 		$legal_notice = ! empty( $spec['legal'] ) && ! $spec['legal']['reviewed'];
 		if ( $legal_notice ) {
 			$chunks[] = Launch_Legal::notice_block();
 		}
-		foreach ( $sections as $sec ) {
+		foreach ( $sections as $si => $sec ) {
 			if ( empty( $sec['pattern'] ) && ! empty( $sec['markdown'] ) ) {
 				$chunks[] = Content::from_markdown( (string) $sec['markdown'], 'wide' === $layout['type'] );
 				continue;
@@ -1260,12 +1444,31 @@ final class Brief_Build {
 					$slots[ $sk ] = $mid ? (string) wp_get_attachment_url( $mid ) : $sv;
 				}
 			}
+			$feed = self::FEEDS[ $sec['pattern'] ] ?? null;
+			if ( $feed && ! isset( $slots[ $feed[0] ] ) && ! empty( $job['brief']['content'][ $feed[1] ] ) ) {
+				$slots[ $feed[0] ] = $job['brief']['content'][ $feed[1] ]; // The reviews and offers of the brief fill the cards.
+			}
 			$b = Patterns::build_pattern( (string) $sec['pattern'], $slots, array_merge( $spec['replace'], (array) ( $sec['replace'] ?? [] ) ), $vars, (string) ( $sec['markdown'] ?? '' ) );
 			if ( is_wp_error( $b ) ) {
 				$warnings[] = $sec['pattern'] . ': ' . $b->get_error_message();
 				continue;
 			}
 			$chunks[] = $b['content'];
+			$explicit = ! empty( $spec['sections'] );
+			$at = 'sitemap.pages[key=' . $spec['key'] . ']';
+			foreach ( self::copy_hits( $b['content'] ) as $kind => $list ) { // Sample sentences, invented figures and links that go nowhere.
+				foreach ( $list as $h ) {
+					$h['in'] = (string) $sec['pattern'];
+					if ( $explicit ) {
+						$h['where'] = $at . '.sections[' . $si . '].slots["' . $h['slot'] . '"]';
+					} elseif ( 'default_copy' === $kind ) {
+						$h['where'] = $at . '.sections (the page uses the ' . $spec['recipe'] . ' recipe: write the sections out and set the slot, or use ' . $at . '.replace with this text as the key)';
+					} else {
+						$h['where'] = $at . '.sections (the page uses the ' . $spec['recipe'] . ' recipe: write the sections out, then set the slot "' . $h['slot'] . '" of the ' . $sec['pattern'] . ' section)';
+					}
+					$hits[ $kind ][] = $h;
+				}
+			}
 			$warn = $b['warnings'];
 			foreach ( array_keys( $spec['replace'] ) as $pk ) {
 				$at = array_search( 'No slot has the text: ' . mb_substr( (string) $pk, 0, 70 ), $warn, true );
@@ -1282,7 +1485,56 @@ final class Brief_Build {
 		foreach ( array_diff( array_keys( $spec['replace'] ), array_keys( $used ) ) as $pk ) {
 			$warnings[] = 'replace text matched nothing on the page: ' . mb_substr( (string) $pk, 0, 70 );
 		}
-		return [ 'content' => implode( "\n\n", $chunks ), 'type' => $layout['type'], 'layout' => $layout, 'sections' => count( $chunks ), 'warnings' => $warnings ];
+		if ( '' !== trim( $md ) && ! $md_taken ) {
+			$chunks[] = Content::from_markdown( $md, 'wide' === $layout['type'] );
+			$warnings[] = 'the page markdown has no text area in this page, so it was added as a text section at the end (use markdown on a section, or the recipe\'s text area).';
+		}
+		return [ 'content' => implode( "\n\n", $chunks ), 'type' => $layout['type'], 'layout' => $layout, 'sections' => count( $chunks ), 'warnings' => $warnings, 'hits' => $hits ];
+	}
+
+	/** The first real paragraph of a page as a description: at least 50 characters, not a label, not the legal review notice; cut at about 160. */
+	private static function excerpt_of( string $content ): string {
+		$found = '';
+		$walk = static function ( array $blocks ) use ( &$walk, &$found ): void {
+			foreach ( $blocks as $b ) {
+				if ( '' !== $found ) {
+					return;
+				}
+				$name = (string) ( $b['blockName'] ?? '' );
+				if ( false !== strpos( (string) ( $b['attrs']['className'] ?? '' ), Launch::REVIEW_CLASS ) ) {
+					continue;
+				}
+				if ( 'core/paragraph' === $name || ( 'kadence/advancedheading' === $name && 'p' === ( $b['attrs']['htmlTag'] ?? '' ) ) ) {
+					$t = Audit::norm_text( (string) ( $b['innerHTML'] ?? '' ) );
+					if ( mb_strlen( $t ) >= 50 && false === strpos( $t, '[[' ) && false === strpos( $t, '{{' ) ) {
+						$found = $t;
+						return;
+					}
+				}
+				if ( ! empty( $b['innerBlocks'] ) ) {
+					$walk( $b['innerBlocks'] );
+				}
+			}
+		};
+		$walk( parse_blocks( $content ) );
+		if ( mb_strlen( $found ) > 170 ) {
+			$cut = mb_substr( $found, 0, 160 );
+			$found = rtrim( mb_substr( $cut, 0, (int) mb_strrpos( $cut, ' ' ) ), ' ,;:-' ) . '...';
+		}
+		return $found;
+	}
+
+	/** The summary of the service category a category page leads ('' for other pages). */
+	private static function category_summary( array $job, array $spec ): string {
+		if ( 'category' !== $spec['role'] ) {
+			return '';
+		}
+		foreach ( (array) $job['brief']['entries']['categories'] as $c ) {
+			if ( ( '' !== (string) $c['page_key'] && $c['page_key'] === $spec['key'] ) || ( '' !== $spec['category'] && '?' !== $spec['category'] && $c['slug'] === sanitize_title( $spec['category'] ) ) ) {
+				return trim( (string) ( $c['summary'] ?? '' ) );
+			}
+		}
+		return '';
 	}
 
 	/** The role's current state of a page, in the vocabulary of the brief. */
@@ -1323,8 +1575,7 @@ final class Brief_Build {
 		$pages = $job['brief']['sitemap']['pages'];
 		$rows = [];
 		$vars = Blueprint::business_vars( (array) $job['brief']['business'] );
-		$pref = (string) ( $job['brief']['chrome']['mode'] ?? '' );
-		$strip = 'elements' === ( in_array( $pref, [ 'elements', 'patterns' ], true ) ? $pref : Chrome::mode() ); // Elements mode: the shared hero is placed once, so recipe pages carry none.
+		$overlay = (array) ( $job['brief']['chrome']['map'] ?? [] ); // The map the brief sets: whether a role gets a shared hero depends on it.
 		$forms = $dry && post_type_exists( 'kadence_form' ) ? get_posts( [ 'post_type' => 'kadence_form', 'post_status' => 'any', 'numberposts' => -1, 'fields' => 'ids', 'suppress_filters' => true ] ) : null;
 		$i = (int) $job['cursor'];
 		$n = 0;
@@ -1335,7 +1586,7 @@ final class Brief_Build {
 			}
 			$n++;
 			try {
-				self::do_page( $job, $rows, $pages[ $i ], $vars, $strip );
+				self::do_page( $job, $rows, $pages[ $i ], $vars, $overlay );
 			} catch ( \Throwable $e ) {
 				self::add( $job, $rows, [ 'type' => 'page', 'key' => $pages[ $i ]['key'], 'title' => $pages[ $i ]['title'], 'action' => 'error', 'detail' => $e->getMessage() ] );
 				self::warn( $job, 'page ' . $pages[ $i ]['key'] . ': ' . $e->getMessage() );
@@ -1358,8 +1609,10 @@ final class Brief_Build {
 		}
 	}
 
-	private static function do_page( array &$job, array &$rows, array $spec, array $vars, bool $strip ): void {
+	private static function do_page( array &$job, array &$rows, array $spec, array $vars, array $overlay ): void {
 		$dry = (bool) $job['dry_run'];
+		// Pages never carry their own hero when the chrome map gives their role one: the recipe's hero sections are left out.
+		$strip = Chrome::supplies_hero( '' !== $spec['role'] ? $spec['role'] : 'page', $overlay );
 		$id = self::find_page( $spec );
 		$cur = $id ? get_post( $id ) : null;
 		$lkey = self::lkey( 'page', $spec['key'] );
@@ -1371,19 +1624,30 @@ final class Brief_Build {
 			return;
 		}
 		$vhash = md5( (string) wp_json_encode( self::canon( $vars ) ) ) . ( $strip ? 's' : 'n' );
-		$hash = self::spec_hash( $spec, [ 'order', 'seo', 'status', 'front', 'role', 'category' ] ) . $vhash;
+		$fed = self::fed_lists( $spec, $strip, $job ); // The reviews and offers a design of this page shows: a change to them rebuilds it.
+		$hash = self::spec_hash( $spec, [ 'order', 'seo', 'status', 'front', 'role', 'category' ] ) . $vhash . ( $fed ? md5( (string) wp_json_encode( self::canon( $fed ) ) ) : '' );
 		$build = 'build' === $spec['content'];
 		$rebuild = $build && ( ! $cur || $was_edited || (string) get_post_meta( $id, '_lb_brief_hash', true ) !== $hash ); // force: an edited page is built again even when the brief has not changed
 		$built = null;
 		$reasons = [];
+		$figures = []; // What the designs of the page still hold that a person must write: figures and links (kept apart: they do not hold the page back).
 		if ( $rebuild ) {
 			$built = self::build_page( $spec, $vars, $strip, $job );
 			foreach ( $built['warnings'] as $w ) {
 				self::warn( $job, 'page ' . $spec['key'] . ': ' . $w );
 			}
 			$reasons = '' === trim( $built['content'] ) ? [ 'empty' => 'no content: give sections, a recipe or markdown' ] : self::copy_reasons( $built['content'] );
+			if ( isset( $reasons['default_copy'] ) && ! empty( $built['hits']['default_copy'] ) ) {
+				$reasons['default_copy'] = array_slice( $built['hits']['default_copy'], 0, self::MAX_HITS ); // Slot, full text and where to write the new one.
+			}
+			$figures = $built['hits'];
 		} elseif ( $cur && $build ) {
 			$reasons = self::copy_reasons( (string) $cur->post_content ); // Unchanged brief: what is stored is what was built.
+			$stored = get_post_meta( $id, '_lb_copy_hits', true );
+			if ( isset( $reasons['default_copy'] ) && is_array( $stored ) && ! empty( $stored['default_copy'] ) ) {
+				$reasons['default_copy'] = $stored['default_copy'];
+			}
+			$figures = is_array( $stored ) ? $stored : [];
 		}
 		foreach ( $spec['seo'] as $f => $v ) {
 			if ( self::has_placeholder( $v ) ) {
@@ -1400,8 +1664,15 @@ final class Brief_Build {
 		if ( 'keep' === $spec['content'] && ! $cur ) {
 			$reasons['empty'] = 'no content: give sections, a recipe or markdown';
 		}
-		if ( $reasons ) {
-			self::copy_needed( $job, [ 'type' => 'page', 'key' => $spec['key'], 'title' => $spec['title'], 'needs' => $reasons ] );
+		$info = [];
+		foreach ( [ 'demo_claims', 'dead_links' ] as $kind ) { // Invented figures and links that go nowhere are reported with their slots; the page is still published (the audit warns the same way).
+			if ( ! empty( $figures[ $kind ] ) ) {
+				$info[ $kind ] = array_slice( $figures[ $kind ], 0, self::MAX_HITS );
+				count( $figures[ $kind ] ) > self::MAX_HITS ? $info[ $kind . '_more' ] = count( $figures[ $kind ] ) - self::MAX_HITS : null;
+			}
+		}
+		if ( $reasons || $info ) {
+			self::copy_needed( $job, [ 'type' => 'page', 'key' => $spec['key'], 'title' => $spec['title'], 'needs' => $reasons + $info ] );
 		}
 		// The status: copy still to write or a review pending = draft; an admin's draft stays one; otherwise as the brief says.
 		$want = $reasons ? 'draft' : ( '' !== $spec['status'] ? $spec['status'] : ( $cur ? $cur->post_status : 'publish' ) );
@@ -1414,6 +1685,7 @@ final class Brief_Build {
 			$want = $cur->post_status;
 		}
 		$parent = '' !== $spec['parent_key'] ? self::page_id( $job, $spec['parent_key'] ) : 0;
+		$summary = self::category_summary( $job, $spec );
 		$diffs = [];
 		if ( $cur ) {
 			$now = self::page_now( $id );
@@ -1442,6 +1714,9 @@ final class Brief_Build {
 			if ( $spec['front'] && ! $now['front'] ) {
 				$diffs[] = 'front page';
 			}
+			if ( '' !== $summary && ! self::same_text( (string) $cur->post_excerpt, $summary ) ) {
+				$diffs[] = 'summary';
+			}
 			if ( $rebuild ) {
 				$diffs[] = 'content';
 			}
@@ -1462,6 +1737,14 @@ final class Brief_Build {
 		if ( null !== $built ) {
 			$args['post_content'] = wp_slash( $built['content'] );
 		}
+		if ( '' !== $summary ) {
+			$args['post_excerpt'] = wp_slash( $summary ); // The category hero reads it (page.summary).
+		} elseif ( null !== $built && ( ! $cur || '' === trim( (string) $cur->post_excerpt ) || trim( (string) $cur->post_excerpt ) === (string) get_post_meta( $id, '_lb_auto_excerpt', true ) ) ) {
+			// The page description template reads the excerpt: without one it would take the first line, often a small label such as "Our story".
+			$auto_excerpt = self::excerpt_of( $built['content'] );
+			'' === $auto_excerpt ? $auto_excerpt = trim( (string) ( $job['brief']['business']['site_tagline'] ?? $job['brief']['business']['tagline'] ?? '' ) ) : null;
+			$args['post_excerpt'] = wp_slash( $auto_excerpt );
+		}
 		if ( $cur ) {
 			$args['ID'] = $id;
 			$res = wp_update_post( $args, true );
@@ -1475,9 +1758,21 @@ final class Brief_Build {
 		$id = (int) $res;
 		update_post_meta( $id, '_lb_key', $spec['key'] );
 		update_post_meta( $id, '_lb_brief', '1' );
+		if ( isset( $auto_excerpt ) ) {
+			update_post_meta( $id, '_lb_auto_excerpt', wp_slash( $auto_excerpt ) );
+		}
 		if ( null !== $built ) {
 			Content::set_layout( $id, $built['layout'] );
 			update_post_meta( $id, '_lb_brief_hash', $hash );
+			$keep = [];
+			foreach ( $built['hits'] as $kind => $list ) {
+				$list ? $keep[ $kind ] = array_slice( $list, 0, self::MAX_HITS ) : null;
+			}
+			if ( $keep ) {
+				update_post_meta( $id, '_lb_copy_hits', wp_slash( $keep ) );
+			} else {
+				delete_post_meta( $id, '_lb_copy_hits' );
+			}
 		}
 		if ( $spec['seo'] ) {
 			Compat::write_seo_meta( $id, $spec['seo'] );
@@ -1562,7 +1857,24 @@ final class Brief_Build {
 		$dry = (bool) $job['dry_run'];
 		$ch = $job['brief']['chrome'];
 		$rows = [];
-		$args = [ 'map' => (array) ( $ch['map'] ?? [] ) ];
+		$map = (array) ( $ch['map'] ?? [] );
+		$derived = self::before_footer( $job, $map, $rows );
+		if ( null !== $derived ) {
+			$map['before_footer'] = $derived;
+		}
+		$map = self::feed_map( $job, $map );
+		// The header the menu step chose (a long menu gets the two-row one) is the one visitors get: the preset's own header would otherwise be placed over it. A header the brief names in chrome.map, or one set by hand, stays.
+		$want = (string) ( $job['state']['header'] ?? '' );
+		$cur = Chrome::design( 'header', 'default' );
+		if ( '' !== $want && ! array_key_exists( 'header', $map ) && is_string( $cur ) && $cur !== $want ) {
+			$map['header'] = [ 'default' => $want ];
+		}
+		// The area page lists the site's services live; the stock template caps that list at 6, which hides a new service without a word. A brief that says nothing about the area template gets the full list (up to 24).
+		$tpl = $map['template'] ?? [];
+		if ( is_array( $tpl ) && ! isset( $tpl['pattern'] ) && ! isset( $tpl['sections'] ) && ! isset( $tpl['synced'] ) && ! isset( $tpl['adopt'] ) && ! array_key_exists( 'area', $tpl ) && 'template-area' === Chrome::design( 'template', 'area' ) ) {
+			$map['template']['area'] = [ 'pattern' => 'template-area', 'slots' => [ '@entries' => [ 'limit' => 24 ] ] ];
+		}
+		$args = [ 'map' => $map, 'collect_content' => true ];
 		if ( isset( $ch['mode'] ) ) {
 			$args['mode'] = $ch['mode'];
 		}
@@ -1582,7 +1894,6 @@ final class Brief_Build {
 			return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
 		}
 		$rep = $dry ? (array) ( $r['plan'] ?? [] ) : (array) ( $r['applied'] ?? [] );
-		$changed = 0;
 		foreach ( (array) ( $rep['groups'] ?? [] ) as $g ) {
 			$acts = [];
 			foreach ( [ 'store', 'element' ] as $w ) {
@@ -1591,7 +1902,6 @@ final class Brief_Build {
 				}
 			}
 			$act = in_array( 'create', $acts, true ) ? 'create' : ( array_intersect( [ 'update', 'republish' ], $acts ) ? 'update' : ( in_array( 'kept_edits', $acts, true ) ? 'kept_edits' : 'keep' ) );
-			$changed += in_array( $act, [ 'create', 'update' ], true ) ? 1 : 0;
 			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => (string) ( $g['key'] ?? '' ), 'action' => $act, 'detail' => '' !== (string) ( $g['title'] ?? '' ) ? (string) $g['title'] : ( $g['slot'] ?? '' ) . ': ' . implode( ', ', (array) ( $g['roles'] ?? [] ) ) ] ); // The plain name; the key stays the group key.
 		}
 		foreach ( (array) ( $rep['compile_failed'] ?? [] ) as $f ) {
@@ -1600,14 +1910,166 @@ final class Brief_Build {
 		if ( ! empty( $rep['compile_failed'] ) ) {
 			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => 'compile_failed', 'action' => 'info', 'detail' => count( $rep['compile_failed'] ) . ' design(s) did not compile (see warnings)' ] );
 		}
-		if ( ! empty( $ch['map'] ) || isset( $ch['mode'] ) ) {
+		foreach ( (array) ( $rep['warnings'] ?? [] ) as $w ) {
+			self::warn( $job, 'chrome ' . $w );
+		}
+		// What still reads like demo copy in the designs this map places, with the slot and where to write the new text.
+		foreach ( (array) ( $rep['content'] ?? [] ) as $key => $c ) {
+			self::chrome_copy( $job, (string) $key, (array) $c, (array) ( $r['map'] ?? [] ) );
+		}
+		foreach ( array_merge( (array) ( $rep['pruned'] ?? [] ), (array) ( $rep['released'] ?? [] ) ) as $p ) { // Designs a changed design replaced are drafted, not deleted: say so.
+			$id = (int) ( $p['id'] ?? $p['element'] ?? 0 );
+			$job['report']['retired'][] = [ 'key' => (string) ( $p['key'] ?? '' ), 'id' => $id, 'title' => $id ? get_the_title( $id ) : '', 'kept_as' => 'draft' ];
+		}
+		if ( ! empty( $map ) || isset( $ch['mode'] ) ) {
 			$stored = get_option( Chrome::OPT_MAP, [] );
-			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => 'map', 'action' => $dry && ( self::map_differs( (array) $stored, (array) ( $ch['map'] ?? [] ) ) || ( isset( $ch['mode'] ) && (string) get_option( Chrome::OPT_MODE, 'auto' ) !== $ch['mode'] ) ) ? 'update' : 'keep' ] );
+			self::add( $job, $rows, [ 'type' => 'chrome', 'key' => 'map', 'action' => $dry && ( self::map_differs( (array) $stored, $map ) || ( isset( $ch['mode'] ) && (string) get_option( Chrome::OPT_MODE, 'auto' ) !== $ch['mode'] ) ) ? 'update' : 'keep' ] );
+		}
+		if ( ! $dry && null !== $derived ) {
+			$now = (array) get_option( Chrome::OPT_MAP, [] );
+			Ledger::record( 'brief:chrome-stack', 'option', Chrome::OPT_MAP, Ledger::hash_value( $now['before_footer'] ?? null ), 'set' );
 		}
 		return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
 	}
 
-	/** Does a partial chrome map say something the stored map does not? */
+	/** The content lists the brief holds, by key: only the ones with something in them. */
+	private static function content_lists( array $job ): array {
+		$out = [];
+		foreach ( [ 'testimonials', 'offers' ] as $k ) {
+			$list = (array) ( $job['brief']['content'][ $k ] ?? [] );
+			if ( 'offers' === $k ) {
+				$today = wp_date( 'Y-m-d' );
+				$list = array_values( array_filter( $list, static function ( $o ) use ( $today ) { return empty( $o['expires'] ) || (string) $o['expires'] >= $today; } ) );
+			}
+			if ( $list ) {
+				$out[ $k ] = $list;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * The before-footer stack for a brief that names none: the reviews and offers it holds content for, then the live list of
+	 * areas. A design that carries made-up claims (a review count, a discount) is not placed until there is real content for
+	 * it; the plan says which were left out and why. Returns null when the brief names its own stack or the stored map was
+	 * changed outside the brief.
+	 */
+	private static function before_footer( array &$job, array $map, array &$rows ): ?array {
+		if ( array_key_exists( 'before_footer', $map ) ) {
+			return null;
+		}
+		$stored = get_option( Chrome::OPT_MAP, [] );
+		$cur = is_array( $stored ) ? ( $stored['before_footer'] ?? null ) : null;
+		$last = Ledger::get( 'brief:chrome-stack' );
+		if ( null !== $cur && ! ( $last && hash_equals( (string) $last['hash'], Ledger::hash_value( $cur ) ) ) ) {
+			self::warn( $job, 'chrome.map.before_footer was set outside this brief, so the build leaves it as it is.' );
+			return null;
+		}
+		$lists = self::content_lists( $job );
+		$sections = [];
+		$why = [ 'testimonials' => [ 'testimonials-carousel', 'content.testimonials has no reviews yet (the design carries sample quotes and a review count)' ], 'offers' => [ 'offers-cards', 'content.offers has no running offer yet (the design carries sample prices)' ] ];
+		foreach ( [ 'testimonials' => '@testimonials', 'offers' => '@offers' ] as $k => $dir ) {
+			if ( isset( $lists[ $k ] ) ) {
+				$sections[] = [ 'pattern' => $why[ $k ][0], 'slots' => [ $dir => $lists[ $k ] ] ];
+			} else {
+				self::add( $job, $rows, [ 'type' => 'chrome', 'key' => 'before_footer:' . $why[ $k ][0], 'action' => 'skip', 'detail' => 'left out: ' . $why[ $k ][1] ] );
+				$job['report']['left_out'][] = [ 'design' => $why[ $k ][0], 'why' => $why[ $k ][1] ];
+			}
+		}
+		$sections[] = 'areas-dynamic-map-list';
+		return [ 'default' => [ 'sections' => $sections ] ];
+	}
+
+	/** One design of a map with the brief's reviews or offers written into the cards, when it shows such a pattern and says nothing about its cards. */
+	private static function feed_design( $d, array $lists ) {
+		if ( is_string( $d ) ) {
+			$f = self::FEEDS[ $d ] ?? null;
+			return $f && isset( $lists[ $f[1] ] ) ? [ 'pattern' => $d, 'slots' => [ $f[0] => $lists[ $f[1] ] ] ] : $d;
+		}
+		if ( ! is_array( $d ) ) {
+			return $d;
+		}
+		if ( isset( $d['pattern'] ) ) {
+			$f = self::FEEDS[ (string) $d['pattern'] ] ?? null;
+			if ( $f && isset( $lists[ $f[1] ] ) && ! isset( $d['slots'][ $f[0] ] ) ) {
+				$d['slots'] = (array) ( $d['slots'] ?? [] ) + [ $f[0] => $lists[ $f[1] ] ];
+			}
+		} elseif ( isset( $d['sections'] ) && is_array( $d['sections'] ) ) {
+			foreach ( $d['sections'] as $i => $sec ) {
+				$d['sections'][ $i ] = self::feed_design( $sec, $lists );
+			}
+		}
+		return $d;
+	}
+
+	/** The chrome map with the brief's reviews and offers written into the designs that show them. */
+	private static function feed_map( array $job, array $map ): array {
+		$lists = self::content_lists( $job );
+		if ( ! $lists ) {
+			return $map;
+		}
+		foreach ( $map as $slot => $v ) {
+			if ( 'crumbs' === $slot || ! is_array( $v ) && ! is_string( $v ) ) {
+				continue;
+			}
+			if ( is_array( $v ) && ! isset( $v['pattern'] ) && ! isset( $v['sections'] ) && ! isset( $v['synced'] ) && ! isset( $v['adopt'] ) ) {
+				foreach ( $v as $role => $d ) {
+					$map[ $slot ][ $role ] = self::feed_design( $d, $lists );
+				}
+			} else {
+				$map[ $slot ] = self::feed_design( $v, $lists );
+			}
+		}
+		return $map;
+	}
+
+	/** The chrome.map path of the design a group came from (the role entry whose design has this group key). */
+	private static function design_path( array $map, string $slot, string $key ): string {
+		$v = $map[ $slot ] ?? null;
+		if ( is_array( $v ) && ! isset( $v['pattern'] ) && ! isset( $v['sections'] ) && ! isset( $v['synced'] ) && ! isset( $v['adopt'] ) ) {
+			foreach ( $v as $role => $d ) {
+				$n = Chrome::normalize( $d, $slot );
+				if ( ! is_wp_error( $n ) && ! in_array( $n[0], [ false, 'theme' ], true ) && Chrome::group_key( $slot, $n[0] ) === $key ) {
+					return 'chrome.map.' . $slot . '.' . $role;
+				}
+			}
+		}
+		return 'chrome.map.' . $slot;
+	}
+
+	/** Report the demo copy, demo claims and dead links of one placed design as a copy_needed item. */
+	private static function chrome_copy( array &$job, string $key, array $c, array $map ): void {
+		$slot = (string) ( $c['slot'] ?? '' );
+		$design = $c['design'] ?? null;
+		$secs = [];
+		if ( is_string( $design ) ) {
+			$secs = [ $design ];
+		} elseif ( is_array( $design ) && isset( $design['pattern'] ) ) {
+			$secs = [ $design['pattern'] ];
+		} elseif ( is_array( $design ) && isset( $design['sections'] ) ) {
+			foreach ( $design['sections'] as $sec ) {
+				$secs[] = is_array( $sec ) ? ( $sec['pattern'] ?? ( isset( $sec['synced'] ) ? 'synced' : '' ) ) : (string) $sec;
+			}
+		}
+		$path = self::design_path( $map, $slot, $key );
+		$many = count( (array) ( $c['parts'] ?? [] ) ) > 1;
+		$needs = [];
+		foreach ( (array) ( $c['parts'] ?? [] ) as $i => $html ) {
+			foreach ( self::copy_hits( (string) $html ) as $kind => $list ) {
+				foreach ( $list as $h ) {
+					$h['in'] = (string) ( $secs[ $i ] ?? '' );
+					$h['where'] = $path . ( $many ? '.sections[' . $i . ']' : '' ) . '.slots["' . $h['slot'] . '"]';
+					$needs[ $kind ][] = $h;
+				}
+			}
+		}
+		if ( $needs ) {
+			$needs['how'] = 'In ' . $path . ' write the design as an object ({"pattern": "<slug>", "slots": {"<slot id>": "<text>"}}, or the same on a section of {"sections": [...]}) and give every slot a real text or link; dead links need a real address.';
+			self::copy_needed( $job, [ 'type' => 'chrome', 'key' => $key, 'title' => (string) ( $c['title'] ?? $key ), 'needs' => $needs ] );
+		}
+	}
+
+		/** Does a partial chrome map say something the stored map does not? */
 	private static function map_differs( array $stored, array $want ): bool {
 		foreach ( $want as $slot => $v ) {
 			$cur = $stored[ $slot ] ?? null;
@@ -1710,6 +2172,7 @@ final class Brief_Build {
 				}
 				$header = Brief::default_header( (string) ( $b['brand']['style']['preset'] ?? Style::get()['preset'] ), count( $main ), $len );
 			}
+			$job['state']['header'] = $header; // The chrome step places the same header, unless the brief names one in chrome.map.
 			self::write_menu( $job, $rows, 'main', $main, $items, $sig, $explicit, $header );
 		}
 		foreach ( [ 'footer', 'legal' ] as $name ) {
@@ -1904,6 +2367,57 @@ final class Brief_Build {
 			Ledger::record( 'brief:old-sitemap', 'option', self::OPT, md5( (string) $todo['old_sitemap_url'] ), 'set' );
 		}
 		self::add( $job, $rows, [ 'type' => 'urls', 'key' => 'urls', 'action' => 'update', 'detail' => $what ] );
+	}
+
+	/* ------------------------------------------------------------------ branding */
+
+	private static function phase_branding( array &$job ): array {
+		$dry = (bool) $job['dry_run'];
+		$b = (array) ( $job['brief']['branding'] ?? [] );
+		$rows = [];
+		if ( ! $b ) {
+			return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
+		}
+		if ( null !== $b['enabled'] ) {
+			if ( Modules::slug_enabled( 'branding' ) === $b['enabled'] ) {
+				self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'module', 'action' => 'keep', 'detail' => $b['enabled'] ? 'on' : 'off' ] );
+			} else {
+				if ( ! $dry ) {
+					$r = $b['enabled'] ? Modules::set( [ 'branding' ], [] ) : Modules::set( [], [ 'branding' ] );
+					if ( is_wp_error( $r ) ) {
+						self::warn( $job, 'branding: ' . $r->get_error_message() );
+						self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'module', 'action' => 'error', 'detail' => $r->get_error_message() ] );
+						return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
+					}
+				}
+				self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'module', 'action' => 'update', 'detail' => $b['enabled'] ? 'switched on' : 'switched off' ] );
+			}
+			if ( ! $b['enabled'] ) {
+				return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
+			}
+		}
+		if ( $b['settings'] || ( true === $b['enabled'] && ! Branding::configured() ) ) {
+			$opts = [ 'apply_recommended' => ! Branding::configured(), 'source' => 'tool' ]; // The first save also sets the sensible starting setup.
+			$plan = Branding::apply( $b['settings'], $opts + [ 'dry_run' => true ] );
+			if ( is_wp_error( $plan ) ) {
+				self::warn( $job, 'branding: ' . $plan->get_error_message() );
+				self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'settings', 'action' => 'error', 'detail' => $plan->get_error_message() ] );
+			} elseif ( ! $plan['changed'] && Branding::configured() ) {
+				self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'settings', 'action' => 'keep' ] );
+			} else {
+				$r = $dry ? $plan : Branding::apply( $b['settings'], $opts );
+				if ( is_wp_error( $r ) ) {
+					self::warn( $job, 'branding: ' . $r->get_error_message() );
+					self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'settings', 'action' => 'error', 'detail' => $r->get_error_message() ] );
+				} else {
+					foreach ( (array) ( $r['warnings'] ?? [] ) as $w ) {
+						self::warn( $job, 'branding: ' . $w );
+					}
+					self::add( $job, $rows, [ 'type' => 'branding', 'key' => 'settings', 'action' => 'update', 'detail' => count( (array) $r['changed'] ) . ' setting(s)' ] );
+				}
+			}
+		}
+		return [ 'done' => true, 'cursor' => 0, 'rows' => $rows ];
 	}
 
 	/* ------------------------------------------------------------------ conversions */

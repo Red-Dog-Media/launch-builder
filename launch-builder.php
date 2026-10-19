@@ -3,7 +3,7 @@
  * Plugin Name:       Launch Builder
  * Plugin URI:        https://github.com/Red-Dog-Media/launch-builder
  * Description:       A block toolkit for client sites: Kadence patterns, reputation widgets, global business info, and an MCP endpoint that builds whole sites.
- * Version:           0.11.0
+ * Version:           0.12.0
  * Requires at least: 6.5
  * Requires PHP:      7.4
  * Author:            LaunchLocal Digital Marketing
@@ -18,7 +18,7 @@ namespace LaunchBuilder;
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'LB_VERSION', '0.11.0' ); // Always equal to the Version header above; tools/release.mjs updates both.
+define( 'LB_VERSION', '0.12.0' ); // Always equal to the Version header above; tools/release.mjs updates both.
 define( 'LB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LB_URL', plugin_dir_url( __FILE__ ) );
 

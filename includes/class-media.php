@@ -35,7 +35,7 @@ final class Media {
 	const MODULE = [
 		'slug'        => 'media',
 		'label'       => 'Media hygiene',
-		'description' => 'Removes GPS location (and XMP, optionally the IPTC city) from every uploaded image and all its sizes without re-encoding, normalises images imported with sideload-media (size cap, PNG photos to JPEG) and adds media checks to the site audit. Not an optimizer: compression, WebP and lazy loading stay with the host and Perfmatters.',
+		'description' => 'Removes GPS location from every photo you upload and resizes images you import. Compression and WebP stay with your host and Perfmatters.',
 		'toggle'      => true,
 		'default'     => false,
 		'note'        => 'Images uploaded before it was on keep their metadata until strip-media-location treats them.',

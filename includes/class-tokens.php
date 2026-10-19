@@ -165,6 +165,12 @@ final class Tokens {
 
 	/** render_block (via Company::filter_block): the tokens in one block's HTML, plus empty social-links removal. */
 	public static function render_block( string $html, array $block = [] ): string {
+		if ( 'kadence/googlemaps' === ( $block['blockName'] ?? '' ) ) { // A map that follows Business Info (its location is a token) with no address yet prints nothing, not a map of nowhere.
+			$loc = $block['attrs']['location'] ?? null;
+			if ( is_string( $loc ) && false !== strpos( $loc, '{{' ) && '' === trim( self::replace( $loc, 'text' ) ) ) {
+				return '';
+			}
+		}
 		$out = self::replace( $html );
 		if ( 'core/social-links' === ( $block['blockName'] ?? '' ) && false === stripos( $out, '<li' ) && self::has_social_child( $block ) ) {
 			return ''; // Every profile it linked to is empty.
@@ -303,8 +309,20 @@ final class Tokens {
 				}
 			}
 		}
+		if ( function_exists( 'rwmb_meta' ) ) { // Fields of Meta Box settings pages work on every page.
+			$have = [];
+			foreach ( $rows as $r ) {
+				if ( 'meta' === $r['ns'] ) {
+					$have[ $r['key'] ] = true;
+				}
+			}
+			foreach ( array_slice( array_diff_key( Compat::mb_setting_index(), $have ), 0, 40, true ) as $id => $set ) {
+				$rows[] = self::row( 'meta', (string) $id, 'Meta Box settings page field: ' . $set['field']['name'], $ctx );
+				$meta_rows++;
+			}
+		}
 		if ( ! $meta_rows ) { // Nothing to list for this object: still say how the token works.
-			$rows[] = [ 'token' => '{{meta.<field_id>}}', 'ns' => 'meta', 'key' => '<field_id>', 'description' => 'A Meta Box field registered for the post type of the object being rendered (nothing without Meta Box)', 'kind' => 'text', 'contexts' => [ 'html', 'attr', 'text' ], 'link_token' => null, 'advanced' => false, 'available' => function_exists( 'rwmb_meta' ), 'value' => null ];
+			$rows[] = [ 'token' => '{{meta.<field_id>}}', 'ns' => 'meta', 'key' => '<field_id>', 'description' => 'A Meta Box field registered for the post type of the object being rendered, or a field of a Meta Box settings page (nothing without Meta Box)', 'kind' => 'text', 'contexts' => [ 'html', 'attr', 'text' ], 'link_token' => null, 'advanced' => false, 'available' => function_exists( 'rwmb_meta' ), 'value' => null ];
 		}
 		return $rows;
 	}
@@ -598,7 +616,7 @@ final class Tokens {
 					$h = self::hash( $val );
 					if ( $h ) {
 						$out = self::token( $h[0], $h[1], null, 'url', $ctx );
-						$empty_social = $empty_social || ( '' === $out && 'lb' === $h[0] && in_array( $h[1], Company::SOCIALS, true ) );
+						$empty_social = $empty_social || ( '' === $out && 'lb' === $h[0] && Company::hides_when_empty( $h[1] ) );
 					}
 				} elseif ( false !== strpos( $val, '{{' ) ) {
 					$out = self::attr_value( $val, $is_url, $ctx );
@@ -853,6 +871,9 @@ final class Tokens {
 			return [ 'v' => implode( ', ', $lines ), 'kind' => 'lines', 'lines' => $lines ];
 		}
 		$c = Company::computed_value( $key );
+		if ( 'emergency_phone_link' === $key && null !== $c ) {
+			return self::val( $c, 'url', $ctx );
+		}
 		return null === $c ? null : [ 'v' => $c, 'kind' => 'text' ];
 	}
 
@@ -1072,20 +1093,31 @@ final class Tokens {
 	 * kses, everything else gives plain text (a list joins with commas).
 	 */
 	private static function lookup_meta( string $key, array $ctx ): ?array {
+		if ( ! function_exists( 'rwmb_meta' ) ) {
+			return null;
+		}
 		$o = $ctx['entry'] ?: ( $ctx['page'] instanceof \WP_Post ? $ctx['page'] : null );
-		if ( ! $o || ! function_exists( 'rwmb_meta' ) ) {
-			return null;
+		$allowed = $o ? Compat::mb_fields_for( $o ) : [];
+		if ( isset( $allowed[ $key ] ) ) {
+			return self::meta_value( $key, (string) $allowed[ $key ]['type'], [], $o->ID );
 		}
-		$allowed = Compat::mb_fields_for( $o );
-		if ( ! isset( $allowed[ $key ] ) ) {
-			return null;
+		// A field of the Meta Box settings page Business Info reads from works too, on any page (other pages only through the
+		// launch_builder_meta_token_pages filter): its value is read from the page's option.
+		$set = Compat::mb_setting_index()[ $key ] ?? null;
+		if ( $set && in_array( (string) $set['field']['type'], [ 'checkbox', 'switch' ], true ) ) { // A tick box prints as yes or no.
+			$on = rwmb_meta( $key, [ 'object_type' => $set['network'] ? 'network_setting' : 'setting' ], $set['option'] );
+			return [ 'v' => $on && '0' !== $on ? __( 'Yes', 'launch-builder' ) : __( 'No', 'launch-builder' ), 'kind' => 'text' ];
 		}
-		$type = (string) $allowed[ $key ]['type'];
+		return $set ? self::meta_value( $key, (string) $set['field']['type'], [ 'object_type' => $set['network'] ? 'network_setting' : 'setting' ], $set['option'] ) : null;
+	}
+
+	/** The value of one allowed Meta Box field as the token engine prints it ($args: rwmb_meta() arguments; $object_id: a post ID, or the option name of a settings page). */
+	private static function meta_value( string $key, string $type, array $args, $object_id ): array {
 		if ( 'wysiwyg' === $type ) { // The formatted text (paragraphs, shortcodes), not the stored source.
-			$html = function_exists( 'rwmb_the_value' ) ? rwmb_the_value( $key, [], $o->ID, false ) : rwmb_meta( $key, [], $o->ID );
+			$html = function_exists( 'rwmb_the_value' ) ? rwmb_the_value( $key, $args, $object_id, false ) : rwmb_meta( $key, $args, $object_id );
 			return [ 'v' => self::kses_meta( is_scalar( $html ) ? (string) $html : '' ), 'kind' => 'html' ];
 		}
-		$v = rwmb_meta( $key, [], $o->ID );
+		$v = rwmb_meta( $key, $args, $object_id );
 		if ( in_array( $type, [ 'oembed', 'map', 'osm' ], true ) ) { // rwmb_meta() already returns the finished HTML for these.
 			return [ 'v' => self::kses_meta( is_scalar( $v ) ? (string) $v : '', 'oembed' === $type ), 'kind' => 'html' ];
 		}

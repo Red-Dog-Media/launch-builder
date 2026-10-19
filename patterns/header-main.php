@@ -2,7 +2,7 @@
 /**
  * Title: Header: main row (logo, menu, phone, button)
  * Slug: launch-builder/header-main
- * Description: One row: logo on the left, the menu, a click-to-call phone number and the main button on the right. Slide-out menu on tablet and mobile.
+ * Description: One row: logo on the left, the menu, a click-to-call phone number and the main button on the right. Slide-out menu on tablet and mobile. Built for up to 8 top-level menu items and about 110 characters of labels in total on one row.
  * Categories: launch-builder-headers
  * Keywords: header, navigation, menu, phone, button, one row
  * Slot: header

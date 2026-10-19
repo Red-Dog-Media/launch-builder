@@ -577,6 +577,12 @@ final class Conversions {
 			$warnings[] = 'expires is in the past: the item will not show.';
 		}
 		if ( $item['dry_run'] ) {
+			if ( $post && 'owned' === $state ) { // The same test the write makes, so an unchanged item plans no change.
+				$same = self::item_meta( $item, $lkey, self::item_content( $item, (int) $post->ID, $built['blocks'] ) );
+				if ( $item['status'] === $post->post_status && self::meta_matches( (int) $post->ID, $same ) ) {
+					return $base + [ 'status' => 'unchanged', 'id' => (int) $post->ID, 'state' => $state, 'post_status' => $post->post_status, 'warnings' => $warnings ];
+				}
+			}
 			return $base + [ 'status' => $post ? 'would_update' : 'would_create', 'id' => $post ? $post->ID : 0, 'state' => $state, 'warnings' => $warnings ];
 		}
 		$creating = ! $post;
@@ -1462,9 +1468,50 @@ final class Conversions {
 			}
 		}
 		if ( false !== $exit ) {
-			array_unshift( $items, array_merge( self::DEFAULT_EXIT_INTENT, is_array( $exit ) ? $exit : [] ) );
+			$item = array_merge( self::DEFAULT_EXIT_INTENT, is_array( $exit ) ? $exit : [] );
+			if ( is_array( $exit ) && isset( $exit['copy'] ) && is_array( $exit['copy'] ) && self::DEFAULT_EXIT_INTENT['design'] === $item['design'] ) {
+				$item = self::popup_copy( $item ); // copy { eyebrow, headline, body, button } writes the default popup's own texts.
+			}
+			array_unshift( $items, $item );
 		}
 		return $items;
+	}
+
+	/**
+	 * The default popup with its texts from copy { eyebrow, headline, body, button }: they go into the design's first four text
+	 * slots, in the order the design reads (small line, headline, sentence, button). Other copy keys stay for [[key]] fills.
+	 *
+	 * @param array $item The exit-intent item of the brief (design is the default popup's slug).
+	 */
+	private static function popup_copy( array $item ): array {
+		$names = [ 'eyebrow', 'headline', 'body', 'button' ];
+		$texts = [];
+		foreach ( $names as $n ) {
+			if ( isset( $item['copy'][ $n ] ) && is_scalar( $item['copy'][ $n ] ) && '' !== trim( (string) $item['copy'][ $n ] ) ) {
+				$texts[ $n ] = trim( (string) $item['copy'][ $n ] );
+			}
+		}
+		$content = Patterns::content( (string) $item['design'] );
+		if ( ! $texts || null === $content ) {
+			return $item;
+		}
+		$ids = [];
+		foreach ( Patterns::slots( parse_blocks( $content ) ) as $s ) {
+			if ( 'text' === $s['field'] ) {
+				$ids[] = $s['id'];
+			}
+		}
+		$slots = [];
+		foreach ( $names as $i => $n ) {
+			if ( isset( $texts[ $n ], $ids[ $i ] ) ) {
+				$slots[ $ids[ $i ] ] = esc_html( $texts[ $n ] );
+			}
+		}
+		$item['copy'] = array_diff_key( $item['copy'], array_flip( $names ) );
+		if ( $slots ) {
+			$item['design'] = [ 'pattern' => (string) $item['design'], 'slots' => $slots ];
+		}
+		return $item;
 	}
 
 	/** Module hook: build-site writes blueprint.conversions (same forms as the brief) once everything else exists. */

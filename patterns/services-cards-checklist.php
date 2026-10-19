@@ -2,9 +2,10 @@
 /**
  * Title: Services: category cards with checklists
  * Slug: launch-builder/services-cards-checklist
- * Description: Four category cards (photo, title, five-item checklist, link): the standard "what we do" band.
+ * Description: Four category cards (photo, title, five-item checklist, link): the standard "what we do" band. Kept for existing pages; the live version (services-dynamic-categories) is the one to use.
  * Categories: launch-builder-services, launch-builder
  * Keywords: services, categories, cards, checklist, grid
+ * Inserter: no
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"129_016069-69","columns":1,"colLayout":"equal","bgColor":"palette8","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

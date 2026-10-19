@@ -5,7 +5,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The Branding screen (Launch Builder > Branding): one form in sections (identity, sign-in screen with a live preview,
- * the Site Owner role, the client dashboard, the admin look, email, Launch Builder's own name, Kadence names), plus the
+ * the Site Owner role, the client dashboard, the admin look, dashboard colours with a live preview, email), plus the
  * guarded "move administrators to the Site Owner role" action and settings export/import.
  *
  * Plain semantic HTML on the shared admin classes (lb-wrap, lb-card); only what is specific to this screen is in
@@ -23,7 +23,7 @@ final class Branding_Admin {
 		add_action( 'admin_post_lb_branding_convert', [ __CLASS__, 'convert' ] );
 		add_action( 'admin_post_lb_branding_export', [ __CLASS__, 'export' ] );
 		add_action( 'admin_post_lb_branding_import', [ __CLASS__, 'import' ] );
-		add_action( 'admin_post_lb_branding_kwl_restore', [ __CLASS__, 'kwl_restore' ] );
+		add_action( 'admin_post_lb_branding_reset_colors', [ __CLASS__, 'reset_colors' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'assets' ] );
 	}
 
@@ -42,6 +42,21 @@ final class Branding_Admin {
 		wp_enqueue_media();
 		wp_enqueue_style( 'lb-branding-admin', LB_URL . 'assets/css/branding-admin.css', [], (string) @filemtime( LB_DIR . 'assets/css/branding-admin.css' ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		wp_enqueue_script( 'lb-branding-admin', LB_URL . 'assets/js/branding-admin.js', [], (string) @filemtime( LB_DIR . 'assets/js/branding-admin.js' ), true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		wp_enqueue_script( 'lb-branding-colors', LB_URL . 'assets/js/branding-colors.js', [ 'lb-branding-admin' ], (string) @filemtime( LB_DIR . 'assets/js/branding-colors.js' ), true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		wp_add_inline_script( 'lb-branding-colors', 'window.lbBrandingColors=' . wp_json_encode( Branding_Colors::client_config() + [
+			'i18n' => [
+				'sidebar_text' => __( 'Sidebar text on the sidebar', 'launch-builder' ),
+				'active_text'  => __( 'Text on the active item', 'launch-builder' ),
+				'bar_text'     => __( 'Text on the top bar', 'launch-builder' ),
+				'link'         => __( 'Links on the page', 'launch-builder' ),
+				'button_text'  => __( 'Text on buttons', 'launch-builder' ),
+				'active_on_sidebar' => __( 'Active item against the sidebar', 'launch-builder' ),
+				'ok'           => __( 'OK', 'launch-builder' ),
+				'low'          => __( 'Low contrast', 'launch-builder' ),
+				'fixed'        => __( 'Corrected', 'launch-builder' ),
+				'all_ok'       => __( 'All text is easy to read.', 'launch-builder' ),
+			],
+		] ) . ';', 'before' );
 		$agency = Branding::agency();
 		$client = Branding::client_logo_id();
 		$login = Branding::section( 'login' );
@@ -145,13 +160,13 @@ final class Branding_Admin {
 		return $out . '</fieldset>';
 	}
 
-	/** A colour: swatch, the text field (empty = follow the brand palette) and a reset button. */
-	private static function color( array $f, string $label, string $path, string $auto, string $help = '' ): string {
+	/** A colour: swatch, the text field (empty = the automatic colour) and a button that empties it. */
+	private static function color( array $f, string $label, string $path, string $auto, string $help = '', string $reset = '' ): string {
 		$val = (string) self::v( $f, $path );
 		$swatch = Style::hex( '' !== $val ? $val : $auto ) ?: '#FFFFFF';
 		$ctl = '<div class="lbb-color" data-auto="' . esc_attr( $auto ) . '"><input type="color" class="lbb-swatch" value="' . esc_attr( strtolower( $swatch ) ) . '" aria-label="' . esc_attr( sprintf( /* translators: %s: colour name */ __( 'Pick: %s', 'launch-builder' ), $label ) ) . '">'
 			. '<input type="text" class="lbb-hex" id="' . esc_attr( self::id( $path ) ) . '" name="' . esc_attr( self::name( $path ) ) . '" value="' . esc_attr( $val ) . '" placeholder="' . esc_attr( $auto ) . '" maxlength="9" autocomplete="off" spellcheck="false"' . self::aria( $path, $help ) . '>'
-			. '<button type="button" class="button-link lbb-auto">' . esc_html__( 'Use brand colour', 'launch-builder' ) . '</button></div>';
+			. '<button type="button" class="button-link lbb-auto">' . esc_html( '' !== $reset ? $reset : __( 'Use brand colour', 'launch-builder' ) ) . '</button></div>';
 		return self::field( $label, $path, $ctl, $help );
 	}
 
@@ -191,7 +206,7 @@ final class Branding_Admin {
 			delete_transient( self::MSG . get_current_user_id() );
 		}
 		echo self::shared_css(); // phpcs:ignore WordPress.Security.EscapeOutput -- the shared admin stylesheet (static CSS).
-		echo '<div class="wrap lb-wrap lbb"><h1>' . esc_html__( 'Branding', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Make this site look like yours when you hand it over: a branded sign-in screen, a simple dashboard and a Site Owner role for your client, and your name where the platform\'s used to be. The business name and logo come from Business Info and the theme; colours come from the brand palette. Nothing here is visible to visitors.', 'launch-builder' ) . '</p>';
+		echo '<div class="wrap lb-wrap lbb"><h1>' . esc_html__( 'Branding', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Make the site look like yours when you hand it over: your sign-in page, a simple dashboard and a Site Owner role for your client. Visitors never see any of it.', 'launch-builder' ) . '</p>';
 
 		if ( Branding::safe() ) {
 			echo '<div class="notice notice-warning inline"><p>' . esc_html__( 'LB_BRANDING_SAFE_MODE is set in wp-config.php: every branded surface is off. You can still edit and save these settings.', 'launch-builder' ) . '</p></div>';
@@ -200,6 +215,10 @@ final class Branding_Admin {
 			echo '<div class="notice notice-' . ( 'error' === $msg[0] ? 'error' : 'success' ) . ' inline is-dismissible"><p>' . esc_html( (string) $msg[1] ) . '</p>';
 			foreach ( array_slice( (array) ( $msg[2] ?? [] ), 0, 10 ) as $line ) {
 				echo '<p class="lbb-note">' . esc_html( (string) $line ) . '</p>';
+			}
+			$link = (array) ( $msg[3] ?? [] );
+			if ( 2 === count( $link ) && is_string( $link[0] ) && is_string( $link[1] ) ) {
+				echo '<p class="lbb-note"><a class="lb-btn lb-btn--sm" href="' . esc_url( $link[0] ) . '">' . esc_html( $link[1] ) . '</a></p>';
 			}
 			echo '</div>';
 		}
@@ -211,7 +230,7 @@ final class Branding_Admin {
 		}
 
 		echo '<nav class="lbb-nav" aria-label="' . esc_attr__( 'Sections', 'launch-builder' ) . '"><ul>';
-		foreach ( [ 'lbb-identity' => __( 'Your details', 'launch-builder' ), 'lbb-login' => __( 'Sign-in screen', 'launch-builder' ), 'lbb-clients' => __( 'Site Owner role', 'launch-builder' ), 'lbb-dashboard' => __( 'Client dashboard', 'launch-builder' ), 'lbb-admin' => __( 'Admin look', 'launch-builder' ), 'lbb-email' => __( 'Email', 'launch-builder' ), 'lbb-lb' => __( 'Launch Builder name', 'launch-builder' ), 'lbb-kadence' => __( 'Kadence names', 'launch-builder' ), 'lbb-tools' => __( 'Move, export, import', 'launch-builder' ) ] as $a => $l ) {
+		foreach ( [ 'lbb-identity' => __( 'Your details', 'launch-builder' ), 'lbb-login' => __( 'Sign-in screen', 'launch-builder' ), 'lbb-clients' => __( 'Site Owner role', 'launch-builder' ), 'lbb-dashboard' => __( 'Client dashboard', 'launch-builder' ), 'lbb-admin' => __( 'Admin look', 'launch-builder' ), 'lbb-colors' => __( 'Dashboard colours', 'launch-builder' ), 'lbb-email' => __( 'Email', 'launch-builder' ), 'lbb-tools' => __( 'Move, export, import', 'launch-builder' ) ] as $a => $l ) {
 			echo '<li><a href="#' . esc_attr( $a ) . '">' . esc_html( $l ) . '</a></li>';
 		}
 		echo '</ul></nav>';
@@ -224,11 +243,13 @@ final class Branding_Admin {
 		echo self::section_clients( $form );
 		echo self::section_dashboard( $form );
 		echo self::section_admin( $form );
+		echo self::section_colors( $form );
 		echo self::section_email( $form );
-		echo self::section_lb( $form );
-		echo self::section_kadence( $form );
 
 		echo '<div class="lbb-savebar"><button type="submit" class="button button-primary button-large">' . esc_html__( 'Save settings', 'launch-builder' ) . '</button><span class="lbb-dirty" role="status" aria-live="polite" hidden></span></div></form>';
+
+		// The reset button in the colours card submits this form (the HTML form attribute), so no form sits inside another.
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="lbb-colors-reset"><input type="hidden" name="action" value="lb_branding_reset_colors">' . wp_nonce_field( 'lb_branding_reset_colors', '_wpnonce', true, false ) . '</form>'; // phpcs:ignore WordPress.Security.EscapeOutput -- nonce field markup.
 
 		echo self::section_tools();
 		echo '</div>';
@@ -259,13 +280,12 @@ final class Branding_Admin {
 		$b .= self::text( $f, __( 'Agency name', 'launch-builder' ), 'agency.name', __( 'Shown in the sign-in credit, the admin footer and the support card.', 'launch-builder' ), [ 'maxlength' => 80, 'placeholder' => Branding::AGENCY['name'] ] );
 		$b .= self::text( $f, __( 'Agency website', 'launch-builder' ), 'agency.url', '', [ 'type' => 'url', 'placeholder' => Branding::AGENCY['url'] ] );
 		$b .= self::media( $f, __( 'Agency logo', 'launch-builder' ), 'agency.logo', __( 'Wide logo, used on the sign-in screen when you choose it.', 'launch-builder' ) );
-		$b .= self::media( $f, __( 'Agency icon (square)', 'launch-builder' ), 'agency.logo_square', __( 'Used in the admin bar and for Kadence images. 300 by 300 works everywhere.', 'launch-builder' ) );
+		$b .= self::media( $f, __( 'Agency icon (square)', 'launch-builder' ), 'agency.logo_square', __( 'Used in the admin bar. 300 by 300 works everywhere.', 'launch-builder' ) );
 		$b .= self::text( $f, __( 'Support email', 'launch-builder' ), 'agency.support_email', '', [ 'type' => 'email', 'maxlength' => 254 ] );
 		$b .= self::text( $f, __( 'Support phone', 'launch-builder' ), 'agency.support_phone', '', [ 'maxlength' => 40 ] );
 		$b .= self::text( $f, __( 'Support page', 'launch-builder' ), 'agency.support_url', '', [ 'type' => 'url' ] );
 		$b .= self::text( $f, __( 'Booking link', 'launch-builder' ), 'agency.booking_url', __( 'A "Book a call" link on the client dashboard.', 'launch-builder' ), [ 'type' => 'url' ] );
 		$b .= '</div>';
-		$b .= self::area( $f, __( 'Agency icon as SVG (optional)', 'launch-builder' ), 'agency.icon_svg', __( 'A simple one-colour SVG for menu icons. Only basic shapes are kept; scripts and links are removed.', 'launch-builder' ), 8192, 4 );
 		[ $bn, $src ] = Branding::business_name();
 		$b .= '<p class="lbb-note">' . sprintf( /* translators: 1: business name, 2: where it comes from */ esc_html__( 'The client\'s business name is %1$s (from %2$s). Change it in Business Info; the logo and colours come from the theme (set-brand).', 'launch-builder' ), '<strong>' . esc_html( $bn ) . '</strong>', esc_html( 'business_info' === $src ? __( 'Business Info', 'launch-builder' ) : __( 'the site title', 'launch-builder' ) ) ) . ' <a href="' . esc_url( Admin::url( 'launch-builder-business' ) ) . '">' . esc_html__( 'Open Business Info', 'launch-builder' ) . '</a></p>'; // phpcs:ignore WordPress.Security.EscapeOutput -- parts escaped above.
 		return self::card( 'lbb-identity', __( 'Your details', 'launch-builder' ), __( 'Who built the site and how a client reaches you. Everything is optional; empty fields use the defaults shown.', 'launch-builder' ), $b );
@@ -318,7 +338,7 @@ final class Branding_Admin {
 	}
 
 	private static function section_clients( array $f ): string {
-		$b = self::check( $f, __( 'Create the Site Owner role', 'launch-builder' ), 'client.role.enabled', __( 'A role for your client: they edit pages, posts, services and photos, and cannot touch settings, plugins, themes or users. Assign it to their account under Users.', 'launch-builder' ) );
+		$b = self::check( $f, __( 'Create the Site Owner role', 'launch-builder' ), 'client.role.enabled', __( 'A safe account for your client. They can edit pages, posts, services and photos, but not settings, plugins, themes or users.', 'launch-builder' ) );
 		$b .= '<div class="lbb-grid">';
 		$b .= self::text( $f, __( 'Role name', 'launch-builder' ), 'client.role.label', '', [ 'maxlength' => 40, 'placeholder' => 'Site Owner' ] );
 		$b .= self::select( $f, __( 'SEO box in the editor', 'launch-builder' ), 'client.role.flags.seo_box', [ 'none' => __( 'Hidden', 'launch-builder' ), 'basic' => __( 'Basic fields', 'launch-builder' ) ] );
@@ -391,8 +411,9 @@ final class Branding_Admin {
 		$b .= self::text( $f, __( 'Greeting', 'launch-builder' ), 'admin.greeting', __( 'Use %s for the name, for example "Hi, %s". Empty shows the name alone.', 'launch-builder' ), [ 'maxlength' => 40, 'placeholder' => 'Hi, %s' ] );
 		$b .= self::text( $f, __( 'Browser tab suffix', 'launch-builder' ), 'admin.title_suffix', __( 'Replaces "WordPress" in the tab title, for example "Client Portal". Empty leaves it unchanged.', 'launch-builder' ), [ 'maxlength' => 40 ] );
 		$b .= '</div>';
-		$b .= self::check( $f, __( 'Show the logo above the admin menu', 'launch-builder' ), 'admin.menu_logo' );
-		$b .= self::select( $f, __( 'Menu logo', 'launch-builder' ), 'admin.menu_logo_source', [ 'client' => __( 'The client\'s logo (the dark-background logo from Business Info when set)', 'launch-builder' ), 'agency' => __( 'The agency icon', 'launch-builder' ) ] );
+		$b .= self::check( $f, __( 'Show a logo above the admin menu', 'launch-builder' ), 'admin.menu_logo', __( 'Only people who sign in see it. Visitors never do.', 'launch-builder' ) );
+		$b .= self::select( $f, __( 'Which logo', 'launch-builder' ), 'admin.menu_logo_source', [ 'client' => __( 'The client\'s logo', 'launch-builder' ), 'agency' => __( 'The agency icon', 'launch-builder' ) ] );
+		$b .= self::media( $f, __( 'Logo for the dark menu', 'launch-builder' ), 'admin.menu_logo_image', __( 'Optional. A logo made for dark backgrounds. It is used when "The client\'s logo" is chosen.', 'launch-builder' ) );
 		$b .= self::text( $f, __( 'Footer text', 'launch-builder' ), 'admin.footer_text', __( 'Plain text. {agency}, {agency_url}, {support_phone}, {support_email} and {business} are filled in.', 'launch-builder' ), [ 'maxlength' => 200, 'placeholder' => 'Website by {agency}' ] );
 		$b .= self::text( $f, __( 'Footer link', 'launch-builder' ), 'admin.footer_link', __( 'Where {agency} links. Empty uses the agency website.', 'launch-builder' ), [ 'type' => 'url' ] );
 		$b .= self::check( $f, __( 'Use the brand colour in the block editor', 'launch-builder' ), 'admin.editor_accent', __( 'Only applied when it has enough contrast on white.', 'launch-builder' ) );
@@ -417,35 +438,81 @@ final class Branding_Admin {
 		return self::card( 'lbb-email', __( 'Email', 'launch-builder' ), __( 'Contact form copies, password resets and notifications come from your client instead of "WordPress".', 'launch-builder' ), $b );
 	}
 
-	private static function section_lb( array $f ): string {
-		$b = self::check( $f, __( 'Rename Launch Builder in wp-admin', 'launch-builder' ), 'lb.enabled', __( 'Changes the menu label and icon, the Plugins screen row and the block category. Version and updates are untouched.', 'launch-builder' ) );
-		$b .= '<div class="lbb-grid">';
-		$b .= self::text( $f, __( 'Menu label', 'launch-builder' ), 'lb.menu_label', '', [ 'maxlength' => 30, 'placeholder' => 'Launch Builder' ] );
-		$b .= self::text( $f, __( 'Menu icon', 'launch-builder' ), 'lb.menu_icon', __( '"agency" uses the SVG icon above, or a dashicons class such as dashicons-admin-site.', 'launch-builder' ), [ 'maxlength' => 60 ] );
-		$b .= '</div>' . self::text( $f, __( 'Description on the Plugins screen', 'launch-builder' ), 'lb.description', '', [ 'maxlength' => 200 ] );
-		return self::card( 'lbb-lb', __( 'Launch Builder name', 'launch-builder' ), '', $b );
+	/** The preview's starting look: the same final colours the script computes, as custom properties. */
+	private static function colors_preview_style( array $r ): string {
+		$v = $r['v'];
+		$map = [ '--a-side' => 'sidebar', '--a-side-text' => 'sidebar_text', '--a-sub' => 'sub', '--a-hl' => 'highlight', '--a-hl-text' => 'highlight_text', '--a-bar' => 'topbar', '--a-bar-text' => 'bar_text', '--a-acc' => 'accent', '--a-acc-text' => 'accent_text', '--a-link' => 'link' ];
+		$out = '';
+		foreach ( $map as $prop => $key ) {
+			$out .= $prop . ':' . $v[ $key ] . ';';
+		}
+		return $out;
 	}
 
-	private static function section_kadence( array $f ): string {
-		$state = Branding_Kadence::state();
-		$b = '<div class="lbb-grid">';
-		$b .= self::text( $f, __( 'Product name', 'launch-builder' ), 'product.name', __( 'Your name for the page builder, for example "Studio". Never the client\'s business name.', 'launch-builder' ), [ 'maxlength' => 40 ] );
-		$b .= self::text( $f, __( 'Short name', 'launch-builder' ), 'product.short', '', [ 'maxlength' => 18 ] );
-		$b .= self::text( $f, __( 'Blocks menu label', 'launch-builder' ), 'product.blocks_menu', '', [ 'maxlength' => 12, 'placeholder' => 'Blocks' ] );
-		$b .= self::select( $f, __( 'Blocks menu icon', 'launch-builder' ), 'kadence.icon', [ 'cube' => 'cube', 'cog' => 'cog', 'equalizer' => 'equalizer', 'pencil-paper' => 'pencil-paper', 'pencil-ruler' => 'pencil-ruler', 'spreadsheet' => 'spreadsheet', 'agency' => __( 'The agency SVG icon', 'launch-builder' ) ] );
-		$b .= '</div>';
-		$b .= self::text( $f, __( 'Theme description', 'launch-builder' ), 'product.theme_desc', '', [ 'maxlength' => 200 ] );
-		$b .= self::text( $f, __( 'Blocks description', 'launch-builder' ), 'product.blocks_desc', '', [ 'maxlength' => 200 ] );
-		$b .= '<h3>' . esc_html__( 'Kadence White Label', 'launch-builder' ) . '</h3>';
-		$b .= '<p class="lbb-note">' . ( $state['detected'] ? sprintf( /* translators: %s: version */ esc_html__( 'Kadence White Label %s is installed.', 'launch-builder' ), esc_html( $state['version'] ) ) : esc_html__( 'Kadence White Label is not installed. Switching this on then renames only what a client sees in the editor.', 'launch-builder' ) ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above.
-		$b .= self::radios( $f, __( 'How Launch Builder uses it', 'launch-builder' ), 'kadence.kwl_mode', [
-			'off'     => [ __( 'Leave it alone (default)', 'launch-builder' ), __( 'Launch Builder never reads or changes that plugin\'s settings.', 'launch-builder' ) ],
-			'manage'  => [ __( 'Manage it from here', 'launch-builder' ), __( 'Its settings come from this screen without being saved in its database row, and its own screen is hidden. Turn this off and everything goes back.', 'launch-builder' ) ],
-			'persist' => [ __( 'Write the values into it so they stay', 'launch-builder' ), __( 'Saves the names and images in that plugin\'s settings, so they stay if Launch Builder is removed. The previous settings can be restored.', 'launch-builder' ) ],
+	/** The mock of the dashboard the colours are tried on (no links, no focus stops; styled with custom properties set by the script). */
+	private static function colors_preview( array $r ): string {
+		[ $bn ] = Branding::business_name();
+		$items = [ __( 'Dashboard', 'launch-builder' ) => '', __( 'Pages', 'launch-builder' ) => ' is-current', __( 'Posts', 'launch-builder' ) => '', __( 'Media', 'launch-builder' ) => '', __( 'Profile', 'launch-builder' ) => '' ];
+		$h = '<div class="lbb-adm" id="lbb-adm" role="img" aria-label="' . esc_attr__( 'Preview of the dashboard colours', 'launch-builder' ) . '" style="' . esc_attr( self::colors_preview_style( $r ) ) . '">';
+		$h .= '<div class="lbb-adm-bar"><span class="lbb-adm-dot"></span><span>' . esc_html( $bn ) . '</span><span class="lbb-adm-grow"></span><span>' . esc_html__( 'Hi, Sam', 'launch-builder' ) . '</span></div>';
+		$h .= '<div class="lbb-adm-body"><div class="lbb-adm-side">';
+		foreach ( $items as $label => $cls ) {
+			$h .= '<div class="lbb-adm-item' . $cls . '"><span class="lbb-adm-ico"></span>' . esc_html( $label ) . '</div>';
+			if ( '' !== $cls ) {
+				$h .= '<div class="lbb-adm-sub"><span>' . esc_html__( 'All pages', 'launch-builder' ) . '</span><span>' . esc_html__( 'Add new', 'launch-builder' ) . '</span></div>';
+			}
+		}
+		$h .= '</div><div class="lbb-adm-main"><p class="lbb-adm-title">' . esc_html__( 'Welcome', 'launch-builder' ) . '</p>';
+		$h .= '<p>' . esc_html__( 'Edit your pages, add photos and check your site.', 'launch-builder' ) . ' <span class="lbb-adm-link">' . esc_html__( 'Open a page', 'launch-builder' ) . '</span></p>';
+		$h .= '<p class="lbb-adm-actions"><span class="lbb-adm-btn">' . esc_html__( 'Save changes', 'launch-builder' ) . '</span><span class="lbb-adm-btn2">' . esc_html__( 'Cancel', 'launch-builder' ) . '</span></p>';
+		$h .= '</div></div></div>';
+		return $h;
+	}
+
+	/** Where a person picks a colour scheme for their own account. */
+	private static function profile_url(): string {
+		return admin_url( 'profile.php#color-picker' );
+	}
+
+	private static function section_colors( array $f ): string {
+		$c = (array) ( $f['admin_colors'] ?? [] );
+		$r = Branding_Colors::resolve( $c );
+		$d = Branding_Colors::defaults();
+		$b = '';
+		if ( Branding_Colors::off() && ! Branding::safe() ) {
+			$b .= '<div class="notice notice-warning inline"><p>' . esc_html__( 'LB_ADMIN_COLORS_OFF is set in wp-config.php: the dashboard colours are off for everyone. You can still edit and save them here.', 'launch-builder' ) . '</p></div>';
+		}
+		$b .= '<div class="lbb-colors-grid"><div class="lbb-colors-fields">';
+		$b .= self::radios( $f, __( 'Who sees these colours', 'launch-builder' ), 'admin_colors.scope', [
+			'clients'  => [ __( 'Only client users (Site Owner role)', 'launch-builder' ), __( 'Your own screens stay as they are, and anyone who picked their own colour scheme keeps it.', 'launch-builder' ) ],
+			'everyone' => [ __( 'Everyone', 'launch-builder' ), __( 'Replaces the colour scheme of every account, yours too. Text colours are always kept readable.', 'launch-builder' ) ],
+			'nobody'   => [ __( 'Nobody (preview only)', 'launch-builder' ), __( 'Saves the colours without showing them to anyone. A person can still try them by choosing Dashboard colours on their profile page.', 'launch-builder' ) ],
 		] );
-		$b .= self::check( $f, __( 'Turn off Kadence AI for every user', 'launch-builder' ), 'kadence.disable_ai_all' );
-		$b .= self::check( $f, __( 'Rename Kadence Conversions with the product name', 'launch-builder' ), 'kadence.conversions_rename', __( 'Its menu icon becomes the agency icon too.', 'launch-builder' ) );
-		return self::card( 'lbb-kadence', __( 'Kadence names', 'launch-builder' ), __( 'Optional. For agencies that resell the page builder under their own name; clients\' business names never go here.', 'launch-builder' ), $b );
+		$b .= '<p class="description lbb-see-mine">' . esc_html__( 'Want a look first? Save your colours, then', 'launch-builder' ) . ' <a href="' . esc_url( self::profile_url() ) . '">' . esc_html__( 'see it on your account: Users, Profile, Dashboard colours', 'launch-builder' ) . '</a>.</p>';
+		$b .= '<h3 id="lbb-schemes-h">' . esc_html__( 'Start from', 'launch-builder' ) . '</h3><div class="lbb-schemes" role="group" aria-labelledby="lbb-schemes-h">';
+		$cfg = Branding_Colors::client_config();
+		foreach ( $cfg['schemes'] as $id => $s ) {
+			$dots = '';
+			foreach ( [ 'sidebar', 'highlight', 'topbar', 'accent' ] as $k ) {
+				$dots .= '<i style="background:' . esc_attr( $s[ $k ] ) . '"></i>';
+			}
+			$b .= '<button type="button" class="lb-pill lbb-scheme" data-scheme="' . esc_attr( $id ) . '" aria-pressed="false"><span class="lbb-dots" aria-hidden="true">' . $dots . '</span>' . esc_html( $s['label'] ) . '</button>';
+		}
+		$b .= '</div><input type="hidden" id="' . esc_attr( self::id( 'admin_colors.scheme' ) ) . '" name="' . esc_attr( self::name( 'admin_colors.scheme' ) ) . '" value="' . esc_attr( (string) ( $c['scheme'] ?? '' ) ) . '">';
+		$b .= '</div><div class="lbb-colors-preview"><h3>' . esc_html__( 'Preview', 'launch-builder' ) . '</h3>';
+		$b .= self::colors_preview( $r );
+		$b .= '<ul class="lbb-contrast" id="lbb-colors-contrast"></ul><p class="screen-reader-text" id="lbb-colors-status" role="status" aria-live="polite"></p>';
+		$b .= '<p class="description lbb-colors-note">' . esc_html__( 'Text that would be hard to read is corrected automatically, and the contrast is shown here. Colours are saved when you press Save settings.', 'launch-builder' ) . '</p></div>';
+		$b .= '<div class="lbb-colors-more"><h3>' . esc_html__( 'Colours', 'launch-builder' ) . '</h3>';
+		$reset = __( 'Use default', 'launch-builder' );
+		$b .= self::color( $f, __( 'Sidebar background', 'launch-builder' ), 'admin_colors.sidebar', $d['sidebar'], '', $reset );
+		$b .= self::color( $f, __( 'Sidebar text', 'launch-builder' ), 'admin_colors.sidebar_text', $r['v']['sidebar_text'], __( 'Empty picks a readable colour for you.', 'launch-builder' ), $reset );
+		$b .= self::color( $f, __( 'Active and hover item', 'launch-builder' ), 'admin_colors.highlight', $d['highlight'], '', $reset );
+		$b .= self::color( $f, __( 'Top bar', 'launch-builder' ), 'admin_colors.topbar', $d['topbar'], __( 'Inside the dashboard only. The bar on your website is not changed.', 'launch-builder' ), $reset );
+		$b .= self::color( $f, __( 'Links and buttons', 'launch-builder' ), 'admin_colors.accent', $d['accent'], '', $reset );
+		$b .= '<p class="lbb-reset-row"><button type="submit" class="lb-btn lb-btn--sm" form="lbb-colors-reset">' . esc_html__( 'Reset to WordPress default', 'launch-builder' ) . '</button> <span class="description">' . esc_html__( 'Puts every dashboard colour and the audience back. Other settings stay.', 'launch-builder' ) . '</span></p>';
+		$b .= '</div></div>';
+		return self::card( 'lbb-colors', __( 'Dashboard colours', 'launch-builder' ), __( 'Restyle the dashboard: the sidebar, the top bar, links and buttons. Only the dashboard changes, never your website.', 'launch-builder' ), $b );
 	}
 
 	private static function section_tools(): string {
@@ -469,10 +536,6 @@ final class Branding_Admin {
 		$b .= '<h3>' . esc_html__( 'Export and import', 'launch-builder' ) . '</h3><p><a class="button" href="' . esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=lb_branding_export' ), 'lb_branding_export' ) ) . '">' . esc_html__( 'Download settings (JSON)', 'launch-builder' ) . '</a></p>';
 		$b .= '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" enctype="multipart/form-data" class="lbb-import"><input type="hidden" name="action" value="lb_branding_import">' . wp_nonce_field( 'lb_branding_import', '_wpnonce', true, false );
 		$b .= '<p><label for="lbb-import-file">' . esc_html__( 'Import a settings file (up to 256 KB)', 'launch-builder' ) . '</label><br><input type="file" id="lbb-import-file" name="file" accept="application/json,.json"> <button type="submit" class="button">' . esc_html__( 'Import', 'launch-builder' ) . '</button></p><p class="description">' . esc_html__( 'Every value is checked like a normal save. Pictures are kept only when the same media library item exists here.', 'launch-builder' ) . '</p></form>';
-		$state = Branding_Kadence::state();
-		if ( ! empty( $state['previous_settings_saved'] ) ) {
-			$b .= '<h3>' . esc_html__( 'Kadence White Label', 'launch-builder' ) . '</h3><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_branding_kwl_restore">' . wp_nonce_field( 'lb_branding_kwl_restore', '_wpnonce', true, false ) . '<p class="lbb-note">' . esc_html__( 'Launch Builder wrote values into that plugin\'s settings. This puts back what was there before.', 'launch-builder' ) . '</p><p><button type="submit" class="button">' . esc_html__( 'Restore the previous Kadence White Label settings', 'launch-builder' ) . '</button></p></form>';
-		}
 		return self::card( 'lbb-tools', __( 'Move, export, import', 'launch-builder' ), '', $b );
 	}
 
@@ -495,8 +558,9 @@ final class Branding_Admin {
 		}
 	}
 
-	private static function back( string $type, string $text, array $lines = [], string $anchor = '' ): void {
-		set_transient( self::MSG . get_current_user_id(), [ $type, $text, $lines ], MINUTE_IN_SECONDS );
+	/** $link: an optional [ url, label ] button shown under the message. */
+	private static function back( string $type, string $text, array $lines = [], string $anchor = '', array $link = [] ): void {
+		set_transient( self::MSG . get_current_user_id(), [ $type, $text, $lines, $link ], MINUTE_IN_SECONDS );
 		wp_safe_redirect( Admin::url( Branding::PAGE ) . ( '' !== $anchor ? '#' . $anchor : '' ) );
 		exit;
 	}
@@ -525,7 +589,9 @@ final class Branding_Admin {
 		if ( is_wp_error( $r ) ) {
 			self::back( 'error', __( 'Not saved.', 'launch-builder' ), (array) ( $r->get_error_data()['errors'] ?? [ $r->get_error_message() ] ) );
 		}
-		self::back( 'success', $r['changed'] ? __( 'Saved. Changes apply from the next page load.', 'launch-builder' ) : __( 'Saved. Nothing changed.', 'launch-builder' ), array_merge( (array) ( $r['warnings'] ?? [] ), isset( $r['role_changes'] ) && $r['role_changes']['created'] ? [ __( 'The Site Owner role was created. Assign it to your client\'s account under Users.', 'launch-builder' ) ] : [] ) );
+		// An administrator is not in the default audience, so nothing changes on their own screen: say where to look.
+		$link = Branding_Colors::customised() && 'everyone' !== (string) Branding::section( 'admin_colors' )['scope'] && ! Branding_Colors::off() ? [ self::profile_url(), __( 'See it on your account: Users, Profile, Dashboard colours', 'launch-builder' ) ] : [];
+		self::back( 'success', $r['changed'] ? __( 'Saved. Changes apply from the next page load.', 'launch-builder' ) : __( 'Saved. Nothing changed.', 'launch-builder' ), array_merge( (array) ( $r['warnings'] ?? [] ), isset( $r['role_changes'] ) && $r['role_changes']['created'] ? [ __( 'The Site Owner role was created. Assign it to your client\'s account under Users.', 'launch-builder' ) ] : [] ), '', $link );
 	}
 
 	/** The strings of a posted list, without the empty sentinel the form adds so an all-unticked list still arrives. */
@@ -608,9 +674,16 @@ final class Branding_Admin {
 		self::back( 'success', __( 'Imported.', 'launch-builder' ), array_merge( (array) ( $r['warnings'] ?? [] ), array_map( static function ( $d ) { return sprintf( /* translators: %s: reason */ __( 'Skipped: %s', 'launch-builder' ), $d ); }, (array) ( $r['import_dropped'] ?? [] ) ) ), 'lbb-tools' );
 	}
 
-	public static function kwl_restore(): void {
-		self::guard( 'lb_branding_kwl_restore' );
-		$r = Branding_Kadence::restore();
-		self::back( is_wp_error( $r ) ? 'error' : 'success', is_wp_error( $r ) ? $r->get_error_message() : __( 'The previous Kadence White Label settings are back.', 'launch-builder' ), [], 'lbb-kadence' );
+	/** Put the dashboard colours back to the WordPress default (and the audience to its default). */
+	public static function reset_colors(): void {
+		self::guard( 'lb_branding_reset_colors' );
+		if ( ! Branding::configured() ) { // Nothing was ever saved: a reset must not switch Branding on.
+			self::back( 'success', __( 'Nothing to reset yet. The dashboard colours are already the WordPress default.', 'launch-builder' ), [], 'lbb-colors' );
+		}
+		$r = Branding::apply( [], [ 'reset' => [ 'admin_colors' ], 'source' => 'screen' ] );
+		if ( is_wp_error( $r ) ) {
+			self::back( 'error', $r->get_error_message(), [], 'lbb-colors' );
+		}
+		self::back( 'success', $r['changed'] ? __( 'The dashboard colours are back to the WordPress default.', 'launch-builder' ) : __( 'The dashboard colours were already the WordPress default.', 'launch-builder' ), [], 'lbb-colors' );
 	}
 }

@@ -17,6 +17,9 @@ final class Launch {
 	/** Progress of a go-live audit that needs more than one call. */
 	const OPT_RUN = 'launch_builder_golive_run';
 
+	/** When go-live last made the site public (a build never lowers indexing once this is set and the site is public). */
+	const OPT_LIVE = 'launch_builder_live';
+
 	/** Post meta copied from a page to the entry that replaces it. */
 	const COPY_META = [ 'rank_math_title', 'rank_math_description', 'rank_math_focus_keyword', 'rank_math_robots', 'rank_math_canonical_url', 'rank_math_pillar_content', '_yoast_wpseo_title', '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw', '_yoast_wpseo_meta-robots-noindex', '_yoast_wpseo_meta-robots-nofollow', '_yoast_wpseo_canonical', '_thumbnail_id' ];
 
@@ -35,7 +38,7 @@ final class Launch {
 	/* ------------------------------------------------------------------ tools */
 
 	public static function define_tools(): void {
-		Abilities::add( 'go-live', 'Launch the site', 'Last step of a build. Runs the site audit (failures only) and REFUSES when it finds errors unless force is true; then makes the site visible to search engines (Settings > Reading), stops holding back Rank Math Instant Indexing submissions, refreshes the sitemap and purges the caches, and reports what it did. A long audit stops after about 25 seconds and says so: call again with the after_id it returns. scope narrows the audit (default everything). Snapshots the settings first.',
+		Abilities::add( 'go-live', 'Launch the site', 'Last step of a build. Runs the site audit (failures only) and REFUSES when it finds errors unless force is true; then makes the site visible to search engines (Settings > Reading), stops holding back Rank Math Instant Indexing submissions, refreshes the sitemap and purges the caches, and reports what it did, with one needs_a_human list (logo, site icon, photos, form embed, legal review, WordPress sample content, Rank Math setup, Google Business Profile). A long audit stops after about 25 seconds and says so: call again with the after_id it returns. scope narrows the audit (default everything). Snapshots the settings first.',
 			[ 'properties' => [
 				'force'    => [ 'type' => 'boolean', 'description' => 'Go live even though the audit reports errors.' ],
 				'after_id' => [ 'type' => 'integer', 'description' => 'Continue a long audit here (the after_id of the previous result); 0 starts.' ],
@@ -69,7 +72,7 @@ final class Launch {
 	/** get-playbook: how to launch. */
 	public static function playbook( array &$pb ): void {
 		$pb['launch'] = [
-			'go_live'       => 'go-live runs the audit and refuses on errors (force overrides), then sets the site public, refreshes the sitemap and purges caches. Until then Rank Math Instant Indexing submissions are held back while a build is running, while Settings > Reading discourages search engines and when the brief says launch.indexing false.',
+			'go_live'       => 'go-live runs the audit and refuses on errors (force overrides), then sets the site public, refreshes the sitemap and purges caches, and lists what only a person can do (needs_a_human). Once a site is live a build never hides it again, whatever launch.indexing says. Until then Rank Math Instant Indexing submissions are held back while a build is running, while Settings > Reading discourages search engines and when the brief says launch.indexing false.',
 			'legal'         => 'Privacy policy, terms and accessibility statement are generated from templates (get-legal-text, or legal in the brief). They carry a notice that the client must review them and stay drafts until the notice is deleted (or the brief says reviewed: true). sms_consent adds the text message consent wording carriers ask for.',
 			'before_removal' => 'detokenize bakes Business Info into the content before the plugin is removed (dry run first). convert-page-to-entry turns an old page into a service or area entry and redirects its URL.',
 		];
@@ -132,7 +135,7 @@ final class Launch {
 			$render = self::rendered_check(); // The front end as a visitor gets it, not only what is stored.
 			$run['errors'] = array_merge( (array) $run['errors'], $render['problems'] );
 			$errors = (int) $run['totals']['error'] + count( $render['problems'] );
-			$report = [ 'live' => false, 'done' => true, 'forced' => false, 'audit' => [ 'totals' => $run['totals'], 'by_code' => $run['by_code'], 'pages' => $run['pages'] ], 'rendered' => [ 'pages_checked' => $render['checked'], 'problems' => count( $render['problems'] ) ] ];
+			$report = [ 'live' => false, 'done' => true, 'forced' => false, 'audit' => [ 'totals' => $run['totals'], 'by_code' => $run['by_code'], 'pages' => $run['pages'] ], 'rendered' => [ 'pages_checked' => $render['checked'], 'problems' => count( $render['problems'] ) ], 'needs_a_human' => self::needs_human() ];
 			if ( $errors > 0 && ! $force ) {
 				$report['refused'] = true;
 				$report['errors'] = $run['errors'];
@@ -143,6 +146,7 @@ final class Launch {
 			$was = (string) get_option( 'blog_public', '1' );
 			$report['snapshot'] = Abilities::snapshot( 'go-live', [], [ 'blog_public' ] );
 			update_option( 'blog_public', '1' );
+			update_option( self::OPT_LIVE, gmdate( 'c' ), false );
 			Brief_Build::set_indexing( true ); // The brief's launch.indexing false no longer holds anything back.
 			flush_rewrite_rules( false );
 			Cache::purge_later();
@@ -153,11 +157,143 @@ final class Launch {
 			$report['indexing'] = [ 'before' => '1' === $was ? 'public' : 'discouraged', 'now' => 'public' ];
 			$report['sitemap'] = $rm ? home_url( '/sitemap_index.xml' ) : home_url( '/wp-sitemap.xml' );
 			$report['instant_indexing_held_back'] = [ 'count' => (int) ( is_array( $held ) ? ( $held['count'] ?? 0 ) : 0 ), 'last_url' => is_array( $held ) ? (string) ( $held['last_url'] ?? '' ) : '', 'note' => 'Submissions Rank Math Instant Indexing would have sent while the site was being built or discouraged.' ];
-			$report['next'] = 'Submit the sitemap in Google Search Console and Bing Webmaster Tools, and check the site as a visitor.';
+			$report['next'] = 'Submit the sitemap in Google Search Console and Bing Webmaster Tools, check the site as a visitor' . ( $report['needs_a_human'] ? ', and give the owner the needs_a_human list.' : '.' );
 			return $report;
 		} finally {
 			Lock::release( 'build' );
 		}
+	}
+
+	/* ------------------------------------------------------------------ state */
+
+	/**
+	 * Has go-live made the site public (and is it still public)? A build never lowers indexing on a live site.
+	 *
+	 * A site that went live before the live date was kept has no such option; its go-live snapshot says the same, so the date
+	 * is taken from there (once). A public setting alone proves nothing: a new WordPress site is public until it is told otherwise.
+	 */
+	public static function is_live(): bool {
+		if ( '1' !== (string) get_option( 'blog_public', '1' ) ) {
+			return false;
+		}
+		if ( '' !== (string) get_option( self::OPT_LIVE, '' ) ) {
+			return true;
+		}
+		foreach ( Abilities::snapshots() as $s ) {
+			if ( 'go-live' === (string) ( $s['label'] ?? '' ) ) {
+				update_option( self::OPT_LIVE, '' !== (string) ( $s['time'] ?? '' ) ? (string) $s['time'] : gmdate( 'c' ), false );
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Is this post still the sample page or the first post WordPress made, untouched? */
+	public static function is_wp_default( \WP_Post $p ): bool {
+		$sample = 'page' === $p->post_type && 'sample-page' === $p->post_name && 'Sample Page' === $p->post_title && false !== strpos( (string) $p->post_content, 'This is an example page' );
+		$hello = 'post' === $p->post_type && 'hello-world' === $p->post_name && 'Hello world!' === $p->post_title && false !== strpos( (string) $p->post_content, 'Welcome to WordPress' );
+		if ( ! $sample && ! $hello ) {
+			return false;
+		}
+		if ( '' !== (string) get_post_meta( $p->ID, '_lb_key', true ) || (int) get_option( 'page_on_front' ) === (int) $p->ID || (int) get_option( 'page_for_posts' ) === (int) $p->ID ) {
+			return false; // A build or an admin put it to use.
+		}
+		return abs( strtotime( (string) $p->post_modified_gmt ) - strtotime( (string) $p->post_date_gmt ) ) <= 120; // Saving it again moves the modified date.
+	}
+
+	/** The sample page and the first post when they are still untouched and not in the trash. @return \WP_Post[] */
+	public static function wordpress_defaults(): array {
+		$out = [];
+		foreach ( [ [ 'page', 'sample-page' ], [ 'post', 'hello-world' ] ] as [ $type, $slug ] ) {
+			$hit = get_posts( [ 'post_type' => $type, 'name' => $slug, 'post_status' => [ 'publish', 'draft', 'pending', 'private', 'future' ], 'numberposts' => 1, 'suppress_filters' => true ] );
+			if ( $hit && self::is_wp_default( $hit[0] ) ) {
+				$out[] = $hit[0];
+			}
+		}
+		return $out;
+	}
+
+	/** Is a form embed a stand-in (REPLACE_WITH_FORM_ID, YOUR_FORM_ID, FORM_ID_HERE, <FORM_ID>, an .example host...)? A real embed's own form id (data-form-id="abc", formId: "abc") is not one. */
+	public static function placeholder_embed( string $html ): bool {
+		return '' !== trim( $html ) && (bool) preg_match( '/REPLACE[_-]?WITH|YOUR[_-]?(FORM|ID)|FORM[_-]?ID[_-]?HERE|[<\[{]\s*FORM[_-]?ID\s*[>\]}]|\.(example|invalid|test|localhost)(?![a-z0-9-])|example\.(com|org|net)/i', $html );
+	}
+
+	/**
+	 * What the pages a brief built still show from the stock designs: sample sentences, invented figures (a review count, a
+	 * price) and links that go nowhere. Read from the page as it is now, so a page an editor has fixed no longer counts.
+	 *
+	 * @return array{pages:int,copy:int,claims:int,links:int}
+	 */
+	public static function sample_pages(): array {
+		$out = [ 'pages' => 0, 'copy' => 0, 'claims' => 0, 'links' => 0 ];
+		$ids = get_posts( [ 'post_type' => 'page', 'post_status' => [ 'publish', 'draft', 'pending', 'private', 'future' ], 'meta_key' => '_lb_brief', 'meta_value' => '1', 'numberposts' => 150, 'fields' => 'ids', 'suppress_filters' => true ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
+		foreach ( $ids as $id ) {
+			$h = Brief_Build::copy_hits( (string) get_post_field( 'post_content', (int) $id ) );
+			if ( $h['default_copy'] || $h['demo_claims'] || $h['dead_links'] ) {
+				$out['pages']++;
+				$out['copy'] += count( $h['default_copy'] );
+				$out['claims'] += count( $h['demo_claims'] );
+				$out['links'] += count( $h['dead_links'] );
+			}
+		}
+		return $out;
+	}
+
+	/** How many pages, entries and shared designs still hold a placeholder picture. */
+	public static function placeholder_pictures(): int {
+		global $wpdb;
+		$types = array_values( array_filter( [ 'page', Entries::SERVICE, Entries::AREA, 'wp_block', 'kadence_element', 'kadence_header' ], 'post_type_exists' ) );
+		$ph = implode( ',', array_fill( 0, count( $types ), '%s' ) );
+		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type IN ($ph) AND post_status IN ('publish','draft','private') AND post_content LIKE %s", array_merge( $types, [ '%assets/placeholders/%' ] ) ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+	}
+
+	/**
+	 * Everything only a person can do before the site is ready, as one list: [ { id, text, where } ]. The build report and
+	 * go-live both carry it, so the assistant does not have to piece it together from findings.
+	 *
+	 * @return array<int,array{id:string,text:string,where:string}>
+	 */
+	public static function needs_human(): array {
+		global $wpdb;
+		$out = [];
+		$add = static function ( string $id, string $text, string $where ) use ( &$out ) {
+			$out[] = [ 'id' => $id, 'text' => $text, 'where' => $where ];
+		};
+		if ( ! (int) get_theme_mod( 'custom_logo' ) ) {
+			$add( 'logo', 'The logo is not set.', 'The brief: media entry with use "logo" (or brand.logo). Or Appearance, Customize, Site identity.' );
+		}
+		if ( ! (int) get_option( 'site_icon' ) ) {
+			$add( 'site_icon', 'The site icon is not set.', 'The brief: media entry with use "site_icon" (or brand.site_icon). Or Appearance, Customize, Site identity.' );
+		}
+		$pics = self::placeholder_pictures();
+		if ( $pics ) {
+			$add( 'photos', $pics . ' page(s) or design(s) still show grey placeholder pictures. Real photos need the client\'s own pictures.', 'The brief: media [{key, url, alt}], then "media:<key>" in an image slot, or entries[].image.' );
+		}
+		$form = (string) ( Company::values()['form_html'] ?? '' );
+		if ( self::placeholder_embed( $form ) ) {
+			$add( 'form', 'The form embed is a stand-in, so the quote and contact forms do not work yet.', 'The brief: forms.quote.embed (or business.form_html) with the real embed code from the form tool.' );
+		}
+		$sample = self::sample_pages();
+		if ( $sample['pages'] ) {
+			$bits = array_filter( [ $sample['copy'] ? $sample['copy'] . ' sample sentence(s)' : '', $sample['claims'] ? $sample['claims'] . ' invented figure(s) such as a review count' : '', $sample['links'] ? $sample['links'] . ' link(s) that go nowhere' : '' ] );
+			$add( 'sample_content', $sample['pages'] . ' page(s) still show wording or figures that come from the stock designs, not from the business: ' . implode( ', ', $bits ) . '.', 'The brief: write the section out on the page (sitemap.pages[].sections[].slots) and set the slot. The copy_needed list of the build names every slot. Or edit the page.' );
+		}
+		$review = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status NOT IN ('trash','auto-draft','inherit') AND post_content LIKE %s", '%' . $wpdb->esc_like( self::REVIEW_CLASS ) . '%' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( $review ) {
+			$add( 'legal', $review . ' legal page(s) (privacy, terms, accessibility) are generated text that the client must read before they go live.', 'Pages, the legal pages: read them, delete the review notice block, then publish. Until then the footer links lead nowhere for visitors.' );
+		}
+		$samples = self::wordpress_defaults();
+		if ( $samples ) {
+			$add( 'wordpress_samples', implode( ' and ', array_map( static function ( $p ) { return '"' . $p->post_title . '"'; }, $samples ) ) . ' from WordPress ' . ( 1 === count( $samples ) ? 'is' : 'are' ) . ' still published and listed in the sitemap.', 'Trash them (a build does it on its first run), or keep them on purpose.' );
+		}
+		if ( Compat::rm_active() && ! Compat::rm_ready() ) {
+			$add( 'rank_math_wizard', 'The Rank Math setup wizard is not finished, so Rank Math prints no titles, descriptions, schema or sitemap yet.', 'wp-admin, Rank Math: connect a free account or choose "Skip". An assistant cannot do this step.' );
+		}
+		$g = trim( (string) ( Company::values()['google'] ?? '' ) );
+		if ( '' === $g || '#' === $g ) {
+			$add( 'google_business_profile', 'No Google Business Profile link is set. Claiming or verifying the profile is done by the owner.', 'The brief: business.google (the profile link) once the profile exists.' );
+		}
+		return $out;
 	}
 
 	/* ------------------------------------------------------------------ legal texts */

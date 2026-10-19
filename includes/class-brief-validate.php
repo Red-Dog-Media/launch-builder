@@ -21,7 +21,7 @@ final class Brief_Validate {
 	const PAGE_ROLES = [ 'home', 'page', 'legal', 'conversion', 'thanks', 'services_hub', 'areas_hub', 'category' ];
 
 	/** Brief sections written by Launch Builder itself (modules add theirs through the brief_schema hook). */
-	const SECTIONS = [ 'version', 'business', 'brand', 'seo', 'sitemap', 'entries', 'content', 'media', 'forms', 'menus', 'chrome', 'urls', 'migrate', 'legal', 'launch', 'conversions' ];
+	const SECTIONS = [ 'version', 'business', 'brand', 'seo', 'sitemap', 'entries', 'content', 'media', 'forms', 'menus', 'chrome', 'urls', 'migrate', 'legal', 'launch', 'conversions', 'branding' ];
 
 	/** content keys: lists of items the pattern families will read once they take data. */
 	const CONTENT_KEYS = [ 'testimonials', 'team', 'offers', 'guarantees', 'badges', 'brands', 'gallery', 'videos' ];
@@ -145,6 +145,7 @@ final class Brief_Validate {
 		$out['chrome'] = self::chrome( $brief['chrome'] ?? [] );
 		$out['urls'] = self::urls( $brief['urls'] ?? [], $brief['migrate'] ?? [], $off );
 		$out['conversions'] = self::conversions( $brief['conversions'] ?? null, $off );
+		$out['branding'] = self::branding( $brief['branding'] ?? [] );
 
 		// Cross references: pages, entries, menus and media must agree.
 		$page_ref = self::page_refs( $pages );
@@ -224,8 +225,8 @@ final class Brief_Validate {
 			}
 			$out[ $k ] = $v;
 		}
-		if ( '' === trim( (string) ( $out['name'] ?? '' ) ) ) {
-			self::err( 'business.name', 'required: the business name.' );
+		if ( '' === trim( (string) ( $out['name'] ?? '' ) ) && '' === trim( (string) ( $out['site_title'] ?? '' ) ) ) { // The name follows the WordPress site title, so a brief may give just that.
+			self::err( 'business.name', 'required: the business name (or business.site_title, which the name then follows).' );
 		}
 		foreach ( [ 'phone', 'email', 'address', 'hours' ] as $k ) {
 			if ( '' === trim( (string) ( $out[ $k ] ?? '' ) ) && ! ( 'address' === $k && ! empty( $out['street'] ) ) && ! ( 'hours' === $k && ( ! empty( $out['hours_spec'] ) || ! empty( $out['is_24_7'] ) ) ) ) {
@@ -905,7 +906,7 @@ final class Brief_Validate {
 						continue;
 					}
 					$slug = sanitize_title( (string) self::text( $c['slug'] ?? null, $p . '.slug', 120 ) ?: $name );
-					$out['categories'][] = [ 'name' => $name, 'slug' => $slug, 'page' => (string) self::text( $c['page'] ?? null, $p . '.page', 200 ), 'page_key' => '', 'order' => $i ];
+					$out['categories'][] = [ 'name' => $name, 'slug' => $slug, 'page' => (string) self::text( $c['page'] ?? null, $p . '.page', 200 ), 'page_key' => '', 'order' => $i, 'summary' => (string) self::text( $c['summary'] ?? null, $p . '.summary', 500 ) ];
 					$cat_names[ $slug ] = $name;
 				}
 			}
@@ -915,7 +916,7 @@ final class Brief_Validate {
 			foreach ( $s['categories'] as $cn ) {
 				if ( ! isset( $cat_names[ sanitize_title( $cn ) ] ) ) {
 					$cat_names[ sanitize_title( $cn ) ] = $cn;
-					$out['categories'][] = [ 'name' => $cn, 'slug' => sanitize_title( $cn ), 'page' => '', 'page_key' => '', 'order' => count( $out['categories'] ) ];
+					$out['categories'][] = [ 'name' => $cn, 'slug' => sanitize_title( $cn ), 'page' => '', 'page_key' => '', 'order' => count( $out['categories'] ), 'summary' => '' ];
 				}
 			}
 		}
@@ -1233,6 +1234,83 @@ final class Brief_Validate {
 
 	/* ------------------------------------------------------------------ content, forms, launch, legal */
 
+	/** Content keys a design reads, with the designs that read them. Every other key is accepted and stored, and warns. */
+	const CONTENT_USED = [
+		'testimonials' => 'the testimonial carousel and grid designs (the shared before-footer stack, the reviews page)',
+		'offers'       => 'the offers design (the shared before-footer stack)',
+	];
+
+	/** One testimonial: { name, place, text, rating, source, service } (aliases: quote, author, city, location). */
+	private static function testimonial( $item, string $p ): ?array {
+		if ( is_string( $item ) ) {
+			$item = [ 'text' => $item ];
+		}
+		if ( ! self::is_obj( $item ) ) {
+			self::err( $p, 'must be { name, place, text, rating } or the quote text.' );
+			return null;
+		}
+		$pick = static function ( array $names ) use ( $item ) {
+			foreach ( $names as $n ) {
+				if ( isset( $item[ $n ] ) ) {
+					return $item[ $n ];
+				}
+			}
+			return null;
+		};
+		$known = [ 'name', 'author', 'place', 'city', 'location', 'text', 'quote', 'rating', 'source', 'service' ];
+		foreach ( array_diff( array_keys( $item ), $known ) as $k ) {
+			self::warn( $p . '.' . $k, 'Unknown testimonial key; ignored. Keys: name, place, text, rating, source, service.' );
+		}
+		$text = self::text( $pick( [ 'text', 'quote' ] ), $p . '.text', 600, true );
+		$name = self::text( $pick( [ 'name', 'author' ] ), $p . '.name', 120 ); // A quote without a name is fine: the card shows the quote.
+		$out = [ 'name' => (string) $name, 'place' => (string) self::text( $pick( [ 'place', 'city', 'location' ] ), $p . '.place', 120 ), 'text' => (string) $text, 'rating' => null, 'source' => (string) self::text( $item['source'] ?? null, $p . '.source', 60 ), 'service' => (string) self::text( $item['service'] ?? null, $p . '.service', 120 ) ];
+		if ( isset( $item['rating'] ) && '' !== $item['rating'] ) {
+			if ( is_numeric( $item['rating'] ) && (float) $item['rating'] >= 1 && (float) $item['rating'] <= 5 ) {
+				$out['rating'] = (float) $item['rating'];
+			} else {
+				self::err( $p . '.rating', 'must be a number from 1 to 5.' );
+			}
+		}
+		return $out;
+	}
+
+	/** One offer: { title, amount, text, expires, button, url } (aliases: price, discount, description, ends, cta, link). */
+	private static function offer( $item, string $p ): ?array {
+		if ( ! self::is_obj( $item ) || [] === $item ) {
+			self::err( $p, 'must be { title, amount, text, expires } (for example { "amount": "$50 off", "title": "A first service call", "text": "New customers, one per home.", "expires": "2027-03-31" }).' );
+			return null;
+		}
+		$pick = static function ( array $names ) use ( $item ) {
+			foreach ( $names as $n ) {
+				if ( isset( $item[ $n ] ) ) {
+					return $item[ $n ];
+				}
+			}
+			return null;
+		};
+		$known = [ 'title', 'amount', 'price', 'discount', 'text', 'description', 'conditions', 'expires', 'ends', 'button', 'cta', 'url', 'link' ];
+		foreach ( array_diff( array_keys( $item ), $known ) as $k ) {
+			self::warn( $p . '.' . $k, 'Unknown offer key; ignored. Keys: title, amount, text, expires, button, url.' );
+		}
+		$out = [
+			'title'  => (string) self::text( $pick( [ 'title' ] ), $p . '.title', 160 ),
+			'amount' => (string) self::text( $pick( [ 'amount', 'price', 'discount' ] ), $p . '.amount', 60 ),
+			'text'   => (string) self::text( $pick( [ 'text', 'description', 'conditions' ] ), $p . '.text', 300 ),
+			'expires' => '',
+			'button' => (string) self::text( $pick( [ 'button', 'cta' ] ), $p . '.button', 60 ),
+			'url'    => (string) self::text( $pick( [ 'url', 'link' ] ), $p . '.url', 500 ),
+		];
+		if ( '' === $out['title'] && '' === $out['text'] ) { // The card needs words: a title or the conditions.
+			self::err( $p, 'needs a title or a text (the conditions of the offer).' );
+		}
+		$ex = $pick( [ 'expires', 'ends' ] );
+		if ( null !== $ex && '' !== $ex ) {
+			$ts = is_string( $ex ) ? strtotime( $ex ) : false;
+			$ts ? $out['expires'] = gmdate( 'Y-m-d', $ts ) : self::err( $p . '.expires', 'must be a date such as 2027-03-31.' );
+		}
+		return $out;
+	}
+
 	private static function content( $in, array &$deferred ): array {
 		if ( [] === $in ) {
 			return [];
@@ -1248,6 +1326,15 @@ final class Brief_Validate {
 			if ( in_array( $k, self::CONTENT_KEYS, true ) ) {
 				if ( ! self::is_list( $v ) ) {
 					self::err( $p, 'must be a list.' );
+					continue;
+				}
+				if ( 'testimonials' === $k || 'offers' === $k ) {
+					$rows = [];
+					foreach ( $v as $i => $item ) {
+						$one = 'offers' === $k ? self::offer( $item, $p . '[' . $i . ']' ) : self::testimonial( $item, $p . '[' . $i . ']' );
+						null === $one ?: $rows[] = $one;
+					}
+					$out[ $k ] = $rows;
 					continue;
 				}
 				foreach ( $v as $i => $item ) {
@@ -1269,7 +1356,10 @@ final class Brief_Validate {
 			}
 		}
 		foreach ( array_keys( $out ) as $k ) {
-			$deferred[ 'content.' . $k ] = 'Accepted and stored with the job; no pattern family reads it yet, so nothing is written to the site.';
+			if ( ! isset( self::CONTENT_USED[ $k ] ) ) {
+				$deferred[ 'content.' . $k ] = 'content.' . $k . ' is accepted but nothing uses it yet, so nothing is written to the site.';
+				self::warn( 'content.' . $k, 'content.' . $k . ' is accepted but nothing uses it yet: nothing is written to the site for it.' );
+			}
 		}
 		return $out;
 	}
@@ -1309,6 +1399,7 @@ final class Brief_Validate {
 		foreach ( [ 'contact', 'booking', 'careers' ] as $k ) {
 			if ( isset( $out[ $k ]['embed'] ) && ( 'contact' !== $k || isset( $out['quote']['embed'] ) ) ) {
 				$deferred[ 'forms.' . $k ] = 'Form patterns read one embed (Business Info, taken from forms.quote, else contact, booking, careers); a separate embed per form is not placed yet.';
+				self::warn( 'forms.' . $k, 'forms.' . $k . ' is accepted but nothing uses it yet: form patterns read the one embed in Business Info (forms.quote, else contact, booking, careers).' );
 			}
 		}
 		return $out;
@@ -1512,6 +1603,66 @@ final class Brief_Validate {
 		return $out;
 	}
 
+	/**
+	 * branding { enabled, dashboard_colors { scheme, scope }, agency_credit, agency { name, url }, site_owner_role }: switches the
+	 * Branding module on or off and saves the settings it names. Returns { enabled: bool|null, settings: Branding settings tree }.
+	 */
+	private static function branding( $in ): array {
+		$out = [ 'enabled' => null, 'settings' => [] ];
+		if ( [] === $in || null === $in ) {
+			return [];
+		}
+		if ( ! self::is_obj( $in ) ) {
+			self::err( 'branding', 'must be an object { enabled, dashboard_colors, agency_credit, agency, site_owner_role }.' );
+			return [];
+		}
+		foreach ( array_diff( array_keys( $in ), [ 'enabled', 'dashboard_colors', 'agency_credit', 'agency', 'site_owner_role' ] ) as $k ) {
+			self::warn( 'branding.' . $k, 'Unknown branding key; ignored. Keys: enabled, dashboard_colors, agency_credit, agency, site_owner_role.' );
+		}
+		if ( array_key_exists( 'enabled', $in ) ) {
+			is_bool( $in['enabled'] ) ? $out['enabled'] = $in['enabled'] : self::err( 'branding.enabled', 'must be true or false.' );
+		}
+		if ( isset( $in['dashboard_colors'] ) ) {
+			$c = $in['dashboard_colors'];
+			if ( ! self::is_obj( $c ) ) {
+				self::err( 'branding.dashboard_colors', 'must be { scheme, scope }.' );
+			} else {
+				if ( isset( $c['scheme'] ) ) {
+					in_array( $c['scheme'], Branding_Colors::SCHEME_IDS, true ) ? $out['settings']['admin_colors']['scheme'] = $c['scheme'] : self::err( 'branding.dashboard_colors.scheme', 'must be one of ' . implode( ', ', array_filter( Branding_Colors::SCHEME_IDS ) ) . ', or "" for no ready-made scheme (the WordPress default colours). "brand" is the colours of the brand.' );
+				}
+				if ( isset( $c['scope'] ) ) {
+					in_array( $c['scope'], [ 'clients', 'everyone', 'nobody' ], true ) ? $out['settings']['admin_colors']['scope'] = $c['scope'] : self::err( 'branding.dashboard_colors.scope', 'must be clients, everyone or nobody.' );
+				}
+			}
+		}
+		if ( array_key_exists( 'agency_credit', $in ) ) {
+			is_bool( $in['agency_credit'] ) ? $out['settings']['login']['credit'] = $in['agency_credit'] : self::err( 'branding.agency_credit', 'must be true or false (the "Website by" line on the sign-in screen).' );
+		}
+		if ( isset( $in['agency'] ) ) {
+			if ( ! self::is_obj( $in['agency'] ) ) {
+				self::err( 'branding.agency', 'must be { name, url }.' );
+			} else {
+				$name = self::text( $in['agency']['name'] ?? null, 'branding.agency.name', 80 );
+				$url = self::text( $in['agency']['url'] ?? null, 'branding.agency.url', 300 );
+				null !== $name && '' !== $name ? $out['settings']['agency']['name'] = $name : null;
+				null !== $url && '' !== $url ? $out['settings']['agency']['url'] = $url : null;
+			}
+		}
+		if ( array_key_exists( 'site_owner_role', $in ) ) {
+			$r = $in['site_owner_role'];
+			if ( is_bool( $r ) ) {
+				$out['settings']['client']['role']['enabled'] = $r;
+			} elseif ( self::is_obj( $r ) ) {
+				$out['settings']['client']['role']['enabled'] = true;
+				$label = self::text( $r['label'] ?? null, 'branding.site_owner_role.label', 40 );
+				null !== $label && '' !== $label ? $out['settings']['client']['role']['label'] = $label : null;
+			} else {
+				self::err( 'branding.site_owner_role', 'must be true, false or { label }.' );
+			}
+		}
+		return $out;
+	}
+
 	private static function conversions( $in, array &$off ) {
 		if ( null === $in ) {
 			return null; // Absent: the default exit-intent popup (Conversions::brief_items).
@@ -1573,7 +1724,9 @@ final class Brief_Validate {
 				self::err( $p, 'must be an object { label, page | url | auto }.' );
 				continue;
 			}
-			$label = self::text( $it['label'] ?? null, $p . '.label', 120, true );
+			// An auto list inside a dropdown (depth 2 or more; the top level is depth 1) needs no label: it adds its items to that dropdown (no extra link of its own).
+			$splice = $depth > 1 && isset( $it['auto'] ) && ( ! isset( $it['label'] ) || '' === trim( (string) $it['label'] ) );
+			$label = $splice ? '' : self::text( $it['label'] ?? null, $p . '.label', 120, true );
 			if ( null === $label ) {
 				continue;
 			}
@@ -1620,6 +1773,24 @@ final class Brief_Validate {
 			}
 			if ( ! isset( $row['page'] ) && ! isset( $row['url'] ) && ! isset( $row['auto'] ) && empty( $row['children'] ) ) {
 				self::warn( $p, 'Has no page, url or children: it links nowhere.' );
+			}
+			if ( ! empty( $row['children'] ) ) { // The unlabelled auto lists of the dropdown become the parent's own list.
+				$kids = [];
+				foreach ( $row['children'] as $kid ) {
+					if ( '' === $kid['label'] && isset( $kid['auto'] ) ) {
+						if ( isset( $row['auto'] ) ) {
+							self::warn( $p . '.children', 'This item already lists ' . $row['auto'] . ' itself, so a second automatic list in its dropdown is ignored.' );
+						} else {
+							$row = array_merge( $row, array_intersect_key( $kid, array_flip( [ 'auto', 'category', 'parent', 'limit' ] ) ) );
+						}
+						continue;
+					}
+					$kids[] = $kid;
+				}
+				$row['children'] = $kids;
+				if ( ! $kids ) {
+					unset( $row['children'] );
+				}
 			}
 			$out[] = $row;
 		}

@@ -113,13 +113,20 @@ final class Brief_Export {
 			}
 			$out[ $k ] = $v;
 		}
+		// The name and tagline follow the site title and tagline unless typed: a brief still names them, so it stands on its own.
+		$res = Company::resolve();
+		foreach ( [ 'name', 'tagline' ] as $k ) {
+			if ( ! isset( $out[ $k ] ) && isset( $res[ $k ] ) && 'site' === $res[ $k ]['from'] && '' !== $res[ $k ]['value'] ) {
+				$out[ $k ] = $res[ $k ]['value'];
+			}
+		}
 		$name = (string) ( $out['name'] ?? '' );
 		$title = (string) get_option( 'blogname' );
-		if ( '' !== $title && $title !== $name ) {
+		if ( '' !== $title && ! Company::same_text( $title, $name ) ) {
 			$out['site_title'] = $title;
 		}
 		$tag = (string) get_option( 'blogdescription' );
-		if ( '' !== $tag && $tag !== (string) ( $out['tagline'] ?? '' ) ) {
+		if ( '' !== $tag && ! Company::same_text( $tag, (string) ( $out['tagline'] ?? '' ) ) ) {
 			$out['site_tagline'] = $tag;
 		}
 		ksort( $out );
@@ -157,8 +164,7 @@ final class Brief_Export {
 		if ( '' !== $key ) {
 			$out['logo'] = $key;
 		}
-		$saved = (array) get_option( Company::OPT, [] );
-		$inv = (int) ( $saved['logo_inverse'] ?? 0 );
+		$inv = self::menu_logo_id();
 		$ikey = $inv ? (string) get_post_meta( $inv, '_lb_media_key', true ) : '';
 		if ( '' !== $ikey ) {
 			$out['logo_inverse'] = $ikey;
@@ -393,13 +399,22 @@ final class Brief_Export {
 		return $out;
 	}
 
+	/** The image of the logo above the admin menu (the Branding image; an old Business Info value until the tidy has moved it), 0 when none. */
+	private static function menu_logo_id(): int {
+		$id = (int) ( Branding::stored()['admin']['menu_logo_image'] ?? 0 );
+		if ( $id < 1 ) {
+			$saved = (array) get_option( Company::OPT, [] );
+			$id = (int) ( $saved['logo_inverse'] ?? 0 );
+		}
+		return $id;
+	}
+
 	private static function media(): array {
 		$ids = get_posts( [ 'post_type' => 'attachment', 'post_status' => 'inherit', 'meta_key' => '_lb_media_key', 'numberposts' => 300, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'ids', 'suppress_filters' => true ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
 		$out = [];
 		$logo = (int) get_theme_mod( 'custom_logo' );
 		$icon = (int) get_option( 'site_icon' );
-		$saved = (array) get_option( Company::OPT, [] );
-		$inv = (int) ( $saved['logo_inverse'] ?? 0 );
+		$inv = self::menu_logo_id();
 		foreach ( $ids as $id ) {
 			$src = (string) get_post_meta( (int) $id, '_lb_src', true );
 			if ( '' === $src ) {

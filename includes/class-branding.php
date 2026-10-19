@@ -13,33 +13,32 @@ defined( 'ABSPATH' ) || exit;
  *    dashboard and notices for it (administrators are never simplified, redirected or locked out);
  *  - a welcome panel on the client dashboard, admin footer text, admin bar logo, page titles, the editor accent colour;
  *  - the sender name/address of WordPress emails;
- *  - Launch Builder's own menu label, icon and plugin row;
- *  - an opt-in bridge that configures the Kadence White Label plugin (Branding_Kadence; off by default).
+ *  - the dashboard colours (sidebar, top bar, links and buttons) for the people you choose (Branding_Colors).
  *
  * Values come from what the site already knows: the business name from Business Info, the logo and site icon from the
  * theme, colours from the brand palette. Only overrides are stored (option launch_builder_branding, not autoloaded);
  * change Business Info or the palette and every branded surface follows on the next request.
  *
- * Switches that are never skipped: the constant LB_BRANDING_SAFE_MODE in wp-config.php (true) turns every surface off.
- * Nothing is registered on the public front end except a handful of hooks that read nothing until they fire.
+ * Switches that are never skipped: the constant LB_BRANDING_SAFE_MODE in wp-config.php (true) turns every surface off;
+ * LB_ADMIN_COLORS_OFF turns off only the dashboard colours. Nothing is registered on the public front end except a
+ * handful of hooks that read nothing until they fire.
  *
- * Files: this class (settings, validation, tools), Branding_Chrome (login screen, admin bar, footer, emails, Launch
- * Builder's own name), Branding_Client (role, menus, notices, dashboard), Branding_Kadence (the bridge) and
- * Branding_Admin (the settings screen).
+ * Files: this class (settings, validation, tools), Branding_Chrome (login screen, admin bar, footer, emails),
+ * Branding_Client (role, menus, notices, dashboard), Branding_Colors (dashboard colours) and Branding_Admin (the
+ * settings screen).
  */
 final class Branding {
 
 	const MODULE = [
 		'slug'        => 'branding',
 		'label'       => 'Branding',
-		'description' => 'White-label a client hand-off: branded sign-in screen, a simplified Site Owner role and dashboard, admin footer, email sender and Launch Builder\'s own name, fed from Business Info and the brand palette.',
+		'description' => 'White-label a client hand-off: branded sign-in screen, a simplified Site Owner role and dashboard, dashboard colours, admin footer and email sender, fed from Business Info and the brand palette.',
 		'toggle'      => true,
 		'default'     => false,
 		'note'        => 'Does nothing until you save the Branding screen once. Administrators are never simplified or locked out. LB_BRANDING_SAFE_MODE in wp-config.php turns every branded surface off.',
 	];
 
 	const OPT     = 'launch_builder_branding';
-	const OPT_KWL = 'launch_builder_branding_kwl'; // Persist-mode bookkeeping (snapshot id, keys written); not autoloaded.
 	const ROLE    = 'lb_client';
 	const PAGE    = 'launch-builder-branding';
 	const VERSION = 1;
@@ -51,9 +50,6 @@ final class Branding {
 		'url'   => 'https://golaunchlocal.com',
 	];
 
-	/** The Kadence name/icon settings that overrides may carry. */
-	const KWL_TEXT_KEYS = [ 'theme_name', 'theme_name_short', 'theme_desc', 'blocks_name', 'blocks_desc', 'blocks_menu_name', 'blocks_pro_name', 'blocks_pro_desc', 'theme_pro_name', 'theme_pro_desc', 'plugin_name', 'plugin_desc' ];
-
 	/** Dashboard tiles the welcome panel can show. */
 	const TILES = [ 'pages', 'posts', 'services', 'areas', 'media', 'comments', 'site', 'profile' ];
 
@@ -63,7 +59,7 @@ final class Branding {
 	/**
 	 * What every setting accepts. A definition is [ type, ...args ]; a nested array of definitions is a group.
 	 * Types: bool, text(max), name(max; quotes and angle brackets are removed), url, email, att (image attachment id),
-	 * color (#hex or paletteN), int(min,max), enum(list), svg(max), kses(max), greeting, icon, list(kind), roles, overrides.
+	 * color (#hex or paletteN), hex (#RGB or #RRGGBB only), int(min,max), enum(list), kses(max), greeting, list(kind), roles.
 	 */
 	const SCHEMA = [
 		'agency'    => [
@@ -71,25 +67,10 @@ final class Branding {
 			'url'           => [ 'url' ],
 			'logo'          => [ 'att' ],
 			'logo_square'   => [ 'att' ],
-			'icon_svg'      => [ 'svg', 8192 ],
 			'support_email' => [ 'email' ],
 			'support_phone' => [ 'text', 40 ],
 			'support_url'   => [ 'url' ],
 			'booking_url'   => [ 'url' ],
-		],
-		'product'   => [
-			'name'        => [ 'name', 40 ],
-			'short'       => [ 'name', 18 ],
-			'blocks_menu' => [ 'name', 12 ],
-			'theme_desc'  => [ 'text', 200 ],
-			'blocks_desc' => [ 'text', 200 ],
-			'theme_image' => [ 'att' ],
-		],
-		'lb'        => [
-			'enabled'     => [ 'bool' ],
-			'menu_label'  => [ 'name', 30 ],
-			'menu_icon'   => [ 'icon' ],
-			'description' => [ 'text', 200 ],
 		],
 		'login'     => [
 			'enabled'         => [ 'bool' ],
@@ -116,6 +97,7 @@ final class Branding {
 			'greeting'                 => [ 'greeting' ],
 			'menu_logo'                => [ 'bool' ],
 			'menu_logo_source'         => [ 'enum', [ 'agency', 'client' ] ],
+			'menu_logo_image'          => [ 'att' ],
 			'footer_text'              => [ 'text', 200 ],
 			'footer_link'              => [ 'url' ],
 			'title_suffix'             => [ 'text', 40 ],
@@ -158,22 +140,22 @@ final class Branding {
 			'from_name'        => [ 'text', 80 ],
 			'from_email'       => [ 'email' ],
 		],
-		'kadence'   => [
-			'kwl_mode'           => [ 'enum', [ 'off', 'manage', 'persist' ] ],
-			'icon'               => [ 'enum', [ 'cube', 'cog', 'equalizer', 'pencil-paper', 'pencil-ruler', 'spreadsheet', 'agency' ] ],
-			'disable_ai_all'     => [ 'bool' ],
-			'conversions_rename' => [ 'bool' ],
-			'overrides'          => [ 'overrides' ],
+		'admin_colors' => [
+			'scope'        => [ 'enum', [ 'clients', 'everyone', 'nobody' ] ],
+			'scheme'       => [ 'enum', Branding_Colors::SCHEME_IDS ],
+			'sidebar'      => [ 'hex' ],
+			'sidebar_text' => [ 'hex' ],
+			'highlight'    => [ 'hex' ],
+			'topbar'       => [ 'hex' ],
+			'accent'       => [ 'hex' ],
 		],
 	];
 
 	/** Stored values equal to these are never stored (only overrides are). */
 	const DEFAULTS = [
-		'agency'    => [ 'name' => '', 'url' => '', 'logo' => 0, 'logo_square' => 0, 'icon_svg' => '', 'support_email' => '', 'support_phone' => '', 'support_url' => '', 'booking_url' => '' ],
-		'product'   => [ 'name' => '', 'short' => '', 'blocks_menu' => '', 'theme_desc' => '', 'blocks_desc' => '', 'theme_image' => 0 ],
-		'lb'        => [ 'enabled' => false, 'menu_label' => '', 'menu_icon' => '', 'description' => '' ],
+		'agency'    => [ 'name' => '', 'url' => '', 'logo' => 0, 'logo_square' => 0, 'support_email' => '', 'support_phone' => '', 'support_url' => '', 'booking_url' => '' ],
 		'login'     => [ 'enabled' => false, 'logo_source' => 'client', 'logo' => 0, 'logo_width' => 200, 'bg' => '', 'bg_image' => 0, 'bg_overlay' => 40, 'form_bg' => '', 'text' => '', 'button_bg' => '', 'button_text' => '', 'button_hover_bg' => '', 'link' => '', 'message' => '', 'hide_back_link' => false, 'credit' => true ],
-		'admin'     => [ 'replace_wp_logo' => false, 'bar_logo_source' => 'client', 'bar_link' => 'dashboard', 'greeting' => '', 'menu_logo' => false, 'menu_logo_source' => 'client', 'footer_text' => '', 'footer_link' => '', 'title_suffix' => '', 'editor_accent' => false, 'hide_version_for_clients' => false ],
+		'admin'     => [ 'replace_wp_logo' => false, 'bar_logo_source' => 'client', 'bar_link' => 'dashboard', 'greeting' => '', 'menu_logo' => false, 'menu_logo_source' => 'client', 'menu_logo_image' => 0, 'footer_text' => '', 'footer_link' => '', 'title_suffix' => '', 'editor_accent' => false, 'hide_version_for_clients' => false ],
 		'dashboard' => [
 			'welcome'        => [ 'enabled' => false, 'roles' => [], 'title' => '', 'message' => '', 'tiles' => [ 'pages', 'posts', 'services', 'areas', 'media', 'site' ], 'support_card' => true ],
 			'client_widgets' => [],
@@ -191,7 +173,7 @@ final class Branding {
 			'blocks_home_off'      => false,
 		],
 		'email'     => [ 'from_name_source' => 'off', 'from_name' => '', 'from_email' => '' ],
-		'kadence'   => [ 'kwl_mode' => 'off', 'icon' => 'cube', 'disable_ai_all' => false, 'conversions_rename' => false, 'overrides' => [] ],
+		'admin_colors' => [ 'scope' => 'clients', 'scheme' => '', 'sidebar' => '', 'sidebar_text' => '', 'highlight' => '', 'topbar' => '', 'accent' => '' ],
 	];
 
 	/** The sensible first setup: what the Branding screen pre-ticks before the first save and apply_recommended sets. */
@@ -226,8 +208,8 @@ final class Branding {
 	}
 
 	/**
-	 * Module hook. Registers hooks only; nothing reads the settings here except for requests that can see the
-	 * Kadence bridge's effect. Anonymous front-end requests register a few hooks that stay silent until they fire.
+	 * Module hook. Registers hooks only; nothing reads the settings here. Anonymous front-end requests register a few
+	 * hooks that stay silent until they fire.
 	 */
 	public static function boot(): void {
 		if ( self::safe() ) {
@@ -242,12 +224,13 @@ final class Branding {
 		add_action( 'admin_bar_init', [ Branding_Chrome::class, 'admin_bar_init' ] );
 		add_filter( 'pre_update_option_' . self::OPT, [ __CLASS__, 'guard_write' ] );
 		add_filter( 'kadence_blocks_ai_disabled', [ Branding_Client::class, 'kadence_ai_off' ] ); // Read only when Kadence asks.
-		Branding_Kadence::boot();
 		Migrate::register_step( 'branding-role', [ Branding_Client::class, 'migrate_role' ], [ 'every_version' => true ] );
+		Migrate::register_step( 'branding-colors-css', [ Branding_Colors::class, 'migrate_css' ], [ 'every_version' => true ] );
 		if ( is_admin() ) {
 			Branding_Admin::boot();
 			Branding_Client::boot();
 			Branding_Chrome::admin();
+			Branding_Colors::boot();
 		}
 	}
 
@@ -272,7 +255,6 @@ final class Branding {
 		self::$settings = null;
 		self::$resolved = null;
 		Branding_Client::forget();
-		Branding_Kadence::forget();
 	}
 
 	/* ------------------------------------------------------------------ settings */
@@ -403,7 +385,7 @@ final class Branding {
 			return [ false, null ];
 		};
 		$type = $def[0];
-		if ( in_array( $type, [ 'text', 'name', 'url', 'email', 'color', 'greeting', 'icon', 'svg', 'kses', 'enum' ], true ) && ! is_string( $v ) ) {
+		if ( in_array( $type, [ 'text', 'name', 'url', 'email', 'color', 'hex', 'greeting', 'kses', 'enum' ], true ) && ! is_string( $v ) ) {
 			return $bad( 'must be a string.' );
 		}
 		switch ( $type ) {
@@ -482,6 +464,16 @@ final class Branding {
 				}
 				return [ true, $hex ];
 
+			case 'hex':
+				$s = trim( (string) $v );
+				if ( '' === $s ) {
+					return [ true, '' ];
+				}
+				if ( ! preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $s ) ) {
+					return $bad( 'must be a #RRGGBB colour (for example #1E1E1E), or empty for the WordPress default.' );
+				}
+				return [ true, (string) Style::hex( $s ) ];
+
 			case 'int':
 				if ( is_float( $v ) && floor( $v ) === $v ) {
 					$v = (int) $v;
@@ -514,30 +506,6 @@ final class Branding {
 				}
 				return [ true, $s ];
 
-			case 'icon':
-				$s = trim( (string) $v );
-				if ( '' === $s || 'agency' === $s || preg_match( '/^dashicons-[a-z0-9-]{1,40}$/', $s ) ) {
-					return [ true, $s ];
-				}
-				return $bad( 'must be agency or a dashicons-... class name.' );
-
-			case 'svg':
-				$s = trim( (string) $v );
-				if ( '' === $s ) {
-					return [ true, '' ];
-				}
-				if ( strlen( $s ) > (int) $def[1] ) {
-					return $bad( 'is larger than ' . (int) $def[1] . ' bytes.' );
-				}
-				$clean = Branding_Chrome::clean_svg( $s );
-				if ( '' === $clean ) {
-					return $bad( 'is not a usable SVG (only svg, g, path, circle, rect, polygon and line are allowed).' );
-				}
-				if ( $clean !== $s ) {
-					$warnings[] = $p . ': unsupported SVG parts were removed.';
-				}
-				return [ true, $clean ];
-
 			case 'kses':
 				$s = trim( (string) $v );
 				if ( strlen( $s ) > (int) $def[1] ) {
@@ -554,9 +522,6 @@ final class Branding {
 
 			case 'roles':
 				return self::clean_roles( $v, $p, $errors, $strict );
-
-			case 'overrides':
-				return self::clean_overrides( $v, $p, $errors );
 		}
 		return $bad( 'has an unknown type.' );
 	}
@@ -655,34 +620,6 @@ final class Branding {
 		return [ true, $out ];
 	}
 
-	/** kadence.overrides: Kadence White Label text keys => text (names have no quotes). */
-	private static function clean_overrides( $v, string $p, array &$errors ): array {
-		if ( ! is_array( $v ) || ( $v && ! self::is_assoc( $v ) ) ) {
-			$errors[] = $p . ': must be an object.';
-			return [ false, null ];
-		}
-		$out = [];
-		foreach ( $v as $k => $val ) {
-			if ( ! in_array( $k, self::KWL_TEXT_KEYS, true ) || ! is_string( $val ) ) {
-				$errors[] = $p . ': ' . $k . ' is not an override that can be set (allowed: ' . implode( ', ', self::KWL_TEXT_KEYS ) . ').';
-				return [ false, null ];
-			}
-			$max = substr( $k, -5 ) === '_desc' ? 200 : 40;
-			$s = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( $val ) ) );
-			if ( substr( $k, -5 ) !== '_desc' ) {
-				$s = trim( str_replace( [ '"', "'", '`', '\\', '<', '>', '&' ], '', $s ) );
-			}
-			if ( strlen( $s ) > $max ) {
-				$errors[] = $p . '.' . $k . ': longer than ' . $max . ' characters.';
-				return [ false, null ];
-			}
-			if ( '' !== $s ) {
-				$out[ $k ] = $s;
-			}
-		}
-		return [ true, $out ];
-	}
-
 	/* ------------------------------------------------------------------ writing */
 
 	/** Dot paths => value of a nested array (lists count as one value). */
@@ -712,18 +649,17 @@ final class Branding {
 		return $base;
 	}
 
-	/** The agency preset: the agency and product names the plugin ships with (nothing is invented). */
+	/** The agency preset: the agency name and website the plugin ships with (nothing is invented). */
 	public static function agency_preset(): array {
 		$a = self::agency_base();
 		return [
-			'agency'  => [ 'name' => $a['name'], 'url' => $a['url'] ],
-			'product' => [ 'name' => $a['short'], 'short' => $a['short'], 'blocks_menu' => 'Blocks' ],
+			'agency' => [ 'name' => $a['name'], 'url' => $a['url'] ],
 		];
 	}
 
 	/**
 	 * Validate and store settings. $in is a (partial) nested settings object; $opts: dry_run, reset (section names),
-	 * apply_agency_preset, apply_recommended, source (tool|screen). Snapshots first. Returns the report or a WP_Error.
+	 * apply_agency_preset, apply_recommended, import (the settings came from a file: a scheme it names never refills colours), source (tool|screen). Snapshots first. Returns the report or a WP_Error.
 	 *
 	 * @return array|\WP_Error
 	 */
@@ -756,7 +692,22 @@ final class Branding {
 			$clean = self::merge( $clean, self::RECOMMENDED );
 		}
 		$clean = self::merge( $clean, $explicit );
-		$new = self::prune( self::merge( $new, $clean ), self::DEFAULTS );
+		// A ready-made scheme fills the colours that this call did not set itself (not for an import: it carries every colour it has, and an empty one stays empty).
+		$pick = (string) ( $explicit['admin_colors']['scheme'] ?? '' );
+		if ( '' !== $pick && null !== Branding_Colors::scheme( $pick ) && empty( $opts['import'] ) ) {
+			foreach ( Branding_Colors::scheme( $pick ) as $k => $hex ) {
+				if ( ! isset( $explicit['admin_colors'][ $k ] ) ) {
+					$clean['admin_colors'][ $k ] = $hex;
+				}
+			}
+		}
+		$new = self::merge( $new, $clean );
+		// Colours set without a scheme name: the stored name is kept only while the colours still match that scheme exactly, so a stale name can never refill a colour that was emptied.
+		$set_colors = array_intersect_key( (array) ( $explicit['admin_colors'] ?? [] ), array_flip( Branding_Colors::KEYS ) );
+		if ( $set_colors && ! isset( $explicit['admin_colors']['scheme'] ) ) {
+			$new['admin_colors']['scheme'] = Branding_Colors::matching_scheme( Branding_Colors::colors( (array) ( $new['admin_colors'] ?? [] ) ) );
+		}
+		$new = self::prune( $new, self::DEFAULTS );
 		$new['v'] = self::VERSION;
 		$was_configured = self::configured();
 		$new['configured_at'] = $cur['configured_at'] ?? gmdate( 'c' );
@@ -773,18 +724,14 @@ final class Branding {
 		}
 		$warnings = array_merge( $warnings, self::setting_warnings( $new_eff ) );
 		$role_will_sync = ! empty( $new_eff['client']['role']['enabled'] ) && ( ! $was_configured || array_filter( $changed, static function ( $p ) { return 0 === strpos( $p, 'client.role.' ); } ) );
-		$kwl_persist = 'persist' === $new_eff['kadence']['kwl_mode'] && ( 'persist' !== $old_eff['kadence']['kwl_mode'] || array_filter( $changed, static function ( $p ) { return 0 === strpos( $p, 'kadence.' ) || 0 === strpos( $p, 'product.' ) || 0 === strpos( $p, 'agency.' ); } ) );
 
 		if ( ! empty( $opts['dry_run'] ) ) {
-			return [ 'dry_run' => true, 'changed' => $changed, 'warnings' => $warnings, 'would_mark_configured' => ! $was_configured, 'would_sync_role' => (bool) $role_will_sync, 'would_write_kadence_white_label' => (bool) $kwl_persist ];
+			return [ 'dry_run' => true, 'changed' => $changed, 'warnings' => $warnings, 'would_mark_configured' => ! $was_configured, 'would_sync_role' => (bool) $role_will_sync ];
 		}
 
 		$snap_opts = [ self::OPT ];
 		if ( $role_will_sync ) {
 			$snap_opts[] = wp_roles()->role_key;
-		}
-		if ( $kwl_persist ) {
-			$snap_opts[] = Branding_Kadence::OPTION;
 		}
 		$snapshot = Abilities::snapshot( 'set-branding', [], $snap_opts );
 		update_option( self::OPT, $new, false );
@@ -794,15 +741,8 @@ final class Branding {
 		if ( $role_will_sync ) {
 			$out['role_changes'] = Branding_Client::sync_role( $old_eff, $new_eff, ! $was_configured );
 		}
-		if ( $kwl_persist ) {
-			$r = Branding_Kadence::persist();
-			if ( is_wp_error( $r ) ) {
-				$out['warnings'][] = $r->get_error_message();
-			} else {
-				$out['kwl_keys'] = $r;
-			}
-		} elseif ( 'manage' === $new_eff['kadence']['kwl_mode'] ) {
-			$out['kwl_keys'] = array_keys( Branding_Kadence::compile() );
+		if ( array_filter( $changed, static function ( $p ) { return 0 === strpos( $p, 'admin_colors.' ); } ) ) {
+			Branding_Colors::refresh_cache(); // Compiled here, so page views never write.
 		}
 		if ( array_filter( $changed, static function ( $p ) { return 0 === strpos( $p, 'login.' ) || 0 === strpos( $p, 'admin.' ); } ) ) {
 			Cache::purge_later();
@@ -823,6 +763,11 @@ final class Branding {
 		}
 		if ( 'client' === $eff['login']['logo_source'] && $eff['login']['enabled'] && ! self::client_logo_id() ) {
 			$w[] = __( 'The sign-in screen uses the client logo, but the site has no logo yet (set one with set-brand logo_attachment_id or in the Customizer). The business name is shown instead.', 'launch-builder' );
+		}
+		if ( Branding_Colors::customised( (array) $eff['admin_colors'] ) ) {
+			foreach ( Branding_Colors::resolve( (array) $eff['admin_colors'] )['notes'] as $msg ) {
+				$w[] = $msg;
+			}
 		}
 		return $w;
 	}
@@ -864,7 +809,6 @@ final class Branding {
 			'url'           => '' !== $s['url'] ? $s['url'] : $base['url'],
 			'logo_id'       => self::usable_attachment( (int) $s['logo'] ),
 			'logo_square_id' => self::usable_attachment( (int) $s['logo_square'] ),
-			'icon_svg'      => (string) $s['icon_svg'],
 			'support_email' => (string) $s['support_email'],
 			'support_phone' => (string) $s['support_phone'],
 			'support_url'   => (string) $s['support_url'],
@@ -893,13 +837,35 @@ final class Branding {
 		return str_replace( [ '"', "'", '(', ')', '\\', "\n", "\r", '<', '>' ], [ '%22', '%27', '%28', '%29', '%5C', '', '', '%3C', '%3E' ], $url );
 	}
 
-	/** The client's business name and where it comes from. @return array{0:string,1:string} */
+	/** The client's business name and where it comes from (business_info: typed there or read from another settings page; site_title). @return array{0:string,1:string} */
 	public static function business_name(): array {
 		$res = Company::resolve();
-		if ( isset( $res['name'] ) && 'default' !== $res['name']['from'] && '' !== $res['name']['value'] ) {
-			return [ $res['name']['value'], 'business_info' ];
+		if ( isset( $res['name'] ) && '' !== $res['name']['value'] && 'default' !== $res['name']['from'] ) {
+			return [ $res['name']['value'], 'site' === $res['name']['from'] ? 'site_title' : 'business_info' ];
 		}
 		return [ wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ), 'site_title' ];
+	}
+
+	/**
+	 * Save the image for the logo above the admin menu without switching anything on (Business Info's old logo for dark
+	 * backgrounds is moved here by the company-tidy step). Works whether or not this module is on.
+	 */
+	public static function store_menu_logo_image( int $id ): bool {
+		$id = self::usable_attachment( $id );
+		if ( $id < 1 ) {
+			return false;
+		}
+		$raw = get_option( self::OPT, [] );
+		if ( is_string( $raw ) ) {
+			$d = json_decode( $raw, true );
+			$raw = is_array( $d ) ? $d : [];
+		}
+		$raw = is_array( $raw ) ? $raw : [];
+		$raw['admin'] = is_array( $raw['admin'] ?? null ) ? $raw['admin'] : [];
+		$raw['admin']['menu_logo_image'] = $id;
+		update_option( self::OPT, self::sanitize_stored( $raw ), false );
+		self::reset_cache();
+		return true;
 	}
 
 	/** The client logo: the theme's custom logo (written by set-brand). */
@@ -907,7 +873,7 @@ final class Branding {
 		return self::usable_attachment( (int) get_theme_mod( 'custom_logo' ) );
 	}
 
-	/** The core site icon (Business Info field site_icon). */
+	/** The core site icon (Business Info reads it from here too). */
 	public static function site_icon_id(): int {
 		return self::usable_attachment( (int) get_option( 'site_icon' ) );
 	}
@@ -971,7 +937,6 @@ final class Branding {
 				return [ 'type' => 'boolean' ];
 			case 'text':
 			case 'name':
-			case 'svg':
 			case 'kses':
 				return [ 'type' => 'string', 'maxLength' => (int) $def[1] ];
 			case 'url':
@@ -982,20 +947,18 @@ final class Branding {
 				return [ 'type' => 'integer', 'minimum' => 0, 'description' => 'Media library image id (0 clears). Import an image first with sideload-media.' ];
 			case 'color':
 				return [ 'type' => 'string', 'maxLength' => 9, 'description' => '#hex colour or palette slug (palette1..palette10). "" = follow the brand palette.' ];
+			case 'hex':
+				return [ 'type' => 'string', 'maxLength' => 7, 'description' => '#RRGGBB colour ("" = the WordPress default). Text colours are corrected when their contrast is too low.' ];
 			case 'int':
 				return [ 'type' => 'integer', 'minimum' => (int) $def[1], 'maximum' => (int) $def[2] ];
 			case 'enum':
 				return [ 'type' => 'string', 'enum' => $def[1] ];
 			case 'greeting':
 				return [ 'type' => 'string', 'maxLength' => 40, 'description' => 'Contains %s once for the name, e.g. "Hi, %s". "" = the name alone.' ];
-			case 'icon':
-				return [ 'type' => 'string', 'maxLength' => 60, 'description' => 'agency, or a dashicons-... class.' ];
 			case 'list':
 				return [ 'type' => 'array', 'items' => [ 'type' => 'string', 'maxLength' => 120 ], 'maxItems' => 60 ];
 			case 'roles':
 				return [ 'type' => 'object', 'description' => 'role => { menus: [top-level menu slugs], admin_bar: [node ids], widgets: [dashboard widget ids] }; null removes a role\'s profile. At most 5 roles; administrator is refused.', 'additionalProperties' => [ 'type' => [ 'object', 'null' ], 'properties' => [ 'menus' => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'maxLength' => 120 ] ], 'admin_bar' => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'maxLength' => 60 ] ], 'widgets' => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'maxLength' => 60 ] ] ] ] ];
-			case 'overrides':
-				return [ 'type' => 'object', 'description' => 'Kadence White Label text keys (' . implode( ', ', self::KWL_TEXT_KEYS ) . ') => text.', 'properties' => array_fill_keys( self::KWL_TEXT_KEYS, [ 'type' => 'string', 'maxLength' => 200 ] ) ];
 		}
 		return [ 'type' => 'string' ];
 	}
@@ -1004,7 +967,7 @@ final class Branding {
 		Abilities::add(
 			'get-branding',
 			'Read branding settings',
-			'The Branding module: stored settings (overrides), the effective settings with defaults, every resolved value with its source (business_info, site_title, palette, theme_mod, agency_default, override), the Kadence White Label bridge state, the Site Owner role (exists, user count), contrast ratios and warnings. section narrows the settings. export:true adds a portable export (no secrets, no user data).',
+			'The Branding module: stored settings (overrides), the effective settings with defaults, every resolved value with its source (business_info, site_title, palette, theme_mod, agency_default, override), the dashboard colours (who sees them, the final colours, contrast ratios, ready-made schemes), the Site Owner role (exists, user count), contrast ratios and warnings. section narrows the settings. export:true adds a portable export (no secrets, no user data).',
 			[ 'properties' => [
 				'section' => [ 'type' => 'string', 'enum' => array_merge( [ 'all' ], array_keys( self::SCHEMA ) ) ],
 				'export'  => [ 'type' => 'boolean' ],
@@ -1015,7 +978,7 @@ final class Branding {
 		);
 		$props = self::json_group( self::SCHEMA );
 		$props += [
-			'apply_agency_preset' => [ 'type' => 'boolean', 'description' => 'Fill agency and product names from the shipped agency identity (explicit values in this call win).' ],
+			'apply_agency_preset' => [ 'type' => 'boolean', 'description' => 'Fill the agency name and website from the shipped agency identity (explicit values in this call win).' ],
 			'apply_recommended'   => [ 'type' => 'boolean', 'description' => 'Switch on the recommended first setup: branded sign-in screen, admin bar logo, Site Owner role, welcome panel, hidden nags for clients, business name as email sender.' ],
 			'reset'               => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'enum' => array_keys( self::SCHEMA ) ], 'description' => 'Sections to return to their defaults first.' ],
 			'dry_run'             => [ 'type' => 'boolean', 'description' => 'Validate and report what would change without writing anything.' ],
@@ -1024,7 +987,7 @@ final class Branding {
 		Abilities::add(
 			'set-branding',
 			'Set branding',
-			'Change branding settings (partial input: only what you send changes). Validated, snapshotted (restore-snapshot undoes it) and capability-checked. The first call marks the module configured, which is what makes branded surfaces run. Images are media library ids (use sideload-media first); colours are #hex or palette slugs, empty = follow the brand palette. Never accepts roles for users, custom code, or Kadence White Label option writes; kadence.kwl_mode (off, manage, persist) is the opt-in bridge and is off by default. Returns changed paths, warnings, role_changes and the new snapshot id.',
+			'Change branding settings (partial input: only what you send changes). Validated, snapshotted (restore-snapshot undoes it) and capability-checked. The first call marks the module configured, which is what makes branded surfaces run. Images are media library ids (use sideload-media first); colours are #hex or palette slugs, empty = follow the brand palette. admin_colors sets the Dashboard colours (the sidebar, top bar, links and buttons of wp-admin): scheme picks a ready-made set (brand = the Kadence palette), scope says who sees it (clients = Site Owner accounts, everyone, nobody; an administrator not in the audience can still see them under Users, Profile, Dashboard colours), reset: ["admin_colors"] returns to the WordPress default; text colours with too little contrast are corrected and reported. Never accepts roles for users or custom code. Returns changed paths, warnings, role_changes and the new snapshot id.',
 			[ 'properties' => $props ],
 			[ __CLASS__, 'tool_set' ],
 			'manage_options'
@@ -1051,7 +1014,7 @@ final class Branding {
 			'overrides'   => $stored ? $stored : new \stdClass(),
 			'settings'    => $eff,
 			'resolved'    => self::resolve(),
-			'kadence'     => Branding_Kadence::state(),
+			'admin_colors' => Branding_Colors::state(),
 			'client_role' => Branding_Client::role_state(),
 			'contrast'    => Branding_Chrome::login_vars( self::section( 'login' ) )['contrast'],
 			'warnings'    => self::all_warnings(),
@@ -1080,6 +1043,7 @@ final class Branding {
 				return $imp;
 			}
 			$settings = self::merge( $imp['settings'], $settings );
+			$opts['import'] = ! ( is_array( $input['admin_colors'] ?? null ) && array_key_exists( 'scheme', $input['admin_colors'] ) ); // A scheme named in the file never refills colours.
 		}
 		if ( ! $settings && ! $opts['reset'] && ! $opts['apply_agency_preset'] && ! $opts['apply_recommended'] ) {
 			return new \WP_Error( 'lb_empty', 'Nothing to set. Send settings (login, admin, client...), apply_agency_preset, apply_recommended, reset or import.', [ 'status' => 400 ] );
@@ -1093,11 +1057,7 @@ final class Branding {
 
 	/** Every warning the settings, the palette and the site produce. @return string[] */
 	public static function all_warnings(): array {
-		$w = self::setting_warnings( self::settings() );
-		foreach ( Branding_Kadence::warnings() as $msg ) {
-			$w[] = $msg;
-		}
-		return array_values( array_unique( $w ) );
+		return array_values( array_unique( self::setting_warnings( self::settings() ) ) );
 	}
 
 	/* ------------------------------------------------------------------ export / import */
@@ -1191,10 +1151,9 @@ final class Branding {
 				'footer'      => self::active() && '' !== $s['admin']['footer_text'],
 				'welcome'     => self::active() && $s['dashboard']['welcome']['enabled'],
 				'emails'      => self::active() && 'off' !== $s['email']['from_name_source'],
-				'lb_rebrand'  => self::active() && $s['lb']['enabled'],
+				'admin_colors' => self::active() && ! Branding_Colors::off() && 'nobody' !== $s['admin_colors']['scope'] && Branding_Colors::customised( $s['admin_colors'] ),
 				'client_role' => self::active() && $s['client']['role']['enabled'],
 			],
-			'kadence'     => array_intersect_key( Branding_Kadence::state(), array_flip( [ 'detected', 'version', 'mode', 'drift' ] ) ),
 			'client_role' => Branding_Client::role_state(),
 			'smtp_plugin' => Branding_Chrome::smtp_plugin(),
 			'warnings'    => self::all_warnings(),
@@ -1203,7 +1162,7 @@ final class Branding {
 
 	public static function playbook( array &$pb ): void {
 		$pb['tools_by_job']['Branding'] = 'get-branding, set-branding';
-		$pb['branding'] = 'Branding (a module, off until switched on under Launch Builder > Modules) white-labels a client hand-off. It runs nothing until set-branding or the Branding screen has saved once. Business Info (name) and the brand palette and logo (set-brand) feed every branded surface, so set those first; branding stores only overrides. Typical order: set-branding { apply_recommended: true } (branded sign-in screen, admin bar logo, Site Owner role, welcome panel, hidden nags for clients, business name as email sender), then agency support contacts (agency.support_email, support_phone, support_url) and a welcome message. Give clients the Site Owner role (a person assigns it; there is no tool for that), never administrator. Never put the client\'s business name into the Kadence product names (product.*). The Kadence White Label bridge (kadence.kwl_mode) is opt-in and off by default. Read get-branding warnings for contrast and email-domain notes. LB_BRANDING_SAFE_MODE in wp-config.php turns every branded surface off.';
+		$pb['branding'] = 'Branding (a module, off until switched on under Launch Builder > Modules) white-labels a client hand-off. It runs nothing until set-branding or the Branding screen has saved once. Business Info (name) and the brand palette and logo (set-brand) feed every branded surface, so set those first; branding stores only overrides. Typical order: set-branding { apply_recommended: true } (branded sign-in screen, admin bar logo, Site Owner role, welcome panel, hidden nags for clients, business name as email sender), then agency support contacts (agency.support_email, support_phone, support_url) and a welcome message. Give clients the Site Owner role (a person assigns it; there is no tool for that), never administrator. Dashboard colours: set-branding { admin_colors: { scheme: "brand" } } starts from the Kadence palette (or midnight, forest, daylight, ember, plum, slate), scope clients (default) shows it to Site Owner accounts only (an administrator can preview it under Users, Profile, Dashboard colours), and reset: ["admin_colors"] puts the WordPress default back. Read get-branding warnings for contrast and email-domain notes. LB_BRANDING_SAFE_MODE in wp-config.php turns every branded surface off; LB_ADMIN_COLORS_OFF turns off only the dashboard colours.';
 	}
 
 	/** @return array code => [scope, callable] */
@@ -1212,8 +1171,7 @@ final class Branding {
 			'branding_login_contrast'  => [ 'branding', [ __CLASS__, 'audit_contrast' ] ],
 			'branding_email_domain'    => [ 'branding', [ __CLASS__, 'audit_email' ] ],
 			'branding_no_logo'         => [ 'branding', [ __CLASS__, 'audit_logo' ] ],
-			'branding_kwl_option'      => [ 'branding', [ Branding_Kadence::class, 'audit_option' ] ],
-			'branding_kwl_drift'       => [ 'branding', [ Branding_Kadence::class, 'audit_drift' ] ],
+			'branding_admin_colors'    => [ 'branding', [ __CLASS__, 'audit_admin_colors' ] ],
 			'branding_safe_mode'       => [ 'branding', [ __CLASS__, 'audit_safe' ] ],
 		];
 	}
@@ -1248,6 +1206,18 @@ final class Branding {
 		return [];
 	}
 
+	/** The dashboard colours: anything the contrast guard had to correct or warn about, while the colours are in use. */
+	public static function audit_admin_colors(): array {
+		$c = (array) self::section( 'admin_colors' );
+		$out = [];
+		if ( self::active() && ! Branding_Colors::off() && 'nobody' !== $c['scope'] && Branding_Colors::customised( $c ) ) {
+			foreach ( Branding_Colors::resolve( $c )['notes'] as $msg ) {
+				$out[] = self::finding( 'branding_admin_colors', 'warning', $msg, 'Pick other colours in the Dashboard colours card on the Branding screen, or reset them to the WordPress default.' );
+			}
+		}
+		return $out;
+	}
+
 	public static function audit_safe(): array {
 		return self::safe() ? [ self::finding( 'branding_safe_mode', 'info', 'LB_BRANDING_SAFE_MODE is set: every branded surface is switched off.', 'Remove the constant from wp-config.php to bring branding back.' ) ] : [];
 	}
@@ -1279,6 +1249,9 @@ final class Branding {
 		if ( array_key_exists( 'client_role', $b ) ) {
 			$in['client']['role']['enabled'] = (bool) $b['client_role'];
 		}
+		if ( isset( $b['admin_colors'] ) && is_array( $b['admin_colors'] ) ) {
+			$in['admin_colors'] = $b['admin_colors'];
+		}
 		// The agency preset fills a site that has not been configured; a configured site keeps its own names unless the brief says so.
 		$preset = array_key_exists( 'agency_preset', $b ) ? (bool) $b['agency_preset'] : ! self::configured();
 		$r = self::apply( $in, [ 'apply_agency_preset' => $preset, 'apply_recommended' => ! self::configured() ] );
@@ -1288,8 +1261,28 @@ final class Branding {
 	public static function brief_schema( array &$schema ): void {
 		$schema['properties']['branding'] = [
 			'type'        => 'object',
-			'description' => 'branding {agency_preset (default true), client_role, welcome_message, support {email, phone, url, booking_url}, email_from_name business|agency}: applied by the build-site branding step; Business Info and the palette feed the rest.',
-			'properties'  => [],
+			'description' => 'Branding of the site, applied by build-from-brief: enabled (true switches the Branding module on, false off), dashboard_colors { scheme, scope } (the colours of the WordPress dashboard), agency_credit (the "Website by" line on the sign-in screen), agency { name, url } and site_owner_role (true, false or { label }: a simpler role for the site owner). Business Info and the palette feed the rest. A blueprint for build-site has its own branding step with other keys: see build-site.',
+			'properties'  => [
+				'enabled'          => [ 'type' => 'boolean', 'description' => 'Switch the Branding module on or off.' ],
+				'dashboard_colors' => [
+					'type'        => 'object',
+					'description' => 'The colours of the WordPress dashboard.',
+					'properties'  => [
+						'scheme' => [ 'type' => 'string', 'enum' => Branding_Colors::SCHEME_IDS, 'description' => 'A ready-made scheme: brand (the colours of the brand), midnight, forest, daylight, ember, plum or slate. "" = no ready-made scheme (the WordPress default colours).' ],
+						'scope'  => [ 'type' => 'string', 'enum' => [ 'clients', 'everyone', 'nobody' ], 'description' => 'Who sees the colours.' ],
+					],
+				],
+				'agency_credit'    => [ 'type' => 'boolean', 'description' => 'Show the "Website by" line on the sign-in screen.' ],
+				'agency'           => [
+					'type'        => 'object',
+					'description' => 'Who built the site.',
+					'properties'  => [
+						'name' => [ 'type' => 'string' ],
+						'url'  => [ 'type' => 'string' ],
+					],
+				],
+				'site_owner_role'  => [ 'type' => [ 'boolean', 'object' ], 'description' => 'true or false, or { label } to name the role.' ],
+			],
 		];
 	}
 }

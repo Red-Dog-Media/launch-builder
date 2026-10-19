@@ -779,6 +779,23 @@ final class Compat {
 		return is_array( $v ) ? $v : [];
 	}
 
+	/** The profile web addresses Rank Math holds as typed there (its Facebook page and its Additional profiles list), without our overlay. */
+	public static function rm_profiles(): array {
+		if ( ! self::rm_active() ) {
+			return [];
+		}
+		$raw = self::raw_option( self::RM_OPTIONS['titles'] );
+		$lines = array_merge( [ (string) ( $raw['social_url_facebook'] ?? '' ) ], (array) preg_split( '/[\r\n]+/', (string) ( $raw['social_additional_profiles'] ?? '' ) ) );
+		$out = [];
+		foreach ( $lines as $u ) {
+			$u = trim( (string) $u );
+			if ( 1 === preg_match( '#^https?://[^\s]+\.[^\s]+$#i', $u ) ) {
+				$out[] = esc_url_raw( (string) preg_replace( '#^http://#i', 'https://', $u ) ); // Profiles are https only.
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
 	/** Role templates (stored option). */
 	public static function templates(): array {
 		$t = get_option( self::OPT_TEMPLATES, [] );
@@ -948,12 +965,16 @@ final class Compat {
 		$forced = static function ( string $k ) use ( $force ): bool { return in_array( 'all', $force, true ) || in_array( $k, $force, true ); };
 		$business = 'business' === (string) ( $args['scope'] ?? 'all' );
 
+		$only = $business ? array_values( array_map( 'strval', (array) ( $args['only'] ?? [] ) ) ) : []; // A narrow fill: just these titles keys, and the overlay list keeps what it has.
 		$plan = []; // group => key => value
-		$owned_now = [];
+		$owned_now = $only ? array_values( (array) get_option( self::OPT_OWNED, [] ) ) : [];
 		$desired = self::rm_desired( $business ? 'business' : 'all' );
 		foreach ( $desired as $group => $keys ) {
 			$raw = self::raw_option( self::RM_OPTIONS[ $group ] );
 			foreach ( $keys as $key => $want ) {
+				if ( $only && ( 'titles' !== $group || ! in_array( (string) $key, $only, true ) ) ) {
+					continue;
+				}
 				$st = self::key_status( $group, $key, $raw, $want );
 				$id = $group . '.' . $key;
 				if ( 'ok' === $st ) {
@@ -1165,6 +1186,9 @@ final class Compat {
 
 	/** Real (non-demo) Business Info value. */
 	private static function biz( array $resolved, string $key ): string {
+		if ( 'country' === $key && isset( $resolved[ $key ] ) && 'site' === $resolved[ $key ]['from'] ) {
+			return ''; // A country guessed from the site language is a hint for the screen: a business can sit in another country than its site language.
+		}
 		return isset( $resolved[ $key ] ) && 'default' !== $resolved[ $key ]['from'] ? trim( (string) $resolved[ $key ]['value'] ) : '';
 	}
 
@@ -1225,8 +1249,14 @@ final class Compat {
 			$out['social_url_facebook'] = $socials['facebook'];
 			unset( $socials['facebook'] );
 		}
-		if ( $socials ) {
-			$out['social_additional_profiles'] = implode( "\n", $socials );
+		$more = array_values( $socials );
+		foreach ( Company::list_value( 'other_profiles' ) as $u ) { // Other profiles: the addresses typed in the one box (a network that has its own token is already in the list above).
+			if ( preg_match( '#^https?://[^\s]+\.[^\s]+#i', (string) $u ) && ! in_array( (string) $u, $more, true ) ) {
+				$more[] = esc_url_raw( (string) $u );
+			}
+		}
+		if ( $more ) {
+			$out['social_additional_profiles'] = implode( "\n", $more );
 		}
 		$type = self::business_type( $v( 'business_type' ) );
 		if ( '' !== $type ) {
@@ -1408,7 +1438,7 @@ final class Compat {
 			'email'    => [ 'label' => __( 'Email', 'launch-builder' ), 'keys' => [ 'email' ], 'from' => [ 'email' ], 'from_text' => '' ],
 			'phones'   => [ 'label' => __( 'Phone numbers', 'launch-builder' ), 'keys' => [ 'phone_numbers', 'phone' ], 'from' => [ 'phone', 'emergency_phone' ], 'from_text' => '' ],
 			'facebook' => [ 'label' => __( 'Facebook page', 'launch-builder' ), 'keys' => [ 'social_url_facebook' ], 'from' => [ 'facebook' ], 'from_text' => '' ],
-			'profiles' => [ 'label' => __( 'Other profiles', 'launch-builder' ), 'keys' => [ 'social_additional_profiles' ], 'from' => [ 'instagram', 'youtube', 'google', 'linkedin', 'x', 'yelp', 'tiktok', 'nextdoor', 'bbb', 'angi', 'houzz' ], 'from_text' => '' ],
+			'profiles' => [ 'label' => __( 'Other profiles', 'launch-builder' ), 'keys' => [ 'social_additional_profiles' ], 'from' => [ 'instagram', 'youtube', 'google', 'other_profiles', 'linkedin', 'x', 'yelp', 'tiktok', 'nextdoor', 'bbb', 'angi', 'houzz' ], 'from_text' => '' ],
 			'btype'    => [ 'label' => __( 'Business type', 'launch-builder' ), 'keys' => [ 'local_business_type' ], 'from' => [ 'business_type' ], 'from_text' => '' ],
 			'address'  => [ 'label' => __( 'Address', 'launch-builder' ), 'keys' => [ 'local_address' ], 'from' => [ 'street', 'locality', 'region', 'postal_code', 'country' ], 'from_text' => '' ],
 			'hours'    => [ 'label' => __( 'Opening hours', 'launch-builder' ), 'keys' => [ 'opening_hours' ], 'from' => [ 'hours_spec', 'is_24_7' ], 'from_text' => '' ],
@@ -1564,7 +1594,7 @@ final class Compat {
 			}
 			$from = [];
 			foreach ( $m['from'] as $k ) {
-				if ( isset( $res[ $k ], $fields[ $k ] ) && 'default' !== $res[ $k ]['from'] && '' !== trim( (string) $res[ $k ]['value'] ) ) {
+				if ( isset( $res[ $k ], $fields[ $k ] ) && 'default' !== $res[ $k ]['from'] && '' !== trim( (string) $res[ $k ]['value'] ) && ! ( 'country' === $k && 'site' === $res[ $k ]['from'] ) ) {
 					$from[] = [ 'key' => $k, 'label' => (string) $fields[ $k ][0] ];
 				}
 			}
@@ -1622,10 +1652,13 @@ final class Compat {
 	 * A dry run (the default) writes nothing. A real run takes a snapshot, writes only what Launch Builder may (see
 	 * key_state), records what it wrote and what it replaced so undo_business_fill() can put it back.
 	 *
-	 * @param array $args { dry_run: bool (default true), force: string[] (row ids, 'titles.key' or 'all'), local_seo: ?bool }
+	 * @param array $args { dry_run: bool (default true), force: string[] (row ids, 'titles.key' or 'all'), local_seo: ?bool,
+	 *                      only: string[] (Rank Math titles keys: a narrow fill that leaves every other setting, and the overlay list, alone;
+	 *                      it adds to the last fill's undo record instead of replacing it) }
 	 */
 	public static function business_sync( array $args = [] ): array {
 		$dry = ! array_key_exists( 'dry_run', $args ) || ! empty( $args['dry_run'] );
+		$only = array_values( array_intersect( array_map( 'strval', (array) ( $args['only'] ?? [] ) ), self::BUSINESS_KEYS ) );
 		$force = self::business_force( array_map( 'strval', (array) ( $args['force'] ?? [] ) ) );
 		$local = array_key_exists( 'local_seo', $args ) && null !== $args['local_seo'] ? (bool) $args['local_seo'] : null;
 		$out = [ 'active' => self::rm_active(), 'ready' => self::rm_ready(), 'version' => self::rm_version(), 'dry_run' => $dry, 'local_seo' => [ 'on' => self::rm_module( 'local-seo' ), 'change' => null ], 'rows' => [], 'counts' => [], 'changes' => [], 'kept' => [], 'warnings' => [], 'cannot' => self::business_cannot() ];
@@ -1637,7 +1670,7 @@ final class Compat {
 		foreach ( self::BUSINESS_KEYS as $k ) {
 			$before['ledger'][ self::ledger_key( 'titles', $k ) ] = Ledger::get( self::ledger_key( 'titles', $k ) );
 		}
-		$r = self::rank_math_settings( [ 'scope' => 'business', 'dry_run' => $dry, 'force' => $force, 'local_seo' => $local, 'label' => 'fill-rank-math' ] );
+		$r = self::rank_math_settings( [ 'scope' => 'business', 'dry_run' => $dry, 'force' => $force, 'local_seo' => $local, 'label' => 'fill-rank-math', 'only' => $only ] );
 		$out['changes'] = $r['changes'];
 		$out['kept'] = $r['kept'];
 		$out['warnings'] = $r['warnings'];
@@ -1658,7 +1691,7 @@ final class Compat {
 				$keys[] = $k;
 				$was[ $k ] = array_key_exists( $k, $before['raw'] ) ? [ 'v' => $before['raw'][ $k ] ] : null;
 			}
-			update_option( self::OPT_FILL, [
+			$rec = [
 				'time'     => time(),
 				'user'     => get_current_user_id(),
 				'snapshot' => (string) $r['snapshot'],
@@ -1667,7 +1700,21 @@ final class Compat {
 				'ledger'   => array_intersect_key( $before['ledger'], array_flip( array_map( static function ( $k ) { return self::ledger_key( 'titles', $k ); }, $keys ) ) ),
 				'owned'    => $before['owned'],
 				'module'   => $out['local_seo']['change'] ? [ 'local-seo' => $before['module'] ] : [],
-			], false );
+			];
+			$last = $only ? get_option( self::OPT_FILL, null ) : null;
+			if ( is_array( $last ) && ! empty( $last['keys'] ) && is_array( $last['before'] ?? null ) ) { // A narrow fill joins the earlier undo record; what that one saved stays what Undo puts back.
+				$rec = [
+					'time'     => (int) ( $last['time'] ?? $rec['time'] ),
+					'user'     => (int) ( $last['user'] ?? $rec['user'] ),
+					'snapshot' => (string) ( $last['snapshot'] ?? $rec['snapshot'] ),
+					'keys'     => array_values( array_unique( array_merge( (array) $last['keys'], $keys ) ) ),
+					'before'   => (array) $last['before'] + $was,
+					'ledger'   => (array) ( $last['ledger'] ?? [] ) + $rec['ledger'],
+					'owned'    => (array) ( $last['owned'] ?? $before['owned'] ),
+					'module'   => (array) ( $last['module'] ?? [] ) + $rec['module'],
+				];
+			}
+			update_option( self::OPT_FILL, $rec, false );
 		}
 		$out['rows'] = self::business_rows( $force );
 		foreach ( [ 'match', 'fill', 'update', 'yours', 'empty' ] as $st ) {
@@ -2524,10 +2571,105 @@ final class Compat {
 		if ( 'user' === $s ) {
 			return [ 'user', 'user' ];
 		}
-		if ( preg_match( '/^(term|setting):(.+)$/', $s, $m ) ) {
+		if ( preg_match( '/^(term|setting|network_setting):(.+)$/', $s, $m ) ) {
 			return [ $m[1], $m[2] ];
 		}
 		return [ 'post', $s ];
+	}
+
+	/** Forget what mb_fields_for() and friends remembered (the source changed, or a settings page was registered late). */
+	public static function mb_reset(): void {
+		self::$mb = [];
+	}
+
+	/** Field types that only lay a settings page out: they hold no value. */
+	const MB_LAYOUT_TYPES = [ 'heading', 'divider', 'custom_html', 'button', 'tab', 'sidebar', 'background', 'backup' ];
+
+	/** Field ids of a settings page that are never listed or printed: they read like a secret, a login, an address a service is reached at or a bank detail. */
+	const MB_SECRET_ID = '/(pass|pwd|auth(?!or)|bearer|webhook|smtp|dsn|account|client_?id|endpoint|secret|token|salt|_key$|api_?key|(^|_)api(_|$)|private|licen[sc]e_?(key|code)|credential|iban|routing|ssn|card_?(number|no)|cvv)/i';
+
+	/** The only field types a {{meta.*}} token reads from a settings page: text-like values a visitor could read anyway. Lists, files, relations and groups never print from a settings page. */
+	const MB_TOKEN_TYPES = [ 'text', 'textarea', 'number', 'range', 'select', 'select_advanced', 'radio', 'button_group', 'url', 'email', 'tel', 'date', 'datetime', 'time', 'color', 'checkbox', 'switch', 'wysiwyg' ];
+
+	/**
+	 * The fields of one Meta Box settings page, as Meta Box registered them (the MB Settings Page extension files them under
+	 * the page's option name): id => { id, type, name, clone }. Layout-only fields, passwords and secret-looking ids are left
+	 * out, like in mb_fields_for(); groups stay (Business Info can read a list from one). Empty without Meta Box or before it
+	 * registers its fields (init priority 20).
+	 *
+	 * @return array<string,array{id:string,type:string,name:string,clone:bool}>
+	 */
+	public static function mb_setting_fields( string $option, bool $network = false ): array {
+		$by = self::mb_registry( ( $network ? 'network_setting:' : 'setting:' ) . $option );
+		$out = [];
+		foreach ( (array) $by as $id => $f ) {
+			$f = (array) $f;
+			$type = (string) ( $f['type'] ?? 'text' );
+			$id = (string) ( $f['id'] ?? $id );
+			if ( '' === $id || 'password' === $type || in_array( $type, self::MB_LAYOUT_TYPES, true ) || preg_match( self::MB_SECRET_ID, $id ) ) {
+				continue;
+			}
+			$out[ $id ] = [ 'id' => $id, 'type' => $type, 'name' => wp_strip_all_tags( (string) ( $f['name'] ?? $id ) ), 'clone' => ! empty( $f['clone'] ) ];
+		}
+		return $out;
+	}
+
+	/**
+	 * The option names of the settings pages that {{meta.*}} tokens may read: the page Business Info reads from, plus any a
+	 * site adds with the launch_builder_meta_token_pages filter (array $options, array $source: return option names). Other
+	 * settings pages are never read by a token: anyone who can write a post could otherwise print any field of any page.
+	 *
+	 * @return string[]
+	 */
+	public static function mb_token_options(): array {
+		if ( isset( self::$mb['token_options'] ) ) {
+			return self::$mb['token_options'];
+		}
+		$src = (array) get_option( Company::OPT_SRC, [] );
+		$out = isset( $src['option'] ) && is_string( $src['option'] ) && '' !== $src['option'] ? [ $src['option'] ] : [];
+		foreach ( (array) apply_filters( 'launch_builder_meta_token_pages', [], $src ) as $name ) {
+			if ( is_string( $name ) && '' !== $name ) {
+				$out[] = $name;
+			}
+		}
+		$out = array_values( array_unique( $out ) );
+		if ( did_action( 'init' ) ) {
+			self::$mb['token_options'] = $out;
+		}
+		return $out;
+	}
+
+	/**
+	 * The fields {{meta.id}} may print on a page that is not an entry, from the settings pages in mb_token_options(): id =>
+	 * { option, network, field }. The page Business Info reads from comes first, so its field wins when two pages use the
+	 * same id. Only text-like types (MB_TOKEN_TYPES) and ids that do not read like a secret (MB_SECRET_ID).
+	 *
+	 * @return array<string,array{option:string,network:bool,field:array}>
+	 */
+	public static function mb_setting_index(): array {
+		if ( ! self::mb_active() || ! did_action( 'init' ) ) {
+			return [];
+		}
+		if ( isset( self::$mb['settings_index'] ) ) {
+			return self::$mb['settings_index'];
+		}
+		$allowed = self::mb_token_options();
+		$pages = array_values( array_filter( Company::meta_box_pages(), static function ( $p ) use ( $allowed ) { return in_array( $p['option'], $allowed, true ); } ) );
+		usort( $pages, static function ( $a, $b ) use ( $allowed ) {
+			return (int) ( ( $allowed[0] ?? '' ) === $b['option'] ) - (int) ( ( $allowed[0] ?? '' ) === $a['option'] );
+		} );
+		$out = [];
+		foreach ( $pages as $p ) {
+			foreach ( self::mb_setting_fields( $p['option'], $p['network'] ) as $id => $f ) {
+				if ( ! isset( $out[ $id ] ) && in_array( $f['type'], self::MB_TOKEN_TYPES, true ) && ! $f['clone'] && ! empty( self::mb_fields_for( ( $p['network'] ? 'network_setting:' : 'setting:' ) . $p['option'] )[ $id ] ) ) { // The same allow-list as the other {{meta.*}} tokens.
+					$out[ $id ] = [ 'option' => $p['option'], 'network' => $p['network'], 'field' => $f ];
+				}
+			}
+		}
+		if ( ! doing_action( 'init' ) ) {
+			self::$mb['settings_index'] = $out;
+		}
+		return $out;
 	}
 
 	/**
@@ -2603,12 +2745,16 @@ final class Compat {
 	 * Meta Box in one place, for get-compat and the admin Compatibility card: whether it is on, its version, the allowed
 	 * token fields per type (id, type) and which Card details fields it owns.
 	 *
-	 * @return array{active:bool,version:string,fields:array<string,array>,owns_card_fields:array<string,bool>}
+	 * @return array{active:bool,version:string,fields:array<string,array>,owns_card_fields:array<string,bool>,settings_pages:array}
 	 */
 	public static function mb_status(): array {
-		$out = [ 'active' => self::mb_active(), 'version' => defined( 'RWMB_VER' ) ? (string) RWMB_VER : '', 'fields' => [], 'owns_card_fields' => [] ];
+		$out = [ 'active' => self::mb_active(), 'version' => defined( 'RWMB_VER' ) ? (string) RWMB_VER : '', 'fields' => [], 'owns_card_fields' => [], 'settings_pages' => [] ];
 		if ( ! $out['active'] ) {
 			return $out;
+		}
+		$src = (array) get_option( Company::OPT_SRC, [] );
+		foreach ( Company::meta_box_pages() as $p ) { // Settings pages (Meta Box AIO, MB Settings Page): where Business Info can read from.
+			$out['settings_pages'][] = [ 'title' => $p['title'], 'option' => $p['option'], 'fields' => count( self::mb_setting_fields( $p['option'], $p['network'] && is_multisite() ) ), 'business_info_source' => ( $src['option'] ?? '' ) === $p['option'] ];
 		}
 		foreach ( [ Entries::SERVICE, Entries::AREA, 'page' ] as $pt ) {
 			$out['fields'][ $pt ] = array_values( array_map( static function ( $f ) { return [ 'id' => $f['id'], 'type' => $f['type'], 'shape' => $f['shape'], 'contexts' => $f['contexts'] ]; }, self::mb_fields_for( $pt ) ) );
@@ -2913,7 +3059,7 @@ final class Compat {
 		if ( $all || 'meta_box' === $section ) {
 			$mb = self::mb_status();
 			if ( ! $mb['active'] ) {
-				unset( $mb['fields'], $mb['owns_card_fields'] ); // Same shape as before: just active and version.
+				unset( $mb['fields'], $mb['owns_card_fields'], $mb['settings_pages'] ); // Same shape as before: just active and version.
 			}
 			$out['meta_box'] = $mb;
 		}

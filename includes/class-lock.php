@@ -59,6 +59,11 @@ final class Lock {
 		return $done;
 	}
 
+	/** Did this request take the lock (and not release it)? Code that runs inside a caller's locked section can tell, instead of waiting for a lock its own caller holds. */
+	public static function mine( string $name ): bool {
+		return isset( self::$mine[ self::option( $name ) ] );
+	}
+
 	/** Is the lock held (and not expired)? */
 	public static function held( string $name ): bool {
 		global $wpdb;

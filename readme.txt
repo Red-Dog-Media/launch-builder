@@ -4,7 +4,7 @@ Tags: kadence, block patterns, site builder, local business, mcp
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.11.0
+Stable tag: 0.12.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -39,6 +39,40 @@ New versions are published as GitHub releases and arrive through the normal Word
 Launch Builder is made by [LaunchLocal Digital Marketing](https://golaunchlocal.com).
 
 == Changelog ==
+
+= 0.12.0 - 2026-10-19 =
+
+Preview release. This round tightens Business Info, finishes Branding and makes a site built from a brief come out right the first time.
+
+**Added**
+
+* Business Info: a Meta Box panel shows the settings pages and fields Meta Box registers, what each one fills and lets you use one as the source for a value (with undo). Typical field names are matched automatically.
+* Local avatars: sixteen more ready-made pictures with a picture grid on the profile screen and pictures from the Media Library, and the module is on for new sites and local-only by default.
+* Branding: dashboard colours, and a stored colours stylesheet that is checked before it prints.
+* Footers that are built from the site's own menus, service list and service areas, with the licence line and no demo links, and a menu-links block for them.
+* A neutral placeholder for pictures: once the site is public, a spot with no picture yet shows a soft tinted panel and not a stock icon. While the site is hidden from search engines the placeholder pictures stay, so you can see where photos go.
+* A brief can include a branding section: switch Branding on or off, set the dashboard colours, the "Website by" line on the sign-in screen, who built the site and the site owner role.
+* Reviews and offers written in a brief fill the testimonial and offers designs wherever they are placed, including the reviews page, and a page that shows them is rebuilt when they change. A review without a name, or an offer with only a title or only a text, is fine.
+* A category's summary in a brief is used as the category text, on the category and on its landing page.
+* The exit-intent popup takes its wording from the brief: the small line, the headline, the sentence and the button.
+* The build report and the go-live report each end with one list of what only a person can do (logo, site icon, real photos, form code, legal review, sample wording still on a page).
+* The site audit flags a placeholder form embed, a missing logo or site icon, invented review claims and default sample content.
+* Test suites for the first build of a whole site from a brief, Meta Box and the new Business Info screen.
+
+**Changed**
+
+* Business Info is down to 27 inputs, everyday fields first (Country and a second office address sit under More options). The name, tagline and site icon are read from WordPress, other profiles live in one box, and an update step moves old values over without losing icons or logos.
+* Branding no longer has the plugin-name and Kadence-names sections or the Kadence White Label bridge. Dashboard colours take their place: set them from your brand palette or a ready-made scheme.
+* inspect-page no longer checks internal links unless you ask for it (check_links), so a page check is quick.
+* Map designs follow Business Info: the map shows the address, the second office address or the service area it sits on.
+* The default header keeps everything on one row, and its phone number and button never wrap.
+* Contrast and spacing: light-on-dark buttons keep their contrast on hover and focus, testimonial cards read on the dark band, card grids stay centred and the review summary notes that its numbers are computed.
+* A site built from a brief is more honest and settles on the second run: sample pages are removed when untouched, a site that is already live (even one that went live earlier) is never asked to hide from search engines again, designs that would carry demo prices or quotes are left out with a reason, and re-running the same brief changes nothing.
+* The testimonial and service-area designs carry neutral sentences, so a new page never shows instructions meant for the editor.
+
+**Fixed**
+
+* A one-line address is no longer cut down to the city when only the city, state and ZIP boxes are filled.
 
 = 0.11.0 - 2026-10-13 =
 

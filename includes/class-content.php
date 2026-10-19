@@ -286,7 +286,7 @@ final class Content {
 			'location'         => [ 'type' => 'landing', 'sections' => [ 'hero-inner', 'service-body', 'services-more' ], 'note' => 'One page per city for local SEO: unique intro, the services offered there, why locals choose you, nearby areas as links.' ],
 			'service-area'     => [ 'type' => 'wide', 'sections' => [ 'areas-dynamic-map-list', 'areas-dynamic-cards' ], 'note' => 'Hub page: map plus a LIVE list of every Service Area entry.' ],
 			'contact'          => [ 'type' => 'landing', 'sections' => [ 'contact-embed', 'map-contact' ], 'note' => 'Details beside the Business Info form embed, then a map.' ],
-			'quote'            => [ 'type' => 'landing', 'sections' => [ 'hero-form' ], 'note' => 'Request-a-quote landing page built around the Business Info form embed.' ],
+			'quote'            => [ 'type' => 'landing', 'sections' => [ 'hero-form' ], 'shared' => [ 'cta-form' ], 'note' => 'Request-a-quote landing page built around the Business Info form embed. When the shared hero serves conversion pages the page holds the form band only (shared sections), so it has one H1.' ],
 			'faq'              => [ 'type' => 'wide', 'sections' => [ 'faq' ], 'note' => 'Accordion of questions.' ],
 			'reviews'          => [ 'type' => 'wide', 'sections' => [ 'reviewcards', 'testimonials' ], 'note' => 'Platform ratings and written testimonials.' ],
 			'thank-you'        => [ 'type' => 'text', 'sections' => [ 'text-steps', 'text-callout' ], 'note' => 'Shown after a form is sent: what happens next (numbered steps) and a call-out with the phone number. Role thanks: no breadcrumbs, noindex.' ],
@@ -294,7 +294,7 @@ final class Content {
 			'terms'            => [ 'type' => 'text', 'sections' => [ '{markdown}' ], 'note' => 'Terms of service. Pass markdown, or use get-legal-text (type terms) or the legal section of a brief. Role legal.' ],
 			'accessibility'    => [ 'type' => 'text', 'sections' => [ '{markdown}' ], 'note' => 'Accessibility statement. Pass markdown, or use get-legal-text (type accessibility) or the legal section of a brief. Role legal.' ],
 			'booking'          => [ 'type' => 'landing', 'sections' => [ 'contact-embed', 'checklist-cta' ], 'note' => 'Book an appointment: details beside the Business Info form embed, then the fast-response checklist. Role conversion: no breadcrumbs.' ],
-			'landing'          => [ 'type' => 'landing', 'sections' => [ 'hero-form', 'trust', 'checklist-cta', 'faq' ], 'note' => 'Campaign landing page: headline with the form, proof, checklist and FAQ. Role conversion: no breadcrumbs.' ],
+			'landing'          => [ 'type' => 'landing', 'sections' => [ 'hero-form', 'trust', 'checklist-cta', 'faq' ], 'shared' => [ 'cta-form', 'trust', 'checklist-cta', 'faq' ], 'note' => 'Campaign landing page: headline with the form, proof, checklist and FAQ. Role conversion: no breadcrumbs.' ],
 		];
 	}
 
@@ -302,10 +302,10 @@ final class Content {
 	private static function pattern_guide(): array {
 		return [
 			'heroes'   => 'hero-photo (home), hero-inner (service/category/location pages; the page title is the H1), hero-form (quote page), hero-split / hero / hero-dark, hero-slider + hero-splitcontent (Kadence Blocks Pro).',
-			'services' => 'services-cards-checklist (the home "what we do" band: 4 category cards with 5-item checklists), services-image-cards, services (3 icon cards), services-tiles, services-process, services-checklist, services-more (related services row), services-image-overlay (Pro).',
+			'services' => 'services-dynamic-categories (the home "what we do" band: one live card per service category with its services as a checklist), services-image-cards, services (3 icon cards), services-tiles, services-process, services-checklist, services-more (related services row), services-image-overlay (Pro).',
 			'content'  => 'service-body (the service page text area: pass markdown, beside the booking-form card), media-left / media-right / media-dark / media-alternating (text with images), text-sidebar-cta, text-two-column, divider-band (accent stripe between big sections), sidebar-contact / sidebar-services / sidebar-form (for the THEME sidebar via set-sidebar).',
 			'text'     => 'Bare text for "text" pages: text-section, text-checklist, text-two-lists, text-steps, text-callout. add-text with Markdown makes the same blocks.',
-			'areas'    => 'area-pills / area-cards / area-columns / area-map-list / area-dark-type. area-map-list works well in the bottom stack.',
+			'areas'    => 'areas-dynamic-pills / areas-dynamic-cards / areas-dynamic-map-list (live lists of every Service Area entry), area-columns / area-dark-type. areas-dynamic-map-list works well in the bottom stack.',
 			'maps'     => 'contact-embed (details + Business Info form), map-contact, map-floating, map-two-locations, map-dark-card, contact, contact-form.',
 			'cta'      => 'checklist-cta (fast-response checklist), offers-cards (promotions), cta, cta-brand-card, cta-phone, cta-form, cta-simple, cta-quote-modal (Pro). Buttons read Business Info.',
 			'footers'  => 'footer-licensing (offices, licences, links, booking: for trades), footer-dark / footer-light / footer-areas / footer-contact-bar / footer-centered / footer-cta-dark / footer-cta-light / footer-form / footer-minimal. Set with set-synced-pattern + set-global-area footer.',
@@ -332,9 +332,9 @@ final class Content {
 			'standard_site' => [
 				'entries' => 'Services and service areas are ENTRIES (post types), not hand-built pages: add-service / add-area (or blueprint entries) create them; each gets its own page from the service_template / area_template synced patterns, and every list (home category cards, category pages, related services, service-area pills and columns, the bottom stack) is a live query, so adding or removing an entry updates everything. Use markdown for each entry text. Categories: services have a category (a taxonomy) that groups them.',
 				'sitemap' => 'Home; About; a landing page per service category (lists its services live); the Service areas hub (lists areas live); Contact; FAQ. Each service and each city is an entry with its own page. Header menu: categories with their services as dropdowns, About, Service areas, Contact, then the phone and the booking button.',
-				'home' => 'hero-photo > divider-band > services-cards-checklist > divider-band > story (media-left) > trust > checklist-cta, then the global bottom stack.',
+				'home' => 'hero-photo > divider-band > services-dynamic-categories > divider-band > story (media-left) > trust > checklist-cta, then the global bottom stack.',
 				'service_page' => 'hero-inner (title is the H1, two buttons, rating) > service-body (Markdown text + booking-form card) > faq > services-more, then the global bottom stack. The text uses the standard H2 outline: Signs you need X / Understanding conditions in [region] / How X works (numbered) / Benefits of X in [city] (bold lead-ins) / Why choose [brand] for X (bold lead-ins) / FAQ.',
-				'bottom_stack' => 'One synced stack above the footer on every page: testimonials-carousel, offers-cards, area-map-list (service areas). Edit it once, every page updates.',
+				'bottom_stack' => 'One synced stack above the footer on every page: testimonials-carousel, offers-cards, areas-dynamic-map-list (service areas). Edit it once, every page updates.',
 				'header_footer' => 'header-utility (rating + promo bar) and footer-licensing (offices, licence numbers, links, booking button) are the standard pair for licensed trades.',
 			],
 			'page_types' => [

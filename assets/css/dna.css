@@ -79,6 +79,32 @@
 }
 :where(.lbd-hero) > :where(.kt-row-column-wrap, .wp-block-group__inner-container) { position: relative; z-index: 1; }
 
+/* Placeholder pictures. Style marks an image block, row or column that still holds one of the bundled placeholder pictures
+   (.lbd-ph) and swaps the grey box with its icon for an empty picture: a public page shows a soft brand tint, never the
+   icon (a site hidden from search engines keeps the placeholder, so the pictures still to add stay visible). The tint is
+   painted on the marked picture only (a real logo inside a marked row keeps its own background), and on a row or column
+   whose background picture was dropped (a column paints its background on its inner wrapper). */
+:where(.lbd-ph) {
+	--lb-ph-tint:
+		radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--global-palette1) 16%, transparent) 0%, transparent 62%),
+		linear-gradient(135deg, var(--global-palette7), var(--global-palette8));
+}
+:where(figure.lbd-ph, .wp-block-image.lbd-ph) img { background: var(--lb-ph-tint); }
+:where(.kb-row-layout-wrap.lbd-ph:not(.lbd-hero)) { background-image: var(--lb-ph-tint); }
+:where(.wp-block-kadence-column.lbd-ph:not(.lbd-hero)) > :where(.kt-inside-inner-col) { background-image: var(--lb-ph-tint); }
+/* A hero without a photo: a clean brand band (the overlay sits on top as always). */
+:where(.lbd-hero.lbd-ph) {
+	background-image: linear-gradient(135deg, var(--global-palette3) 0%, color-mix(in srgb, var(--global-palette3) 68%, var(--global-palette1)) 100%);
+}
+
+/* Testimonial cards: the text colour follows the card's own surface (see Style::ink_marks), not the band around it. */
+:where(.lbd-ink-dark) :is(.kt-testimonial-content, .kt-testimonial-title, .kt-testimonial-occupation) { color: var(--global-palette4); }
+:where(.lbd-ink-dark) .kt-testimonial-name { color: var(--global-palette3); }
+:where(.lbd-ink-light) :is(.kt-testimonial-content, .kt-testimonial-title, .kt-testimonial-occupation, .kt-testimonial-name) { color: var(--global-palette9); }
+
+/* Footer lines that print a Business Info value (licence numbers, a second address): an empty value leaves no empty line. */
+:where(.lb-foot-line):empty { display: none; }
+
 /* ---------------------------------------------------------------- boxes: card, tile, panel, coupon */
 
 :where(.lbd-card, .lbd-tile, .lbd-panel, .lbd-coupon) {
@@ -127,6 +153,9 @@
 	background-color: var(--lb-card-bg);
 	color: var(--lb-card-text);
 }
+/* A row made only of cards (or tiles): the boxes are as tall as the tallest one, whatever their content. */
+.kt-row-column-wrap:not(:has(> :not(.lbd-card))) > .lbd-card > .kt-inside-inner-col,
+.kt-row-column-wrap:not(:has(> :not(.lbd-tile))) > .lbd-tile > .kt-inside-inner-col { height: 100%; box-sizing: border-box; }
 /* A Kadence row used as a box (form box, call-to-action band inside the container): corners and shadow only, the row
    keeps its own background and padding. */
 :where(.wp-block-kadence-rowlayout.lbd-card) { border-radius: var(--lb-radius-card); box-shadow: var(--lb-shadow-card); overflow: clip; }
@@ -320,6 +349,16 @@
 	outline-offset: 3px;
 }
 
+/*
+ * Kadence prints a row's (and a column's) link colour as ".kb-row-layout-idX a", which weighs more than a theme button's own
+ * colour rule, so a theme button inside such a row took the link colour as its text: pale text on the pale on-dark button.
+ * Theme buttons keep the theme's button colours (the on-dark rules above redefine those variables per surface).
+ */
+:is(.kb-row-layout-wrap, .wp-block-kadence-column, .kt-row-column-wrap) a.kb-button.kb-btn-global-inherit { color: var(--global-palette-btn); }
+:is(.kb-row-layout-wrap, .wp-block-kadence-column, .kt-row-column-wrap) a.kb-button.kb-btn-global-inherit:is(:hover, :focus-visible) { color: var(--global-palette-btn-hover); }
+:is(.kb-row-layout-wrap, .wp-block-kadence-column, .kt-row-column-wrap) a.kb-button.kb-btn-global-secondary { color: var(--global-palette-btn-sec); }
+:is(.kb-row-layout-wrap, .wp-block-kadence-column, .kt-row-column-wrap) a.kb-button.kb-btn-global-secondary:is(:hover, :focus-visible) { color: var(--global-palette-btn-sec-hover); }
+
 /* Explicit on-dark variants for any button (Kadence button block: put the class on the button; core button: on the
    block). Normal, hover and focus all keep >= 3:1 against the dark surface tokens (see get-style contrast). */
 :is(.kb-button, .button, .wp-block-button__link, .wp-element-button).lbd-btn-light,
@@ -407,3 +446,7 @@
 @media (prefers-reduced-motion: reduce) {
 	:where(.lbd-card, .lbd-tile, .lbd-panel, .lbd-btn-light, .lbd-btn-ghost) { transition: none; }
 }
+
+/* Header row: the phone number and the button stay on one line; the row gives way before they do. */
+#masthead a[href^="tel:"].kb-advanced-heading-link,
+#masthead .kb-button { white-space: nowrap; }

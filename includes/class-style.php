@@ -188,9 +188,10 @@ final class Style {
 
 	/**
 	 * Presets: tokens over BASE, plus the chrome designs they bring (a partial chrome map, layered by Chrome::get()).
-	 * Every preset's default header is a MAIN-ROW-ONLY header (logo, menu, phone, call to action; owner review G.4):
-	 * header-basic (logo left, menu, phone + button right) or header-split (menu, centred logo, phone + button). Multi-row,
-	 * top-bar and utility headers stay available but are never a preset default. Conversion and thanks pages keep
+	 * Every preset's default header is header-main, a MAIN-ROW-ONLY header (logo, menu, phone, call to action) that keeps
+	 * one row from the desktop breakpoint up for six to eight top-level items and collapses to the mobile header below
+	 * it. header-split (menu, centred logo) wraps with a long menu and is never a preset default; multi-row, top-bar and
+	 * utility headers stay available but are never a preset default either. Conversion and thanks pages keep
 	 * header-conversion from the default map.
 	 */
 	const PRESET_DEFS = [
@@ -207,7 +208,7 @@ final class Style {
 				'hero'     => [ 'overlay_color' => 'palette3', 'overlay_strength' => 55 ],
 			],
 			'chrome' => [
-				'header' => [ 'default' => 'header-basic' ],
+				'header' => [ 'default' => 'header-main' ],
 				'footer' => [ 'default' => 'footer-dark', 'conversion' => 'footer-minimal' ],
 				'hero'   => self::ROLE_HEROES,
 			],
@@ -225,7 +226,7 @@ final class Style {
 				'hero'     => [ 'overlay_color' => 'palette3', 'overlay_strength' => 65 ],
 			],
 			'chrome' => [
-				'header' => [ 'default' => 'header-basic' ],
+				'header' => [ 'default' => 'header-main' ],
 				'footer' => [ 'default' => 'footer-licensing', 'conversion' => 'footer-minimal' ],
 				'hero'   => self::ROLE_HEROES,
 			],
@@ -243,7 +244,7 @@ final class Style {
 				'hero'     => [ 'overlay_color' => 'palette3', 'overlay_strength' => 60 ],
 			],
 			'chrome' => [
-				'header' => [ 'default' => 'header-basic' ],
+				'header' => [ 'default' => 'header-main' ],
 				'footer' => [ 'default' => 'footer-dark', 'conversion' => 'footer-minimal' ],
 				'hero'   => self::ROLE_HEROES,
 			],
@@ -261,7 +262,7 @@ final class Style {
 				'hero'     => [ 'overlay_color' => 'palette3', 'overlay_strength' => 45 ],
 			],
 			'chrome' => [
-				'header' => [ 'default' => 'header-split' ],
+				'header' => [ 'default' => 'header-main' ],
 				'footer' => [ 'default' => 'footer-light', 'conversion' => 'footer-minimal' ],
 				'hero'   => self::ROLE_HEROES,
 			],
@@ -310,6 +311,7 @@ final class Style {
 		'kadence/image'           => 'kb-image',
 		'kadence/advancedheading' => 'kt-adv-heading',
 		'kadence/singlebtn'       => 'kb-btn',
+		'kadence/testimonials'    => 'kt-blocks-testimonials-wrap',
 	];
 
 	/** Every theme mod the button tools write (one Ledger row covers them all). */
@@ -349,7 +351,11 @@ final class Style {
 				add_filter( 'kadence_blocks_' . substr( $block, 8 ) . '_render_block_attributes', [ __CLASS__, 'filter_attrs' ], 20, 2 );
 			}
 		}
+		foreach ( [ 'rowlayout', 'column' ] as $slug ) { // A placeholder background image becomes a clean band (see placeholder_attrs()).
+			add_filter( 'kadence_blocks_' . $slug . '_render_block_attributes', [ __CLASS__, 'placeholder_attrs' ], 21, 2 );
+		}
 		add_filter( 'render_block', [ __CLASS__, 'render_block' ], 9, 2 );
+		add_action( 'update_option_blog_public', [ Cache::class, 'purge_later' ] ); // Images still holding the placeholder change look when the site goes public.
 		add_filter( 'launch_builder_blueprint', [ __CLASS__, 'blueprint_filter' ], 10, 2 );
 		add_action( 'update_option_' . self::OPT, [ __CLASS__, 'changed' ] );
 		add_action( 'add_option_' . self::OPT, [ __CLASS__, 'changed' ] );
@@ -797,19 +803,22 @@ final class Style {
 		$v['--lb-star-color'] = self::css_color( (string) $t['star_color'] );
 
 		// Buttons on dark surfaces (see dna.css): light and ghost variants, the hover every theme button gets there.
+		// The colours are worked out from the palette so every state reads on every dark surface (on_dark()); the token only
+		// picks the look (a light button or a ghost outline), never whether the text can be read.
 		$ghost = 'ghost' === $t['buttons']['on_dark'];
-		$v['--lb-on-dark-light-bg'] = 'var(--global-palette9)';
-		$v['--lb-on-dark-light-bg-hover'] = 'var(--global-palette7)';
-		$v['--lb-on-dark-light-fg'] = 'var(--global-palette3)';
-		$v['--lb-on-dark-ghost-fg'] = 'var(--global-palette9)';
-		$v['--lb-on-dark-ghost-line'] = 'color-mix(in srgb, var(--global-palette9) 78%, transparent)';
-		$v['--lb-on-dark-hover-bg'] = 'var(--global-palette9)';
-		$v['--lb-on-dark-hover-fg'] = 'var(--global-palette3)';
-		$v['--lb-on-dark-ring'] = 'var(--global-palette9)';
-		$v['--lb-on-dark-bg'] = $ghost ? 'transparent' : 'var(--global-palette9)';
-		$v['--lb-on-dark-fg'] = $ghost ? 'var(--global-palette9)' : 'var(--global-palette3)';
-		$v['--lb-on-dark-swap-hover-bg'] = $ghost ? 'var(--global-palette9)' : 'var(--global-palette7)';
-		$v['--lb-on-dark-swap-hover-fg'] = 'var(--global-palette3)';
+		$od = self::on_dark( $ctx );
+		$v['--lb-on-dark-light-bg'] = self::css_color( $od['face'] );
+		$v['--lb-on-dark-light-bg-hover'] = self::css_color( $od['face_hover'] );
+		$v['--lb-on-dark-light-fg'] = self::css_color( $od['text'] );
+		$v['--lb-on-dark-ghost-fg'] = self::css_color( $od['ghost'] );
+		$v['--lb-on-dark-ghost-line'] = 'color-mix(in srgb, ' . self::css_color( $od['ghost'] ) . ' 78%, transparent)';
+		$v['--lb-on-dark-hover-bg'] = self::css_color( $od['face'] );
+		$v['--lb-on-dark-hover-fg'] = self::css_color( $od['text'] );
+		$v['--lb-on-dark-ring'] = self::css_color( $od['ghost'] );
+		$v['--lb-on-dark-bg'] = $ghost ? 'transparent' : self::css_color( $od['face'] );
+		$v['--lb-on-dark-fg'] = $ghost ? self::css_color( $od['ghost'] ) : self::css_color( $od['text'] );
+		$v['--lb-on-dark-swap-hover-bg'] = $ghost ? self::css_color( $od['face'] ) : self::css_color( $od['face_hover'] );
+		$v['--lb-on-dark-swap-hover-fg'] = self::css_color( $od['text'] );
 		$v['--lb-on-dark-swap-edge'] = $ghost ? '2px' : '0px';
 		// The theme's own button colours, kept for light boxes nested in dark sections (resolved here, at :root).
 		foreach ( [ 'bg' => 'btn-bg', 'fg' => 'btn', 'bg-hover' => 'btn-bg-hover', 'fg-hover' => 'btn-hover', 'sec-bg' => 'btn-sec-bg', 'sec-fg' => 'btn-sec', 'sec-bg-hover' => 'btn-sec-bg-hover', 'sec-fg-hover' => 'btn-sec-hover' ] as $mine => $theirs ) {
@@ -973,6 +982,59 @@ final class Style {
 		return $ctx;
 	}
 
+	/**
+	 * The colours buttons wear on dark surfaces, chosen from the palette so every state (normal, hover, focus) reads on
+	 * EVERY dark surface at once: the dark band, the brand band, the hero under its overlay and the sticky bar.
+	 *   face       the light button's fill: the lightest palette colour that stands out (3:1, WCAG 1.4.11) on every dark surface
+	 *   text       its text: the first of palette3, palette4, black, white that reaches 4.5:1 on the face
+	 *   face_hover the hover fill: palette7 when it still stands out on the surfaces and keeps the text at 4.5:1, else the face
+	 *   ghost      the outline variant's text and edge colour (>= 4.5:1 on every dark surface)
+	 *
+	 * @param array $ctx surface_context().
+	 * @return array{face:string,text:string,face_hover:string,ghost:string,surfaces:array}
+	 */
+	public static function on_dark( array $ctx ): array {
+		$surfaces = [];
+		foreach ( [ 'dark', 'brand', 'hero' ] as $s ) {
+			if ( ! empty( $ctx['dark_surface'][ $s ] ) ) {
+				$surfaces[ $s ] = (string) $ctx['surfaces'][ $s ];
+			}
+		}
+		if ( ! $surfaces ) { // No dark surface token: blocks marked on-dark by their own colour still need the variables.
+			$surfaces['dark'] = (string) $ctx['surfaces']['dark'];
+		}
+		$worst = static function ( string $c ) use ( $surfaces ): float {
+			$m = 99.0;
+			foreach ( $surfaces as $sc ) {
+				$m = min( $m, self::contrast( $c, $sc ) );
+			}
+			return $m;
+		};
+		$face = 'palette9';
+		foreach ( [ 'palette9', 'palette8', 'palette7', '#FFFFFF' ] as $c ) {
+			if ( $worst( $c ) >= self::MIN_UI ) {
+				$face = $c;
+				break;
+			}
+		}
+		$text = self::best_on( $face, [ 'palette3', 'palette4', '#000000', '#FFFFFF' ] );
+		$hover = $face;
+		foreach ( [ 'palette7', 'palette8' ] as $c ) {
+			if ( $worst( $c ) >= self::MIN_UI && self::contrast( $text, $c ) >= self::MIN_TEXT ) {
+				$hover = $c;
+				break;
+			}
+		}
+		$ghost = 'palette9';
+		foreach ( [ 'palette9', '#FFFFFF' ] as $c ) {
+			if ( $worst( $c ) >= self::MIN_TEXT ) {
+				$ghost = $c;
+				break;
+			}
+		}
+		return [ 'face' => $face, 'text' => $text, 'face_hover' => $hover, 'ghost' => $ghost, 'surfaces' => $surfaces ];
+	}
+
 	/** The theme buttons' colours as stored (palette slugs or colours; '' = Kadence default), normal and hover. */
 	public static function theme_buttons(): array {
 		if ( null !== self::$buttons ) {
@@ -1042,19 +1104,31 @@ final class Style {
 				}
 			}
 		}
-		// The on-dark variants against every dark surface (they are what dark surfaces show).
+		// The on-dark variants (the colours on_dark() works out) against every dark surface, in every state: the face or the
+		// ghost edge against the surface (normal), the hover face and the focus ring, and the text on each face.
 		$ghost = 'ghost' === $t['buttons']['on_dark'];
+		$od = self::on_dark( $ctx );
 		foreach ( [ 'dark', 'brand', 'hero' ] as $s ) {
 			if ( ! $ctx['dark_surface'][ $s ] ) {
 				continue;
 			}
 			$sc = (string) $ctx['surfaces'][ $s ];
-			$add( [ 'what' => 'on-dark button', 'state' => 'hover/focus', 'color' => 'palette9', 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( 'palette9', $sc ), 'min' => self::MIN_UI ] );
-			$add( [ 'what' => 'on-dark button', 'state' => 'normal', 'color' => $ghost ? 'palette9 (edge)' : 'palette9', 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( 'palette9', $sc ), 'min' => self::MIN_UI ] );
-			$add( [ 'what' => 'light button', 'state' => 'hover', 'color' => 'palette7', 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( 'palette7', $sc ), 'min' => self::MIN_UI ] );
+			$add( [ 'what' => 'on-dark button', 'state' => 'hover/focus', 'color' => $od['face'], 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( $od['face'], $sc ), 'min' => self::MIN_UI ] );
+			$add( [ 'what' => 'on-dark button', 'state' => 'focus ring', 'color' => $od['ghost'], 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( $od['ghost'], $sc ), 'min' => self::MIN_UI ] );
+			$add( [ 'what' => 'on-dark button', 'state' => 'normal', 'color' => $ghost ? $od['ghost'] . ' (edge)' : $od['face'], 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( $ghost ? $od['ghost'] : $od['face'], $sc ), 'min' => self::MIN_UI ] );
+			if ( $ghost ) {
+				$add( [ 'what' => 'on-dark button text', 'state' => 'normal', 'color' => $od['ghost'], 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( $od['ghost'], $sc ), 'min' => self::MIN_TEXT ] );
+			}
+			$add( [ 'what' => 'light button', 'state' => 'hover', 'color' => $od['face_hover'], 'surface' => $s, 'surface_color' => $sc, 'ratio' => self::contrast( $od['face_hover'], $sc ), 'min' => self::MIN_UI ] );
 		}
-		$add( [ 'what' => 'on-dark button text', 'state' => 'hover', 'color' => 'palette3', 'surface' => 'button', 'surface_color' => 'palette9', 'ratio' => self::contrast( 'palette3', 'palette9' ), 'min' => self::MIN_TEXT ] );
-		$add( [ 'what' => 'light button text', 'state' => 'hover', 'color' => 'palette3', 'surface' => 'button', 'surface_color' => 'palette7', 'ratio' => self::contrast( 'palette3', 'palette7' ), 'min' => self::MIN_TEXT ] );
+		if ( ! $ghost ) {
+			$add( [ 'what' => 'on-dark button text', 'state' => 'normal', 'color' => $od['text'], 'surface' => 'button', 'surface_color' => $od['face'], 'ratio' => self::contrast( $od['text'], $od['face'] ), 'min' => self::MIN_TEXT ] );
+		}
+		$add( [ 'what' => 'on-dark button text', 'state' => 'hover', 'color' => $od['text'], 'surface' => 'button', 'surface_color' => $od['face'], 'ratio' => self::contrast( $od['text'], $od['face'] ), 'min' => self::MIN_TEXT ] );
+		$add( [ 'what' => 'light button text', 'state' => 'hover', 'color' => $od['text'], 'surface' => 'button', 'surface_color' => $od['face_hover'], 'ratio' => self::contrast( $od['text'], $od['face_hover'] ), 'min' => self::MIN_TEXT ] );
+		// The light buttons the patterns carry (palette9 fill, palette3 text, palette7 hover) are what visitors see.
+		$add( [ 'what' => 'light button text', 'state' => 'normal (pattern colours)', 'color' => 'palette3', 'surface' => 'button', 'surface_color' => 'palette9', 'ratio' => self::contrast( 'palette3', 'palette9' ), 'min' => self::MIN_TEXT ] );
+		$add( [ 'what' => 'light button text', 'state' => 'hover (pattern colours)', 'color' => 'palette3', 'surface' => 'button', 'surface_color' => 'palette7', 'ratio' => self::contrast( 'palette3', 'palette7' ), 'min' => self::MIN_TEXT ] );
 		// Body text and headings on every surface.
 		foreach ( [ 'tint', 'dark', 'brand', 'hero' ] as $s ) {
 			$sc = (string) $ctx['surfaces'][ $s ];
@@ -1198,16 +1272,22 @@ final class Style {
 		$radius = 'pill' === $variant ? 'pill' : ( 'sharp' === $variant ? 0 : (int) $t['radius']['button'] );
 		$shadow = [ 'none' => 'none', 'subtle' => 'soft', 'soft' => 'soft', 'lift' => 'lift', 'hard' => 'hard', 'hard-lg' => 'hard' ][ $t['shadow']['button'] ] ?? 'none';
 		$common = [ 'radius' => $radius, 'padding' => $b['padding'], 'weight' => (int) $b['weight'], 'uppercase' => (bool) $b['uppercase'] || 'sharp' === $variant, 'shadow' => 'sharp' === $variant ? 'none' : $shadow ];
-		$primary = [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => 'palette9', 'hover_color' => 'palette9', 'border_width' => 0 ];
+		// Text on a button is the palette colour that reads on its fill (4.5:1), so a light brand colour (a bright yellow)
+		// never gets white text; the outline colour is the brand colour that reads on the page.
+		$on = static function ( string $bg ): string {
+			return self::best_on( $bg, [ 'palette9', 'palette3' ] );
+		};
+		$line = self::best_on( 'palette9', [ 'palette1', 'palette2', 'palette3' ] );
+		$primary = [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => $on( 'palette1' ), 'hover_color' => $on( 'palette3' ), 'border_width' => 0 ];
 		if ( 'outline' === $variant ) {
-			$primary = [ 'background' => 'transparent', 'hover_background' => 'palette1', 'color' => 'palette1', 'hover_color' => 'palette9', 'border_width' => 2, 'border_color' => 'palette1' ];
+			$primary = [ 'background' => 'transparent', 'hover_background' => $line, 'color' => $line, 'hover_color' => $on( $line ), 'border_width' => 2, 'border_color' => $line ];
 		} elseif ( 'soft' === $variant ) {
-			$primary = [ 'background' => 'palette7', 'hover_background' => 'palette1', 'color' => 'palette3', 'hover_color' => 'palette9', 'border_width' => 0 ];
+			$primary = [ 'background' => 'palette7', 'hover_background' => 'palette1', 'color' => 'palette3', 'hover_color' => $on( 'palette1' ), 'border_width' => 0 ];
 		}
 		return [
 			'primary'   => $common + $primary,
-			'secondary' => $common + [ 'background' => 'palette3', 'hover_background' => 'palette1', 'color' => 'palette9', 'hover_color' => 'palette9', 'border_width' => 0 ],
-			'outline'   => $common + [ 'color' => 'palette1', 'hover_color' => 'palette9', 'border_color' => 'palette1', 'border_width' => 2, 'background' => 'transparent', 'hover_background' => 'palette1' ],
+			'secondary' => $common + [ 'background' => 'palette3', 'hover_background' => 'palette1', 'color' => $on( 'palette3' ), 'hover_color' => $on( 'palette1' ), 'border_width' => 0 ],
+			'outline'   => $common + [ 'color' => $line, 'hover_color' => $on( $line ), 'border_color' => $line, 'border_width' => 2, 'background' => 'transparent', 'hover_background' => $line ],
 		];
 	}
 
@@ -1352,6 +1432,7 @@ final class Style {
 			return $html;
 		}
 		if ( 'core/image' === $name ) {
+			$html = self::neutral_images( $html );
 			return self::is_dna( $cls ) ? self::strip_img_radius( $html, [] ) : $html;
 		}
 		$add = [];
@@ -1361,6 +1442,12 @@ final class Style {
 		}
 		if ( 'kadence/rowlayout' === $name || 'kadence/column' === $name ) {
 			$add = array_merge( $add, self::surface_marks( $name, $attrs ) );
+			if ( self::placeholder_bg( $name, $attrs ) && ! self::site_hidden() ) { // Like the images: a site still hidden from search engines keeps its placeholder.
+				$add[] = 'lbd-ph';
+			}
+		}
+		if ( 'kadence/testimonials' === $name ) {
+			$add = array_merge( $add, self::ink_marks( $attrs ) );
 		}
 		if ( 'kadence/advancedheading' === $name && self::has_class( $cls, 'lbd-eyebrow' ) && in_array( $attrs['align'] ?? '', [ 'center', 'right' ], true ) ) {
 			$add[] = 'lbd-eyebrow--' . $attrs['align'];
@@ -1387,6 +1474,95 @@ final class Style {
 			}
 		}
 		return $images ? self::strip_img_radius( $html, self::LEGACY_IMG_RADII ) : $html;
+	}
+
+	/**
+	 * Testimonial cards read against their own surface, not the band they sit in: a light card in a dark band inherits the
+	 * band's white text and shows white on white. When nobody chose the text colours, a light card (palette9 and the like)
+	 * gets lbd-ink-dark and a dark card lbd-ink-light (dna.css sets the colours).
+	 */
+	private static function ink_marks( array $attrs ): array {
+		foreach ( [ 'titleFont', 'contentFont', 'nameFont', 'occupationFont' ] as $k ) {
+			if ( ! empty( $attrs[ $k ][0]['color'] ) ) {
+				return [];
+			}
+		}
+		$bg = self::hex( (string) ( $attrs['containerBackground'] ?? '#f2f2f2' ) ); // Kadence's own default card colour.
+		if ( ! $bg ) {
+			return [];
+		}
+		$l = self::luminance( $bg );
+		return $l > 0.5 ? [ 'lbd-ink-dark' ] : ( $l < 0.18 ? [ 'lbd-ink-light' ] : [] );
+	}
+
+	/* ================================================================== placeholder images */
+
+	/** Is this URL one of the bundled placeholder pictures (assets/placeholders/*.svg)? */
+	public static function is_placeholder( $url ): bool {
+		return is_string( $url ) && false !== strpos( $url, 'assets/placeholders/' ) && '.svg' === substr( strtok( $url, '?' ), -4 );
+	}
+
+	/** Does a row or column still hold the placeholder as its background image? */
+	private static function placeholder_bg( string $name, array $attrs ): bool {
+		return self::is_placeholder( 'kadence/rowlayout' === $name ? ( $attrs['bgImg'] ?? '' ) : ( $attrs['backgroundImg'][0]['bgImg'] ?? '' ) );
+	}
+
+	/** Is the site hidden from search engines (still being built, so the placeholder pictures stay as they are)? */
+	private static function site_hidden(): bool {
+		return '0' === (string) get_option( 'blog_public', '1' );
+	}
+
+	/**
+	 * Kadence's attribute filter for rows and columns (both CSS passes): on a public site a background that is still the
+	 * placeholder picture is dropped, so the band shows its colour and the .lbd-ph tint (a hero never shows the picture's icon,
+	 * even through its overlay). While the site is hidden from search engines the placeholder stays, as it does for images.
+	 * Blocks with lbd-keep are left alone.
+	 *
+	 * @param array $attrs block attributes.
+	 * @return array
+	 */
+	public static function placeholder_attrs( $attrs ) {
+		if ( ! is_array( $attrs ) || self::site_hidden() || self::has_class( (string) ( $attrs['className'] ?? '' ), 'lbd-keep' ) ) {
+			return $attrs;
+		}
+		if ( isset( $attrs['bgImg'] ) && self::is_placeholder( $attrs['bgImg'] ) ) {
+			$attrs['bgImg'] = '';
+			$attrs['bgImgID'] = '';
+		}
+		if ( isset( $attrs['backgroundImg'][0]['bgImg'] ) && self::is_placeholder( $attrs['backgroundImg'][0]['bgImg'] ) ) {
+			$attrs['backgroundImg'][0]['bgImg'] = '';
+			$attrs['backgroundImg'][0]['bgImgID'] = '';
+		}
+		return $attrs;
+	}
+
+	/**
+	 * core/image blocks that still hold the placeholder picture: on a public site the picture (a grey box with an icon) is
+	 * swapped for an empty one and the figure is marked lbd-ph, which paints a soft brand tint (dna.css). While the site is
+	 * hidden from search engines the placeholder stays, so editors can see where a photo goes.
+	 */
+	private static function neutral_images( string $html ): string {
+		if ( false === strpos( $html, 'assets/placeholders/' ) || self::site_hidden() ) {
+			return $html;
+		}
+		$p = new \WP_HTML_Tag_Processor( $html );
+		$p->next_tag( 'figure' );
+		$p->set_bookmark( 'lb-fig' );
+		$hit = false;
+		while ( $p->next_tag( 'img' ) ) {
+			if ( self::is_placeholder( (string) $p->get_attribute( 'src' ) ) ) {
+				$p->set_attribute( 'src', LB_URL . 'assets/placeholders/neutral.svg' );
+				$p->remove_attribute( 'srcset' );
+				$p->remove_attribute( 'sizes' );
+				$hit = true;
+			}
+		}
+		if ( ! $hit ) {
+			return $html;
+		}
+		$p->seek( 'lb-fig' );
+		$p->add_class( 'lbd-ph' );
+		return $p->get_updated_html();
 	}
 
 	/**
@@ -1429,12 +1605,12 @@ final class Style {
 		$bg = '';
 		if ( 'kadence/rowlayout' === $name ) {
 			$bg = (string) ( $attrs['bgColor'] ?? '' );
-			$img = ! empty( $attrs['bgImg'] ) || ! empty( $attrs['overlayBgImg'] );
+			$img = ( ! empty( $attrs['bgImg'] ) && ! self::is_placeholder( $attrs['bgImg'] ) ) || ! empty( $attrs['overlayBgImg'] );
 			$ov = (string) ( $attrs['overlay'] ?? '' );
 			$op = isset( $attrs['overlayOpacity'] ) && is_numeric( $attrs['overlayOpacity'] ) ? (float) $attrs['overlayOpacity'] : 30;
 		} else {
 			$bg = (string) ( $attrs['background'] ?? '' );
-			$img = ! empty( $attrs['backgroundImg'][0]['bgImg'] );
+			$img = ! empty( $attrs['backgroundImg'][0]['bgImg'] ) && ! self::is_placeholder( $attrs['backgroundImg'][0]['bgImg'] );
 			$ov = (string) ( $attrs['overlay'] ?? '' );
 			$op = isset( $attrs['overlayOpacity'] ) && is_numeric( $attrs['overlayOpacity'] ) ? (float) $attrs['overlayOpacity'] : 0.3;
 		}

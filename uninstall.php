@@ -35,11 +35,13 @@ $lb_options = [
 	// Login links (plus one _lb_login_link_* usermeta row per link, removed below).
 	'launch_builder_login_links',
 	'launch_builder_login_links_enabled',
-	// Branding settings and the Kadence White Label bridge bookkeeping. That plugin's own option is never touched.
+	// Branding settings and the compiled dashboard colours. Bookkeeping that older versions kept for the Kadence White
+	// Label bridge goes too; that plugin's own option is never touched.
 	'launch_builder_branding',
+	'launch_builder_branding_colors_css',
 	'launch_builder_branding_kwl',
 ];
-$lb_keep = [ 'launch_builder_company', 'launch_builder_company_source' ];
+$lb_keep = [ 'launch_builder_company', 'launch_builder_company_source', 'launch_builder_company_pins' ];
 $lb_keep[] = 'launch_builder_permalinks'; // URL patterns stay with the URL tables and meta.
 if ( get_option( 'launch_builder_remove_all_data' ) ) {
 	$lb_options = array_merge( $lb_options, $lb_keep );

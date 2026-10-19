@@ -18,7 +18,7 @@ final class Dashboard {
 		'permalinks'  => [ 'seo', 'link', 'launch-builder-urls' ],
 		'duplicate'   => [ 'content', 'copy', 'launch-builder-duplicate' ],
 		'media'       => [ 'media', 'image', '' ],
-		'avatars'     => [ 'access', 'user', '' ],
+		'avatars'     => [ 'access', 'user', 'launch-builder-avatars' ],
 		'login-links' => [ 'access', 'key', '' ],
 		'branding'    => [ 'admin', 'badge', 'launch-builder-branding' ],
 	];
@@ -27,6 +27,10 @@ final class Dashboard {
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'assets' ] );
 		add_action( 'wp_ajax_lb_module_toggle', [ __CLASS__, 'ajax_toggle' ] );
 		add_action( 'wp_dashboard_setup', [ __CLASS__, 'widget_setup' ] );
+		Migrate::register_step( Avatars::STEP_KEEP, [ Avatars::class, 'keep_gravatar_step' ] ); // Registered here so it runs whether or not Local avatars is on: a site that had it on keeps its Gravatar behaviour.
+		if ( is_admin() ) {
+			add_filter( 'user_profile_picture_description', [ Avatars::class, 'off_hint' ], 20 ); // Says where the switch is while Local avatars is off.
+		}
 	}
 
 	/* ------------------------------------------------------------------ assets */
@@ -183,7 +187,7 @@ final class Dashboard {
 	 */
 	public static function stations(): array {
 		$res = Company::resolve();
-		$essentials = [ 'name', 'phone', 'email', 'address', 'hours', 'cta_label' ];
+		$essentials = Company::essentials();
 		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return isset( $res[ $k ]['from'] ) && 'default' !== $res[ $k ]['from']; } ) );
 		$tok = get_option( 'launch_builder_mcp_token' );
 		$designed = Chrome::applied( 'hero' ) || Chrome::applied( 'footer' ) || (bool) get_theme_mod( 'blocks_header' );
@@ -207,7 +211,7 @@ final class Dashboard {
 		}
 
 		return [
-			[ 'id' => 'business', 'icon' => 'business', 'name' => __( 'Business info', 'launch-builder' ), 'detail' => sprintf( /* translators: %d: how many of the six essentials are set */ __( '%d of 6 essentials set', 'launch-builder' ), $set ), 'state' => 6 === $set ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-business' ), 'cta' => __( 'Add business details', 'launch-builder' ) ],
+			[ 'id' => 'business', 'icon' => 'business', 'name' => __( 'Business info', 'launch-builder' ), 'detail' => sprintf( /* translators: 1: how many essentials are set, 2: how many there are */ __( '%1$d of %2$d essentials set', 'launch-builder' ), $set, count( $essentials ) ), 'state' => count( $essentials ) === $set ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-business' ), 'cta' => __( 'Add business details', 'launch-builder' ) ],
 			[ 'id' => 'connect', 'icon' => 'connect', 'name' => __( 'AI assistant', 'launch-builder' ), 'detail' => is_array( $tok ) ? sprintf( /* translators: %s: last four characters of the token */ __( 'Token ending %s', 'launch-builder' ), (string) ( $tok['last4'] ?? '' ) ) : __( 'Not connected yet', 'launch-builder' ), 'state' => is_array( $tok ) ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-connect' ), 'cta' => __( 'Connect an assistant', 'launch-builder' ) ],
 			[ 'id' => 'design', 'icon' => 'layout', 'name' => __( 'Design', 'launch-builder' ), 'detail' => $designed ? __( 'Shared designs in place', 'launch-builder' ) : __( 'Nothing applied yet', 'launch-builder' ), 'state' => $designed ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-patterns' ), 'cta' => __( 'Preview the designs', 'launch-builder' ) ],
 			[ 'id' => 'content', 'icon' => 'content', 'name' => __( 'Content', 'launch-builder' ), 'detail' => sprintf( /* translators: 1: pages, 2: services, 3: areas */ __( '%1$d pages, %2$d services, %3$d areas', 'launch-builder' ), $pages, $services, $areas ), 'state' => $built ? 'ok' : 'todo', 'url' => admin_url( 'edit.php?post_type=page' ), 'cta' => __( 'Open the pages', 'launch-builder' ) ],
@@ -238,7 +242,7 @@ final class Dashboard {
 		if ( $next ) {
 			$out .= '<div class="lb-next"><div><b>' . esc_html( sprintf( /* translators: %s: station name */ __( 'Next: %s', 'launch-builder' ), $next['name'] ) ) . '</b><span>' . esc_html( $next['detail'] ) . '</span></div>' . self::button( $next['cta'], $next['url'], 'primary', 'arrow' ) . '</div>';
 		} else {
-			$out .= '<div class="lb-next lb-next--done"><div><b>' . esc_html__( 'Everything is in place', 'launch-builder' ) . '</b><span>' . esc_html__( 'The business facts, the assistant, the designs, the content and the check are all done, and the site is visible.', 'launch-builder' ) . '</span></div></div>';
+			$out .= '<div class="lb-next lb-next--done"><div><b>' . esc_html__( 'Everything is in place', 'launch-builder' ) . '</b><span>' . esc_html__( 'All six steps are done and the site is live.', 'launch-builder' ) . '</span></div></div>';
 		}
 		return $compact ? $out : $out . '</section>';
 	}
@@ -256,7 +260,7 @@ final class Dashboard {
 		$out .= '<p class="lb-mod__desc">' . esc_html( $desc ) . '</p>';
 		$out .= '<div class="lb-mod__foot"><span class="lb-chip lb-chip--' . ( $on ? 'on' : 'plain' ) . '" data-lb-state>' . ( $on ? esc_html__( 'On', 'launch-builder' ) : esc_html__( 'Off', 'launch-builder' ) ) . '</span>';
 		if ( ! $m['default'] ) {
-			$out .= '<span class="lb-mod__meta">' . esc_html__( 'Off by default', 'launch-builder' ) . '</span>';
+			$out .= '<span class="lb-mod__meta">' . esc_html( ! empty( $m['new_install'] ) ? __( 'On for new sites', 'launch-builder' ) : __( 'Off by default', 'launch-builder' ) ) . '</span>';
 		}
 		if ( '' !== $meta['url'] ) {
 			$out .= '<a class="lb-link" href="' . esc_url( $meta['url'] ) . '">' . esc_html__( 'Open settings', 'launch-builder' ) . self::icon( 'arrow' ) . '</a>';
@@ -340,7 +344,7 @@ final class Dashboard {
 			$out .= '<div class="lb-kv">' . self::icon( 'connect' ) . '<div><b>' . esc_html( sprintf( /* translators: %s: last four characters of the token */ __( 'Token ending %s', 'launch-builder' ), (string) ( $tok['last4'] ?? '' ) ) ) . '</b><span>' . esc_html( $exp ) . ( $last ? ' · ' . esc_html( sprintf( /* translators: %s: how long ago */ __( 'last change %s ago', 'launch-builder' ), human_time_diff( $last ) ) ) : '' ) . '</span></div></div>';
 			$out .= self::button( __( 'Manage the connection', 'launch-builder' ), Admin::url( 'launch-builder-connect' ) );
 		} else {
-			$out .= '<p class="lb-note" style="margin:0 0 12px">' . esc_html__( 'Connect an AI assistant in three steps. It can then build and update the site from the premade designs.', 'launch-builder' ) . '</p>' . self::button( __( 'Connect an assistant', 'launch-builder' ), Admin::url( 'launch-builder-connect' ), 'primary', 'arrow' );
+			$out .= '<p class="lb-note" style="margin:0 0 12px">' . esc_html__( 'Connect an assistant in three steps. It can then build and update your site.', 'launch-builder' ) . '</p>' . self::button( __( 'Connect an assistant', 'launch-builder' ), Admin::url( 'launch-builder-connect' ), 'primary', 'arrow' );
 		}
 		return $out . '</section>';
 	}
@@ -349,7 +353,7 @@ final class Dashboard {
 		$a = Audit::results();
 		$out = '<section class="lb-panel"><div class="lb-panel__head"><h2>' . esc_html__( 'Site check', 'launch-builder' ) . '</h2></div>';
 		if ( ! $a ) {
-			$out .= '<p class="lb-note" style="margin:0 0 12px">' . esc_html__( 'The check reads every page and setting the way a visitor and a search engine would, and lists what to fix.', 'launch-builder' ) . '</p>' . self::button( __( 'Run the check', 'launch-builder' ), Admin::url( 'launch-builder-health' ), 'primary', 'shield' );
+			$out .= '<p class="lb-note" style="margin:0 0 12px">' . esc_html__( 'The check looks at every page and setting like a visitor would, and lists what to fix.', 'launch-builder' ) . '</p>' . self::button( __( 'Run the check', 'launch-builder' ), Admin::url( 'launch-builder-health' ), 'primary', 'shield' );
 			return $out . '</section>';
 		}
 		$e = (int) ( $a['totals']['error'] ?? 0 );
@@ -398,10 +402,21 @@ final class Dashboard {
 			$line = sprintf( __( 'Version %1$s. Fields tokens can read: %2$d on services, %3$d on service areas, %4$d on pages.', 'launch-builder' ), '' !== $mb['version'] ? $mb['version'] : '–', $n( Entries::SERVICE ), $n( Entries::AREA ), $n( 'page' ) );
 			/* translators: %s: field names, for example "Icon, Services offered" */
 			$line .= ' ' . ( $taken ? sprintf( __( 'Meta Box edits %s.', 'launch-builder' ), implode( ', ', $taken ) ) : __( 'Card details still edits the icon and services.', 'launch-builder' ) );
+			$pages = (array) ( $mb['settings_pages'] ?? [] );
+			if ( $pages ) {
+				$bits = array_map( static function ( $p ) {
+					/* translators: 1: settings page name, 2: option name, 3: number of fields */
+					return sprintf( __( '%1$s (%2$s, %3$d fields)', 'launch-builder' ), $p['title'], $p['option'], $p['fields'] );
+				}, $pages );
+				/* translators: %s: settings pages, for example "Company Info (company_information, 9 fields)" */
+				$line .= ' ' . sprintf( __( 'Settings pages found: %s.', 'launch-builder' ), implode( '; ', $bits ) );
+			} else {
+				$line .= ' ' . __( 'No settings pages found.', 'launch-builder' );
+			}
 		} else {
 			$line = __( 'Not active. {{meta.field}} tokens print their fallback or nothing until it is on.', 'launch-builder' );
 		}
-		$out .= '<div class="lb-kv" style="margin-bottom:0">' . self::icon( 'box' ) . '<div><b>' . esc_html__( 'Meta Box', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
+		$out .= '<div class="lb-kv" style="margin-bottom:0">' . self::icon( 'box' ) . '<div><b>' . esc_html__( 'Meta Box', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . ( $mb['active'] && ! empty( $mb['settings_pages'] ) ? ' <a href="' . esc_url( Admin::url( 'launch-builder-business' ) . '#lb-mb' ) . '">' . esc_html__( 'Use a settings page for Business Info', 'launch-builder' ) . '</a>' : '' ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
 		return $out . '</section>';
 	}
 
@@ -474,7 +489,7 @@ final class Dashboard {
 		$fixed = array_values( array_filter( Modules::all(), static function ( $m ) { return ! $m['toggle']; } ) );
 		$on = count( array_filter( $mods, static function ( $m ) { return $m['enabled']; } ) );
 		echo '<div class="wrap lb-wrap">'; // phpcs:ignore
-		echo self::header( __( 'Modules', 'launch-builder' ), esc_html__( 'Switch the optional parts of Launch Builder on or off. A module that is off loads nothing: no tools, no screens, no front-end code.', 'launch-builder' ), '<span class="lb-chip lb-chip--plain"><span data-lb-on-count>' . (int) $on . '</span>&nbsp;' . esc_html__( 'of', 'launch-builder' ) . '&nbsp;<span data-lb-total-count>' . (int) count( $mods ) . '</span>&nbsp;' . esc_html__( 'on', 'launch-builder' ) . '</span>' ); // phpcs:ignore
+		echo self::header( __( 'Modules', 'launch-builder' ), esc_html__( 'Turn optional parts on or off. A part that is off loads nothing.', 'launch-builder' ), '<span class="lb-chip lb-chip--plain"><span data-lb-on-count>' . (int) $on . '</span>&nbsp;' . esc_html__( 'of', 'launch-builder' ) . '&nbsp;<span data-lb-total-count>' . (int) count( $mods ) . '</span>&nbsp;' . esc_html__( 'on', 'launch-builder' ) . '</span>' ); // phpcs:ignore
 		echo '<section class="lb-panel">' . self::board( true ) . '</section>'; // phpcs:ignore
 		echo '<section class="lb-panel"><details class="lb-core"><summary>' . esc_html__( 'Always on', 'launch-builder' ) . ' (' . (int) count( $fixed ) . ')</summary><table class="lb-table"><tbody>';
 		foreach ( $fixed as $m ) {

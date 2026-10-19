@@ -56,8 +56,8 @@ final class Brief {
 		foreach ( Company::fields() as $k => $f ) {
 			$business[ $k ] = 'list' === $f[1] ? [ 'type' => 'array', 'items' => [ 'type' => [ 'object', 'string' ] ], 'description' => (string) $f[0] ] : [ 'type' => [ 'string', 'number', 'boolean' ], 'description' => (string) $f[0] ];
 		}
-		$business['site_title'] = [ 'type' => 'string', 'description' => 'The WordPress site title when it differs from the business name.' ];
-		$business['site_tagline'] = [ 'type' => 'string', 'description' => 'The WordPress tagline when it differs from the Business Info tagline.' ];
+		$business['site_title'] = [ 'type' => 'string', 'description' => 'The WordPress site title (Settings, General). Leave it out and business.name is written as the site title. Give both only when the business name is meant to differ from the title.' ];
+		$business['site_tagline'] = [ 'type' => 'string', 'description' => 'The WordPress tagline (Settings, General). Leave it out and business.tagline is written as the tagline. Give both only when the Business Info tagline is meant to differ.' ];
 		$seo_page = $obj( 'Per-page SEO.', [ 'title' => $str, 'description' => $str, 'keyword' => $str, 'robots' => $list( 'e.g. ["noindex","follow"]', $str ) ] );
 		$section = $obj( 'A pattern section of a page.', [
 			'pattern'  => [ 'type' => 'string', 'description' => 'Pattern slug (list-patterns).' ],
@@ -114,13 +114,13 @@ final class Brief {
 			'type'       => 'object',
 			'properties' => [
 				'version'  => [ 'type' => 'integer', 'description' => 'Brief format version (1).' ],
-				'business' => $obj( 'Business Info: every Company field (see get-company). name is required.', $business ),
+				'business' => $obj( 'Business Info: every Company field (see get-company). business.name is written as the WordPress site title and business.tagline as the WordPress tagline (they are one value; the build keeps a Business Info copy only when it differs). name is required unless site_title is given.', $business ),
 				'brand'    => $obj( 'Palette or 2-3 colours, fonts, logo, style.', [
 					'palette'      => [ 'type' => 'object', 'description' => 'palette1..palette9 => hex colour.' ],
 					'colors'       => $obj( 'Two or three brand colours (the palette is derived).', [ 'primary' => $str, 'accent' => $str, 'dark' => $str ] ),
 					'fonts'        => $obj( 'Font families.', [ 'headings' => [ 'type' => [ 'string', 'object' ] ], 'body' => [ 'type' => [ 'string', 'object' ] ], 'weights' => $list( 'e.g. [400, 700]', $int ) ] ),
 					'logo'         => [ 'type' => 'string', 'description' => 'A media key or an image URL.' ],
-					'logo_inverse' => [ 'type' => 'string', 'description' => 'Logo for dark backgrounds: a media key or URL.' ],
+					'logo_inverse' => [ 'type' => 'string', 'description' => 'Logo for dark backgrounds, shown above the admin menu (Branding): a media key or URL.' ],
 					'site_icon'    => [ 'type' => 'string', 'description' => 'Site icon: a media key or URL.' ],
 					'logo_width'   => $int,
 					'style'        => [ 'type' => [ 'string', 'object' ], 'description' => 'A style preset (clean, bold, sharp, soft) or { preset, tokens } (see set-style).' ],
@@ -166,7 +166,7 @@ final class Brief {
 					'main'   => $list( 'The header menu.', $menu_item ),
 					'footer' => $list( 'A footer menu (kept as a navigation).', $menu_item ),
 					'legal'  => $list( 'A legal links menu (kept as a navigation).', $menu_item ),
-					'header' => [ 'type' => 'string', 'description' => 'Header pattern slug (default from the style and the menu length).' ],
+					'header' => [ 'type' => 'string', 'description' => 'Header pattern slug. Default: header-main (logo, menu, phone and button on one row) for up to ' . self::HEADER_MAX_ITEMS . ' top-level menu items and about ' . self::HEADER_MAX_LABELS . ' characters of labels in total, header-phone (menu in its own bar) when the menu is longer than either limit.' ],
 				] ),
 				'chrome'   => $obj( 'The chrome map (see set-chrome), optionally with mode auto|elements|patterns.', [ 'mode' => [ 'type' => 'string', 'enum' => [ 'auto', 'elements', 'patterns' ] ], 'map' => [ 'type' => 'object' ] ] ),
 				'urls'     => $obj( 'URL structure and redirects.', [ 'permastructures' => [ 'type' => 'object' ], 'redirects' => $list( '[{from, to, code}]' ), 'old_sitemap_url' => $str, 'settings' => [ 'type' => 'object' ] ] ),
@@ -187,11 +187,19 @@ final class Brief {
 		return $schema;
 	}
 
-	/** The header pattern for a style preset and a menu of $items items with $label_len label characters. */
+	/** Most top-level menu items the one-row header holds (six to eight fit at 1280 px and up), and the most label characters. */
+	const HEADER_MAX_ITEMS  = 8;
+	const HEADER_MAX_LABELS = 110;
+
+	/**
+	 * The header pattern for a style preset and a menu of $items top-level items with $label_len label characters: the
+	 * main-row header (logo, menu, phone and button on one row) for every style. A longer menu gets the two-row header on
+	 * purpose (logo, phone and button on top, the menu in its own bar), never a wrapped one-row header.
+	 */
 	public static function default_header( string $preset, int $items, int $label_len ): string {
 		$map = [ 'bold' => 'bold', 'sharp' => 'bold', 'clean' => 'clean', 'soft' => 'soft' ];
 		$st = self::styles()[ $map[ $preset ] ?? 'clean' ];
-		return $items > 6 || $label_len > 64 ? 'header-phone' : $st['header']; // A long menu needs the two-row header.
+		return $items > self::HEADER_MAX_ITEMS || $label_len > self::HEADER_MAX_LABELS ? 'header-phone' : $st['header'];
 	}
 
 	/** Module hook: how to build a whole site from a brief. */
@@ -242,13 +250,13 @@ final class Brief {
 	private static function styles(): array {
 		return [
 			// Every style defaults to a main-row-only header; header-utility has a top bar.
-			'bold'  => [ 'header' => 'header-basic', 'footer' => 'footer-licensing',
+			'bold'  => [ 'header' => 'header-main', 'footer' => 'footer-licensing',
 				'buttons' => [ 'primary' => [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => 'palette9', 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true, 'shadow' => 'soft' ], 'secondary' => [ 'background' => 'palette3', 'color' => 'palette9', 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true ], 'outline' => [ 'color' => 'palette1', 'border_color' => 'palette1', 'border_width' => 2, 'radius' => 'pill', 'padding' => 'lg', 'weight' => 800, 'uppercase' => true ] ],
 				'dropdown' => [ 'background' => 'palette9', 'hover_background' => 'palette8', 'color' => 'palette3', 'hover_color' => 'palette1', 'width' => 280, 'radius' => 14, 'shadow' => 'strong', 'reveal' => 'fade-up', 'divider' => true, 'padding' => [ 13, 22 ], 'spacing' => 8 ], 'links' => [ 'color' => 'palette3', 'hover' => 'palette1', 'active' => 'palette1', 'style' => 'underline', 'weight' => 700 ], 'banner' => 220 ],
-			'clean' => [ 'header' => 'header-minimal', 'footer' => 'footer-dark',
+			'clean' => [ 'header' => 'header-main', 'footer' => 'footer-dark',
 				'buttons' => [ 'primary' => [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => 'palette9', 'radius' => 8, 'padding' => 'md', 'weight' => 600, 'uppercase' => false, 'shadow' => 'none' ], 'secondary' => [ 'background' => 'palette7', 'color' => 'palette3', 'radius' => 8, 'padding' => 'md', 'weight' => 600 ], 'outline' => [ 'color' => 'palette1', 'border_color' => 'palette1', 'border_width' => 2, 'radius' => 8, 'padding' => 'md', 'weight' => 600 ] ],
 				'dropdown' => [ 'background' => 'palette9', 'hover_background' => 'palette8', 'color' => 'palette3', 'hover_color' => 'palette1', 'width' => 250, 'radius' => 8, 'shadow' => 'soft', 'reveal' => 'fade', 'divider' => false, 'padding' => [ 11, 18 ], 'spacing' => 6 ], 'links' => [ 'color' => 'palette3', 'hover' => 'palette1', 'active' => 'palette1', 'style' => 'standard', 'weight' => 600 ], 'banner' => 170 ],
-			'soft'  => [ 'header' => 'header-split', 'footer' => 'footer-light',
+			'soft'  => [ 'header' => 'header-main', 'footer' => 'footer-light',
 				'buttons' => [ 'primary' => [ 'background' => 'palette1', 'hover_background' => 'palette3', 'color' => 'palette9', 'radius' => 'pill', 'padding' => 'md', 'weight' => 700, 'uppercase' => false, 'shadow' => 'soft' ], 'secondary' => [ 'background' => 'palette7', 'color' => 'palette3', 'radius' => 'pill', 'padding' => 'md', 'weight' => 700 ], 'outline' => [ 'color' => 'palette1', 'border_color' => 'palette1', 'border_width' => 2, 'radius' => 'pill', 'padding' => 'md', 'weight' => 700 ] ],
 				'dropdown' => [ 'background' => 'palette9', 'hover_background' => 'palette8', 'color' => 'palette3', 'hover_color' => 'palette1', 'width' => 270, 'radius' => 18, 'shadow' => 'soft', 'reveal' => 'fade-up', 'divider' => false, 'padding' => [ 12, 20 ], 'spacing' => 8 ], 'links' => [ 'color' => 'palette3', 'hover' => 'palette1', 'active' => 'palette1', 'style' => 'underline', 'weight' => 600 ], 'banner' => 190 ],
 		];
@@ -364,10 +372,9 @@ final class Brief {
 		foreach ( $nav as $nv ) {
 			$label_len += mb_strlen( $nv['label'] );
 		}
-		$long_menu = count( $nav ) > 6 || $label_len > 64;
-		$header_pattern = $long_menu ? 'header-phone' : $st['header'];
-		if ( $long_menu ) {
-			$todo[] = 'The menu is long, so the two-row header (header-phone: logo, phone and button on top, menu below) is used. Shorten the menu to use the one-row ' . $st['header'] . '.';
+		$header_pattern = self::default_header( $style, count( $nav ), $label_len );
+		if ( 'header-phone' === $header_pattern ) {
+			$todo[] = 'The menu is long, so the two-row header (header-phone: logo, phone and button on top, menu below) is used. To use the one-row ' . $st['header'] . ', keep the top level to ' . self::HEADER_MAX_ITEMS . ' items and about ' . self::HEADER_MAX_LABELS . ' characters of labels in total.';
 		}
 		$bp = [
 			'site'    => [ 'title' => $name, 'tagline' => "{$industry} in {$place}", 'permalink' => '/%postname%/' ],

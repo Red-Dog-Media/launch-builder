@@ -72,9 +72,9 @@ final class Admin {
 		$ssl = is_ssl() || self::local_site();
 		$rows[] = [ $ssl ? 'ok' : 'warn', 'Secure connection', $ssl ? ( is_ssl() ? 'HTTPS: the token travels encrypted.' : 'Local site: fine for testing.' ) : 'This site is on http. Use HTTPS before connecting an AI assistant, or the token can be read on the way.', '' ];
 		$res = Company::resolve();
-		$essentials = [ 'name', 'phone', 'email', 'address', 'hours', 'cta_label' ];
+		$essentials = Company::essentials();
 		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return 'default' !== $res[ $k ]['from']; } ) );
-		$rows[] = [ 6 === $set ? 'ok' : 'warn', 'Business Info', $set . ' of ' . count( $essentials ) . ' essentials set (name, phone, email, address, hours, button text). Until set, patterns show demo values.', '<a href="' . esc_url( self::url( 'launch-builder-business' ) ) . '">Open Business Info</a>' ];
+		$rows[] = [ count( $essentials ) === $set ? 'ok' : 'warn', 'Business Info', $set . ' of ' . count( $essentials ) . ' essentials set (business name, phone, email, address, hours, button text). Until set, patterns show demo values.', '<a href="' . esc_url( self::url( 'launch-builder-business' ) ) . '">Open Business Info</a>' ];
 		$tok = get_option( 'launch_builder_mcp_token' );
 		$rows[] = [ is_array( $tok ) ? 'ok' : 'warn', 'Connection token', is_array( $tok ) ? 'Active, ending ' . esc_html( (string) $tok['last4'] ) . ', expires ' . esc_html( ! empty( $tok['expires'] ) ? wp_date( 'Y-m-d', (int) $tok['expires'] ) : 'never' ) . '.' : 'None yet. Step 1 below creates one.', '' ];
 		$bh = (bool) get_theme_mod( 'blocks_header' );
@@ -97,7 +97,7 @@ final class Admin {
 		}
 		$url = home_url( '/mcp' );
 		$check = get_transient( 'lb_check_' . get_current_user_id() );
-		echo self::css() . '<div class="wrap lb-wrap"><h1>' . esc_html__( 'Connect an AI assistant', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Build a client site with your AI assistant from premade Kadence patterns. Three steps to connect, then ask for what you want.', 'launch-builder' ) . '</p>'; // phpcs:ignore
+		echo self::css() . '<div class="wrap lb-wrap"><h1>' . esc_html__( 'Connect an AI assistant', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Connect your assistant in three steps, then ask it to build your site.', 'launch-builder' ) . '</p>'; // phpcs:ignore
 
 		echo '<div class="lb-card"><h2>' . esc_html__( 'Setup checklist', 'launch-builder' ) . '</h2><ul class="lb-list">';
 		foreach ( self::checklist() as [ $state, $t, $d, $fix ] ) {
@@ -106,7 +106,7 @@ final class Admin {
 		echo '</ul></div>';
 
 		echo '<div class="lb-card"><h2>' . esc_html__( 'Connect your AI assistant in 3 steps', 'launch-builder' ) . '</h2><ol class="lb-steps">';
-		echo '<li><h3>' . esc_html__( 'Create a token', 'launch-builder' ) . '</h3><p>' . wp_kses( __( 'The token lets your AI assistant act as <strong>you</strong> on this site (it expires in 180 days). For a client site, make a dedicated administrator account first and create the token while signed in as that account. It is shown once, so copy it straight away.', 'launch-builder' ), [ 'strong' => [] ] ) . '</p>';
+		echo '<li><h3>' . esc_html__( 'Create a token', 'launch-builder' ) . '</h3><p>' . wp_kses( __( 'The token lets your assistant act as <strong>you</strong> on this site. It lasts 180 days and shows once, so copy it now. For a client site, create it from a separate admin account.', 'launch-builder' ), [ 'strong' => [] ] ) . '</p>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_mcp_token">';
 		wp_nonce_field( 'lb_mcp_token' );
 		$tok = get_option( 'launch_builder_mcp_token' );
@@ -142,7 +142,7 @@ final class Admin {
 		echo '<div class="lb-card"><h2>' . esc_html__( 'Then ask for what you want', 'launch-builder' ) . '</h2><p>' . esc_html__( 'Paste something like this into your AI assistant and fill in the brackets:', 'launch-builder' ) . '</p><div class="lb-code" id="lb-prompt">' . esc_html( $prompt ) . '<button type="button" class="button lb-copy" data-lb-copy="lb-prompt">' . esc_html__( 'Copy', 'launch-builder' ) . '</button></div>';
 		echo '<p>' . sprintf( /* translators: 1: Design hub link, 2: Business Info link */ esc_html__( 'Preview what your AI assistant can use in the %1$s. Business facts live in %2$s: change them there and every page, header and footer follows.', 'launch-builder' ), '<a href="' . esc_url( self::url( 'launch-builder-patterns' ) ) . '">' . esc_html__( 'Design hub', 'launch-builder' ) . '</a>', '<a href="' . esc_url( self::url( 'launch-builder-business' ) ) . '">' . esc_html__( 'Business Info', 'launch-builder' ) . '</a>' ) . '</p></div>'; // phpcs:ignore
 
-		echo '<div class="lb-card"><h2>' . esc_html__( 'Using a dashboard? Application password', 'launch-builder' ) . '</h2><p>' . esc_html__( 'A dashboard can call the same tools over REST with a WordPress application password (create one under Users > Profile > Application Passwords). No token or command line needed.', 'launch-builder' ) . '</p><div class="lb-code" id="lb-rest">GET  ' . esc_html( rest_url( 'launch-builder/v1/tools' ) ) . "\nPOST " . esc_html( rest_url( 'launch-builder/v1/tools/get-playbook' ) ) . '<button type="button" class="button lb-copy" data-lb-copy="lb-rest">' . esc_html__( 'Copy', 'launch-builder' ) . '</button></div>';
+		echo '<div class="lb-card"><h2>' . esc_html__( 'Using a dashboard? Application password', 'launch-builder' ) . '</h2><p>' . esc_html__( 'A dashboard can use the same tools with a WordPress application password (Users, Profile). No token needed.', 'launch-builder' ) . '</p><div class="lb-code" id="lb-rest">GET  ' . esc_html( rest_url( 'launch-builder/v1/tools' ) ) . "\nPOST " . esc_html( rest_url( 'launch-builder/v1/tools/get-playbook' ) ) . '<button type="button" class="button lb-copy" data-lb-copy="lb-rest">' . esc_html__( 'Copy', 'launch-builder' ) . '</button></div>';
 		echo '<p class="description">' . ( wp_is_application_passwords_available() ? esc_html__( 'Application passwords are available on this site.', 'launch-builder' ) : esc_html__( 'Application passwords are disabled on this site (they need HTTPS or a local environment, and a security plugin may block them).', 'launch-builder' ) ) . '</p></div>';
 		echo '</div>' . self::js(); // phpcs:ignore
 	}
@@ -362,11 +362,11 @@ final class Admin {
 			'last'  => $last,
 			't'     => [
 				'error' => __( 'Error', 'launch-builder' ), 'warning' => __( 'Warning', 'launch-builder' ), 'info' => __( 'Info', 'launch-builder' ),
-				'running' => __( 'Checking… %1$d of about %2$d items', 'launch-builder' ), 'done' => __( 'Finished. %d findings.', 'launch-builder' ), 'failed' => __( 'The check stopped: %s. Run it again; it continues in small batches.', 'launch-builder' ),
+				'running' => __( 'Checking… %1$d of about %2$d items', 'launch-builder' ), 'done' => __( 'Finished. %d findings.', 'launch-builder' ), 'failed' => __( 'The check stopped: %s. Run it again and it picks up where it left off.', 'launch-builder' ),
 				'none' => __( 'No problems found in this run.', 'launch-builder' ), 'never' => __( 'No check has run yet. Run one to see what needs attention before launch.', 'launch-builder' ),
 				'filtered' => __( 'Nothing matches these filters.', 'launch-builder' ), 'edit' => __( 'Edit', 'launch-builder' ), 'view' => __( 'View', 'launch-builder' ),
 				'last' => __( 'Last check: %s', 'launch-builder' ), 'partial' => __( 'Last check: %s (did not finish)', 'launch-builder' ), 'all_codes' => __( 'All checks', 'launch-builder' ),
-				'not_kept' => __( '%d more findings were counted but not kept; narrow the check (What to check) to see them.', 'launch-builder' ),
+				'not_kept' => __( '%d more findings were counted but not listed. Choose a smaller check to see them.', 'launch-builder' ),
 			],
 		];
 		$scopes = [
@@ -386,7 +386,7 @@ final class Admin {
 .lb-empty{padding:26px;text-align:center;color:#50575e}
 @media(max-width:782px){.lb-tiles{grid-template-columns:1fr 1fr 1fr}.lb-tile b{font-size:20px}.lb-find thead{display:none}.lb-find tr{display:block;border-top:1px solid #dcdcde;padding:8px 0}.lb-find td{display:block;border:0;padding:3px 0}}
 </style>';
-		echo '<div class="wrap lb-wrap"><h1>' . esc_html__( 'Site health', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Checks every page and entry, Business Info, menus, shared designs and SEO settings for what would embarrass a launch: leftover demo copy and placeholders, raw tokens, dead links, missing settings. It runs in small batches, so large sites never time out.', 'launch-builder' ) . '</p>';
+		echo '<div class="wrap lb-wrap"><h1>' . esc_html__( 'Site health', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'Finds what would embarrass a launch: sample text left behind, raw tokens, dead links and missing settings. Big sites are checked in small batches.', 'launch-builder' ) . '</p>';
 		echo '<div class="lb-card"><div class="lb-hc-bar"><label for="lb-scope">' . esc_html__( 'What to check', 'launch-builder' ) . '</label><select id="lb-scope">';
 		foreach ( $scopes as $v => $l ) {
 			echo '<option value="' . esc_attr( $v ) . '">' . esc_html( $l ) . '</option>';
@@ -434,16 +434,16 @@ if(D.last){show(D.last)}else{draw()}})();</script>';
 		echo self::css() . '<div class="wrap lb-wrap"><h1>' . esc_html__( 'Activity and safety', 'launch-builder' ) . '</h1><p class="lb-sub">' . esc_html__( 'What your AI assistant has changed, and the switches that keep a connected agent in bounds.', 'launch-builder' ) . '</p>'; // phpcs:ignore
 		echo '<div class="lb-card"><h2>' . esc_html__( 'Power tools', 'launch-builder' ) . '</h2><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_mcp_power">';
 		wp_nonce_field( 'lb_mcp_power' );
-		echo '<p><label><input type="checkbox" name="power" value="1" ' . checked( Abilities::power(), true, false ) . '> ' . esc_html__( 'Allow the REST proxy to write beyond content: users, plugins, themes, core settings, other plugins\' settings and permanent deletes.', 'launch-builder' ) . '</label></p><p class="description">' . esc_html__( 'Off by default: the proxy then writes only posts, pages, entries, media, terms, menus, templates and Rank Math post SEO. Turn it on for a fresh build that needs more (for example installing Rank Math), then turn it off.', 'launch-builder' ) . '</p>';
+		echo '<p><label><input type="checkbox" name="power" value="1" ' . checked( Abilities::power(), true, false ) . '> ' . esc_html__( 'Let the REST proxy change more than content: users, plugins, themes, settings and permanent deletes.', 'launch-builder' ) . '</label></p><p class="description">' . esc_html__( 'Off by default, so the proxy only writes content, menus, templates and Rank Math page SEO. Turn it on for a build that needs more, like installing Rank Math, then turn it off again.', 'launch-builder' ) . '</p>';
 		submit_button( __( 'Save', 'launch-builder' ), 'secondary', 'submit', false );
 		echo '</form></div>';
 		echo '<div class="lb-card"><h2>' . esc_html__( 'When the plugin is deleted', 'launch-builder' ) . '</h2><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="lb_remove_all_data">';
 		wp_nonce_field( 'lb_remove_all_data' );
-		echo '<p><label><input type="checkbox" name="remove_all" value="1" ' . checked( (bool) get_option( 'launch_builder_remove_all_data' ), true, false ) . '> ' . esc_html__( 'Also delete Business Info when Launch Builder is deleted.', 'launch-builder' ) . '</label></p><p class="description">' . esc_html__( 'Off by default: pages print Business Info through tokens, so it is kept unless you tick this. Settings, logs and tokens are always removed; your pages, patterns and media stay.', 'launch-builder' ) . '</p>';
+		echo '<p><label><input type="checkbox" name="remove_all" value="1" ' . checked( (bool) get_option( 'launch_builder_remove_all_data' ), true, false ) . '> ' . esc_html__( 'Also delete Business Info when Launch Builder is deleted.', 'launch-builder' ) . '</label></p><p class="description">' . esc_html__( 'Off by default. Pages print Business Info through tokens, so it is kept unless you tick this. Settings, logs and tokens are always removed. Your pages, patterns and media stay.', 'launch-builder' ) . '</p>';
 		submit_button( __( 'Save', 'launch-builder' ), 'secondary', 'submit', false );
 		echo '</form></div>';
 		$snaps = array_slice( Abilities::snapshots(), 0, 15 );
-		echo '<div class="lb-card"><h2>' . esc_html__( 'Undo', 'launch-builder' ) . '</h2><p>' . wp_kses( __( 'Settings and design changes are snapshotted before they are written (the last 30 are kept). Ask your AI assistant to run <code>restore-snapshot</code> with an id to undo one; restoring takes its own snapshot first, so a restore can be undone too.', 'launch-builder' ), [ 'code' => [] ] ) . '</p>';
+		echo '<div class="lb-card"><h2>' . esc_html__( 'Undo', 'launch-builder' ) . '</h2><p>' . wp_kses( __( 'Every settings or design change is saved first (the last 30 are kept). To undo one, ask your assistant to run <code>restore-snapshot</code> with its id. A restore can be undone too.', 'launch-builder' ), [ 'code' => [] ] ) . '</p>';
 		if ( $snaps ) {
 			echo '<table class="lb-table"><thead><tr><th>' . esc_html__( 'When', 'launch-builder' ) . '</th><th>' . esc_html__( 'What', 'launch-builder' ) . '</th><th>' . esc_html__( 'Snapshot id', 'launch-builder' ) . '</th></tr></thead><tbody>';
 			foreach ( $snaps as $s ) {

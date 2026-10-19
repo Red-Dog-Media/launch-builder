@@ -254,6 +254,9 @@ final class Plugin {
 
 	/** Activation hook (launch-builder.php): every module's activate(). */
 	public static function activate(): void {
+		if ( ! Modules::first_activation() ) {
+			Avatars::keep_gravatar_step(); // A site that already had Local avatars on keeps its Gravatar behaviour (see Avatars::DEFAULTS).
+		}
 		foreach ( self::modules( 'activate' ) as $module ) {
 			$module::activate();
 		}

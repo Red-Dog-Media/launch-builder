@@ -272,6 +272,17 @@ final class Chrome {
 		return $map;
 	}
 
+	/** Does the map (with a brief's partial map laid over it) give pages of this role a shared hero? */
+	public static function supplies_hero( string $role, array $overlay = [] ): bool {
+		$map = self::get();
+		if ( $overlay ) {
+			[ $clean ] = self::validate_map( $overlay );
+			$map = self::merge( $map, $clean );
+		}
+		$d = self::design_in( $map, 'hero', $role );
+		return ! in_array( $d, [ false, null, '', 'theme' ], true );
+	}
+
 	/** A DESIGN given as an object ({pattern, slots} | {sections} | {synced} | {adopt}) rather than a per-role map. */
 	private static function is_design_object( array $v ): bool {
 		return (bool) array_intersect_key( $v, [ 'pattern' => 1, 'sections' => 1, 'synced' => 1, 'adopt' => 1 ] );
@@ -1066,8 +1077,10 @@ final class Chrome {
 	/**
 	 * launch_builder_layout_meta (Content::set_layout): LB stops writing _kad_post_title once chrome is active. A title
 	 * passed explicitly (set-page-layout, apply-pattern) becomes _lb_hero: show -> '' (follow the role), hide -> 'content'
-	 * when the page opens with its own hero, else 'none'. A title that only comes from a page type is dropped; a 'hide'
-	 * page whose content opens with a hero gets _lb_hero 'content'. Before the chrome migrations have run on a site the
+	 * when the page has its own hero, else 'none'. A title that only comes from a page type is dropped, and the page's
+	 * content decides the hero: content with its own hero (the page title or an H1 in a pattern) gets _lb_hero 'content'
+	 * so the shared hero steps aside; content without one loses a 'content' flag an earlier version of the page set, so
+	 * the page follows its role again. A page set to 'none' stays so. Before the chrome migrations have run on a site the
 	 * old writes stay (migration chrome-page-heroes converts them).
 	 *
 	 * @param array      $meta    meta key => value about to be written.
@@ -1085,15 +1098,18 @@ final class Chrome {
 		if ( is_array( $in ) && isset( $in['title'] ) ) {
 			unset( $meta['_kad_post_title'] );
 			delete_post_meta( $post_id, '_kad_post_title' );
-			$meta[ self::HERO_META ] = 'show' === $title ? '' : ( self::content_hero_of( $post_id ) ? 'content' : 'none' );
+			$meta[ self::HERO_META ] = 'show' === $title ? '' : ( self::own_hero( $post_id ) ? 'content' : 'none' );
 			return $meta;
 		}
 		if ( ! self::active() ) {
 			return $meta;
 		}
 		unset( $meta['_kad_post_title'] );
-		if ( 'hide' === $title && '' === (string) get_post_meta( $post_id, self::HERO_META, true ) && self::content_hero_of( $post_id ) ) {
-			$meta[ self::HERO_META ] = 'content';
+		$cur = (string) get_post_meta( $post_id, self::HERO_META, true );
+		if ( self::own_hero( $post_id ) ) {
+			'none' !== $cur ? $meta[ self::HERO_META ] = 'content' : null;
+		} elseif ( 'content' === $cur ) {
+			$meta[ self::HERO_META ] = ''; // The hero the flag stood for is gone: follow the role again.
 		}
 		return $meta;
 	}
@@ -1131,6 +1147,39 @@ final class Chrome {
 			return self::block_is_hero( $b );
 		}
 		return false;
+	}
+
+	/** Does the page bring a hero of its own: it opens with one, or the page title / an H1 is anywhere in it? */
+	public static function own_hero( int $post_id ): bool {
+		return self::content_hero_of( $post_id ) || self::content_has_h1( (string) get_post_field( 'post_content', $post_id, 'raw' ) );
+	}
+
+	/** Is the page title (core/post-title) or an H1 heading anywhere in this content? */
+	public static function content_has_h1( string $content ): bool {
+		return self::h1_count( $content ) > 0;
+	}
+
+	/** How many H1 headings this content prints on its own: page-title blocks and headings of level 1 (a block's own markup is read for other blocks). */
+	public static function h1_count( string $content ): int {
+		if ( false === strpos( $content, '<!-- wp:' ) ) {
+			return substr_count( strtolower( $content ), '<h1' );
+		}
+		$walk = static function ( array $blocks ) use ( &$walk ): int {
+			$n = 0;
+			foreach ( $blocks as $b ) {
+				$name = (string) ( $b['blockName'] ?? '' );
+				if ( 'core/post-title' === $name ) {
+					$n += 1 === (int) ( $b['attrs']['level'] ?? 2 ) ? 1 : 0;
+				} elseif ( in_array( $name, [ 'core/heading', 'kadence/advancedheading' ], true ) ) {
+					$n += 1 === (int) ( $b['attrs']['level'] ?? 2 ) ? 1 : 0;
+				} else {
+					$n += substr_count( strtolower( (string) ( $b['innerHTML'] ?? '' ) ), '<h1' );
+				}
+				$n += $walk( (array) ( $b['innerBlocks'] ?? [] ) );
+			}
+			return $n;
+		};
+		return $walk( parse_blocks( $content ) );
 	}
 
 	private static function block_is_hero( array $b ): bool {
@@ -1204,7 +1253,7 @@ final class Chrome {
 		$mode = self::mode();
 		$prev = self::index();
 		$index = [ 'slots' => (array) ( $prev['slots'] ?? [] ) ];
-		$ctx = [ 'dry' => $dry, 'force' => $force, 'mode' => $mode, 'conv_ids' => null ];
+		$ctx = [ 'dry' => $dry, 'force' => $force, 'mode' => $mode, 'conv_ids' => null, 'collect' => ! empty( $o['collect_content'] ) ];
 		$r = [ 'mode' => $mode, 'dry_run' => $dry, 'groups' => [], 'compile_failed' => [], 'kept_edits' => [], 'skipped' => [], 'pruned' => [], 'released' => [], 'warnings' => [] ];
 		if ( ! $dry && ! Lock::acquire( 'chrome', 180 ) ) {
 			return new \WP_Error( 'lb_busy', 'Another chrome apply is running; try again in a minute.', [ 'status' => 409 ] );
@@ -1413,7 +1462,7 @@ final class Chrome {
 			}
 		}
 		$content = implode( "\n\n", $parts );
-		return [ 'kind' => 'pattern', 'content' => $content, 'flags' => self::flags( $content, $first ), 'warnings' => $warnings ];
+		return [ 'kind' => 'pattern', 'content' => $content, 'flags' => self::flags( $content, $first ), 'warnings' => $warnings, 'parts' => $parts ];
 	}
 
 	/** A header-category pattern becomes a kadence_header post (Kadence's own block header store). */
@@ -1428,7 +1477,8 @@ final class Chrome {
 			self::set_nav( $blocks, (int) $nav[0] );
 		}
 		$meta = (array) ( Plugin::pattern_extra( $slug )['header_meta'] ?? [] );
-		return [ 'kind' => 'header', 'content' => serialize_blocks( $blocks ), 'meta' => $meta, 'flags' => [ 'crumbs' => false, 'title' => false, 'transparent' => false ], 'warnings' => (array) $warnings ];
+		$html = serialize_blocks( $blocks );
+		return [ 'kind' => 'header', 'content' => $html, 'meta' => $meta, 'flags' => [ 'crumbs' => false, 'title' => false, 'transparent' => false ], 'warnings' => (array) $warnings, 'parts' => [ $html ] ];
 	}
 
 	private static function set_nav( array &$blocks, int $nav_id ): void {
@@ -1489,6 +1539,9 @@ final class Chrome {
 			return $entry;
 		}
 		if ( 'pattern' === $c['kind'] || 'header' === $c['kind'] ) {
+			if ( ! empty( $ctx['collect'] ) ) { // The build report reads the copy of each design it placed.
+				$r['content'][ $key ] = [ 'slot' => $slot, 'roles' => $roles, 'title' => $label, 'design' => $c['design'] ?? null, 'parts' => (array) ( $c['parts'] ?? [ (string) $c['content'] ] ) ];
+			}
 			$type = 'header' === $c['kind'] ? 'kadence_header' : 'wp_block';
 			$w = self::write_post( $type, $key, $label, (string) $c['content'], (array) ( $c['meta'] ?? [] ), [], true, 0, $ctx, $r );
 			if ( is_wp_error( $w ) ) {
@@ -2093,7 +2146,7 @@ final class Chrome {
 				$eff = self::merge( $eff, (array) $layer );
 			}
 			$out['map'] = $eff;
-			$plan = self::apply( [ 'dry_run' => true, 'map' => $eff, 'force' => $input['force'] ?? [], 'confirm_all' => ! empty( $input['confirm_all'] ), 'slots' => $input['slots'] ?? [], 'replace_legacy' => ! empty( $input['replace_legacy'] ) ] );
+			$plan = self::apply( [ 'dry_run' => true, 'map' => $eff, 'force' => $input['force'] ?? [], 'confirm_all' => ! empty( $input['confirm_all'] ), 'slots' => $input['slots'] ?? [], 'replace_legacy' => ! empty( $input['replace_legacy'] ), 'collect_content' => ! empty( $input['collect_content'] ) ] );
 			if ( is_wp_error( $plan ) ) {
 				return $plan;
 			}
@@ -2113,7 +2166,7 @@ final class Chrome {
 		$out['map'] = self::get();
 		$out['mode'] = [ 'preference' => (string) get_option( self::OPT_MODE, 'auto' ), 'effective' => self::mode() ];
 		if ( $apply ) {
-			$r = self::apply( [ 'force' => $input['force'] ?? [], 'confirm_all' => ! empty( $input['confirm_all'] ), 'slots' => $input['slots'] ?? [], 'replace_legacy' => ! empty( $input['replace_legacy'] ) ] );
+			$r = self::apply( [ 'force' => $input['force'] ?? [], 'confirm_all' => ! empty( $input['confirm_all'] ), 'slots' => $input['slots'] ?? [], 'replace_legacy' => ! empty( $input['replace_legacy'] ), 'collect_content' => ! empty( $input['collect_content'] ) ] );
 			if ( is_wp_error( $r ) ) {
 				return $r;
 			}

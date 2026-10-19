@@ -2,9 +2,10 @@
 /**
  * Title: Service area: city cards
  * Slug: launch-builder/area-cards
- * Description: Six city cards, each with a short description and a link.
+ * Description: Six city cards, each with a short description and a link. Kept for existing pages; the live version (areas-dynamic-cards) is the one to use.
  * Categories: launch-builder-areas, launch-builder
  * Keywords: service area, cities, cards, locations
+ * Inserter: no
  */
 ?>
 <!-- wp:kadence/rowlayout {"uniqueID":"79_5964de-09","columns":1,"colLayout":"equal","bgColor":"palette9","align":"full","inheritMaxWidth":true,"padding":["xxl","","xxl",""],"kbVersion":2} -->

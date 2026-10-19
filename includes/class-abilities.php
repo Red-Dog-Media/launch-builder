@@ -220,9 +220,9 @@ final class Abilities {
 		return strtolower( trim( (string) $name ) );
 	}
 
-	/** LB internals no tool may write directly (a faked ledger row would let LB overwrite an admin's edits, a planted lock blocks jobs, remove_all_data deletes Business Info on uninstall, module switches have set-modules). */
+	/** LB internals no tool may write directly (a faked ledger row would let LB overwrite an admin's edits, a planted lock blocks jobs, remove_all_data deletes Business Info on uninstall, module switches have set-modules, the compiled dashboard stylesheet is printed into every admin page). */
 	private static function internal_option( string $n ): bool {
-		return in_array( $n, [ self::SNAP_OPTION, self::SNAP_INDEX, 'launch_builder_log', 'launch_builder_power', 'launch_builder_mcp_token', 'launch_builder_ledger', 'launch_builder_migrate_state', 'launch_builder_db_version', 'launch_builder_parked_elements', 'launch_builder_remove_all_data', 'launch_builder_disabled_modules', 'launch_builder_audit_results' ], true )
+		return in_array( $n, [ self::SNAP_OPTION, self::SNAP_INDEX, 'launch_builder_log', 'launch_builder_power', 'launch_builder_mcp_token', 'launch_builder_ledger', 'launch_builder_migrate_state', 'launch_builder_db_version', 'launch_builder_parked_elements', 'launch_builder_remove_all_data', 'launch_builder_disabled_modules', 'launch_builder_audit_results', 'launch_builder_branding_colors_css' ], true )
 			|| (bool) preg_match( '/^launch_builder_(lock|ledger|snapshot)_/', $n );
 	}
 
@@ -543,6 +543,9 @@ final class Abilities {
 		}
 		$deny = [ 'siteurl', 'home', 'admin_email', 'new_admin_email', 'default_role', 'users_can_register', 'active_plugins', 'active_sitewide_plugins', 'template', 'stylesheet', 'permalink_structure' ];
 		$blocked = in_array( $n, $deny, true ) || self::internal_option( $n ) || (bool) preg_match( '/user_roles$|^widget_|^cron$|^recovery_/', $n ) || ( 0 === strpos( $n, 'wp_' ) && 'wp_page_for_privacy_policy' !== $n );
+		if ( preg_match( '/^rank_math_(registration|is_configured|setup|wizard|connect)/i', $n ) ) {
+			return new \WP_Error( 'lb_refused', 'The Rank Math setup wizard (account connection or Skip) is a step for a person in wp-admin, so it is not changed through this ability. The build report and go-live list it under what needs a human. Once it is done, sync-seo writes the titles, descriptions and sitemap settings.', [ 'status' => 403 ] );
+		}
 		if ( '' === $n || self::secret_key( $n ) || $blocked ) {
 			return new \WP_Error( 'lb_refused', 'That option can\'t be changed through this ability.', [ 'status' => 403 ] );
 		}

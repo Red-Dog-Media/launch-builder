@@ -65,7 +65,7 @@ final class Inspect {
 				'url'         => [ 'type' => 'string', 'description' => 'A URL or path on this site.' ],
 				'post_id'     => [ 'type' => 'integer' ],
 				'role'        => [ 'type' => 'string', 'enum' => array_keys( Roles::ROLES ) ],
-				'check_links' => [ 'type' => 'boolean', 'description' => 'HEAD-check internal links (default true).' ],
+				'check_links' => [ 'type' => 'boolean', 'description' => 'HEAD-check internal links (default false: on a slow host it can take most of the time; pass true when you want it, it stops after about 25 seconds and says how many links it left unchecked).' ],
 				'max_links'   => [ 'type' => 'integer', 'description' => 'Internal links to check, at most 50 (default 20).' ],
 			] ], [ __CLASS__, 'page_tool' ], 'edit_pages', $ro );
 
@@ -84,7 +84,7 @@ final class Inspect {
 			return $t;
 		}
 		$opts = [
-			'check_links' => ! array_key_exists( 'check_links', $input ) || ! empty( $input['check_links'] ),
+			'check_links' => ! empty( $input['check_links'] ),
 			'max_links'   => max( 0, min( 50, (int) ( $input['max_links'] ?? 20 ) ) ),
 		];
 		return self::inspect( $t['url'], $opts + [ 'post_id' => $t['post_id'], 'role' => $t['role'] ] );
