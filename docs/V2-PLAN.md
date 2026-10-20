@@ -5,6 +5,16 @@ removed. This plan maps what we have, what we keep, what goes and what replaces 
 part of the plugin and of Kadence Blocks 3.8.0.1, Kadence Blocks Pro 2.8.20.1, Theme Kit Pro 1.2.6, the Kadence theme
 1.5.2 and Meta Box AIO 2.1.0.
 
+## Status
+
+All four phases are built on branch `v2-simplify` and tested on WordPress with Kadence 1.5, Kadence Blocks 3.8 + Pro
+2.8, Theme Kit Pro 1.2 and Meta Box AIO 2.1 (all running unlicensed). Two choices made along the way:
+
+- Area service pages use the service's slug (`/service-areas/rockledge-fl/installation-and-replacement/`); give the
+  service a shorter slug (`ac-installation`) for shorter URLs.
+- Lists show as a grid of cards (checklist, cards or compact links per look). The same list can be moved above, in
+  the middle of or below the page text from the Design hub.
+
 ## Should we take a step back?
 
 Yes, for the core, not for everything. Launch Builder runs its own version of things Kadence and Meta Box now do
