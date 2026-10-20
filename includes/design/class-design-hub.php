@@ -638,7 +638,7 @@ final class Design_Hub {
 		if ( function_exists( 'rank_math_get_breadcrumbs' ) ) {
 			return (string) rank_math_get_breadcrumbs();
 		}
-		if ( function_exists( 'kadence' ) && is_object( kadence() ) && method_exists( kadence(), 'get_breadcrumb' ) ) {
+		if ( function_exists( 'kadence' ) && is_object( kadence() ) && is_callable( [ kadence(), 'get_breadcrumb' ] ) ) {
 			return (string) kadence()->get_breadcrumb( [ 'show_title' => true ] );
 		}
 		return '';

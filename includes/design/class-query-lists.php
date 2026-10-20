@@ -238,7 +238,9 @@ final class Query_Lists {
 		$card_uid = $card_id . '_' . substr( md5( $key . '|card' ), 0, 6 );
 		$rekeyed = Unique_Ids::rekey( $template, (int) $card_id, $key );
 		$template = is_wp_error( $rekeyed ) ? $template : $rekeyed;
-		$card_markup = '<!-- wp:kadence/query-card {"uniqueID":"' . $card_uid . '","id":' . (int) $card_id . '} -->' . "\n" . $template . "\n" . '<!-- /wp:kadence/query-card -->';
+		// The root block carries no id of its own: Kadence Blocks Pro follows a block's id to its post, and a root block that names
+		// its own post sends it round in a circle (every page showing the list then times out).
+		$card_markup = '<!-- wp:kadence/query-card {"uniqueID":"' . $card_uid . '"} -->' . "\n" . $template . "\n" . '<!-- /wp:kadence/query-card -->';
 		wp_update_post( [ 'ID' => $card_id, 'post_content' => wp_slash( $card_markup ) ] );
 		$card_meta = [
 			'_kad_query_card_columns'            => $triple( $spec['columns'] ?? null, [ '3', '2', '1' ] ),
@@ -257,7 +259,7 @@ final class Query_Lists {
 			return $ql_id;
 		}
 		$ql_uid = $ql_id . '_' . substr( md5( $key . '|query' ), 0, 6 );
-		$markup = '<!-- wp:kadence/query {"uniqueID":"' . $ql_uid . '","id":' . (int) $ql_id . '} -->' . "\n"
+		$markup = '<!-- wp:kadence/query {"uniqueID":"' . $ql_uid . '"} -->' . "\n"
 			. '<!-- wp:kadence/query-card {"uniqueID":"' . $card_uid . '","id":' . (int) $card_id . '} /-->' . "\n"
 			. '<!-- /wp:kadence/query -->';
 		wp_update_post( [ 'ID' => $ql_id, 'post_content' => wp_slash( $markup ) ] );

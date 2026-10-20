@@ -22,7 +22,7 @@ for p, role in PAGES.items():
     code, h = get(p)
     els = sorted(set(re.findall(r'<!-- \[element-(\d+)\] -->', h)))
     h1 = len(re.findall(r'<h1[\s>]', h))
-    crumbs = bool(re.search(r'kadence-breadcrumbs|rank-math-breadcrumb', h))
+    crumbs = bool(re.search(r'<nav id="kadence-breadcrumbs"|class="rank-math-breadcrumb', h))
     lists = len(re.findall(r'wp-block-kadence-query-card', h))
     unresolved = sorted(set(re.findall(r'\{\{[a-z_.]+\}\}', h)))
     text = H.unescape(re.sub(r'<[^>]+>', ' ', h))

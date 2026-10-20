@@ -13,24 +13,31 @@ docs/PATTERN-SPEC.md (the contract the 36 design patterns were written to).
 - All admin screens render without PHP notices; 39 audit checks run.
 - Style Library: `Design_Hub::style_library()` saves and activates a set (`lb-home-services`) after the class-name fix (no leading backslash in container lookups).
 
-## OPEN, fix first: HTTP 500 with all pieces placed
+## Fixed at the end of the session: the HTTP 500 with all pieces placed
 
-On a copy of the build database, `set-design {"look":"home-services"}` places all 12 pieces fine, but every front-end page then
-dies with `Maximum execution time of 30 seconds exceeded` inside `wp-includes/class-wp-block-parser*.php`. With only the
-header placed, pages are fine (200). So one of the Elements, lists or the sidebar loops. Suspects, in order:
+Cause (found by the home-services pattern helper, confirmed in `Query_Lists::build`): the root `kadence/query` and `kadence/query-card`
+blocks carried the `id` of their own post, so Kadence Blocks Pro's `blocks_cycle_through()` followed it back to itself forever. The root
+blocks now carry no `id` (the inner card reference in the query post keeps the card's id). After the fix all 12 home-services pieces
+place and all 8 sample page types load with one H1, the right hero, breadcrumbs (not on the home page) and the right lists
+(`tools/dev/check_designs.py`). Also fixed: `Design_Hub::render_crumbs()` used `method_exists( kadence(), ... )`, which is always false
+because `kadence()` reaches components through `__call`; it now uses `is_callable`.
 
-1. `Query_Lists::render_placeholder` / `materialize` / the list Elements (`subservices`, `areas`, `area-services`): a Query Loop whose
-   card renders a list again, or `kadence/query` placed by reference inside an Element that the query's own card also prints.
-2. `Query_Lists::element_display` (filter `kadence_element_display`) calling `get_posts` per Element on every page.
-3. The `cta` Element (testimonials) or `footer` Element containing a `kadence/query` (footer/sidebar services list) that renders itself.
-4. `Design_Hub::crumbs_block()` registering `rank-math/breadcrumb` and Kadence's trail filter recursing.
+## Findings from the home-services helper (not yet acted on)
 
-Bisect: `tools/dev/run.sh tools/dev/tool.php set-design '{"pieces":{"<piece>":"<look>"}}'` one piece at a time on a scratch DB, load a page
-after each (`tools/dev/fetch.sh /air-conditioning/`), and read `wp-content/debug.log`.
+- Spec/pattern fixes already applied in its 12 files: Kadence button `inheritStyles` valid values are `inherit`, `inherit-secondary`, `outline`
+  (not `secondary`); core blocks need `theme-paletteN` colour slugs (Kadence blocks use `paletteN`); shadow colours are left empty because Kadence
+  ignores opacity on palette colours. The other two looks were written to the same spec: check them for `"textColor":"palette9"` and `"inheritStyles":"secondary"`.
+- On phones the slide-out menu shows horizontally: `Nav::set_nav_id` gives the mobile navigation the same menu post as the desktop one; the
+  menu post needs vertical orientation for tablet/mobile (affects every look).
+- Footer and sidebar service lists skip the page being viewed (Kadence's "exclude current post" default, filter
+  `kadence_blocks_pro_query_loop_block_exclude_current`), so a top-level service is missing from its own footer list.
+- Lists need Kadence Blocks Pro but no pattern has a `Requires:` header for it.
+- Its test scripts and screenshots were in the session scratchpad (lost); it verified all 12 render, parse, pass the block editor's validation
+  and have unique Kadence ids across all 36 files.
 
 ## Left to do
 
-1. The 500 above; then re-run `tools/dev/check_designs.py` (one H1 per page, breadcrumbs everywhere but home, lists show the right entries, no `{{tokens}}` left) for each look, and screenshot with `tools/dev/shots.mjs` at 1440 and 390 px.
+1. Run `tools/dev/check_designs.py` for the auto-shop and landscaping looks too (home-services passes), and screenshot each look with `tools/dev/shots.mjs` at 1440 and 390 px.
 2. The 36 patterns (`patterns/{piece}-{look}.php`) were written by helpers and only linted by me; each helper was asked to render-test its own (spec section "Testing") but their reports were not read. Review visually: the three looks should differ clearly, not be recolours. Check list cards (`kadence/query` with `lbList`) render in the Design hub previews.
 3. Design hub screen (`Design_Hub_Admin`) renders but was not clicked through in a browser: previews are scaled iframes of `?lb_preview=<slug>`; check them, the "Use this look" and per-piece buttons, and the placement (top/middle/bottom) selector.
 4. `Design_Hub::apply_layouts`: confirm the Customizer keys (`page_title_layout` "above", `*_layout` "right", `*_sidebar_id`) behave on the test site.
