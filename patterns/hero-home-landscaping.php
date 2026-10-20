@@ -2,7 +2,7 @@
 /**
  * Title: Hero: home (Landscaping)
  * Slug: launch-builder/hero-home-landscaping
- * Description: A rounded photo panel set in from the page edges, with a soft white card holding the headline, a short welcome line, a pill button and your phone number.
+ * Description: A rounded photo panel set in from the page edges with a leaf-shaped white card in the middle: a leaf line, the headline, a short welcome with your business name, pill buttons for the main action and your phone, and a line of promises.
  * Categories: launch-builder-heroes, launch-builder
  * Keywords: hero, home, photo, card, landscaping
  * Inserter: no
@@ -13,7 +13,7 @@
 <!-- wp:kadence/rowlayout {"uniqueID":"hhl_0","columns":1,"colLayout":"equal","align":"full","inheritMaxWidth":true,"padding":["sm","","sm",""],"mobilePadding":["xs","","xs",""],"kbVersion":2} -->
 <!-- wp:kadence/column {"borderWidth":["","","",""],"uniqueID":"hhl_1","kbVersion":2} -->
 <div class="wp-block-kadence-column kadence-columnhhl_1"><div class="kt-inside-inner-col"><!-- wp:kadence/rowlayout {"uniqueID":"hhl_2","columns":1,"colLayout":"equal","minHeight":620,"minHeightTablet":520,"minHeightMobile":0,"bgColor":"palette3","bgImg":"<?php echo esc_url( LB_URL . 'assets/placeholders/hero.svg' ); ?>","overlay":"palette3","overlayOpacity":35,"verticalAlignment":"middle","borderRadius":[32,32,32,32],"mobileBorderRadius":[20,20,20,20],"padding":["3xl","xxl","3xl","xxl"],"tabletPadding":["xxl","xl","xxl","xl"],"mobilePadding":["sm","xs","sm","xs"],"kbVersion":2} -->
-<!-- wp:kadence/column {"background":"palette9","borderWidth":["","","",""],"borderRadius":[24,24,24,24],"uniqueID":"hhl_3","padding":["xl","xl","xl","xl"],"tabletPadding":["lg","lg","lg","lg"],"mobilePadding":["md","sm","md","sm"],"maxWidth":[640,"",""],"kbVersion":2} -->
+<!-- wp:kadence/column {"background":"palette9","borderWidth":["","","",""],"borderRadius":[48,8,48,8],"mobileBorderRadius":[28,6,28,6],"uniqueID":"hhl_3","padding":["xl","xl","xl","xl"],"tabletPadding":["lg","lg","lg","lg"],"mobilePadding":["md","sm","md","sm"],"maxWidth":[640,"",""],"kbVersion":2} -->
 <div class="wp-block-kadence-column kadence-columnhhl_3"><div class="kt-inside-inner-col"><!-- wp:kadence/advancedheading {"uniqueID":"hhl_4","color":"palette1","fontWeight":"600","margin":["","","14",""],"htmlTag":"p","fontSize":[15,"",""],"icon":"fas_leaf","iconColor":"palette1","iconPadding":["","8","",""],"iconSize":["16","",""]} -->
 <p class="kt-adv-headinghhl_4 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headinghhl_4">Locally owned lawn and landscape care</p>
 <!-- /wp:kadence/advancedheading -->
