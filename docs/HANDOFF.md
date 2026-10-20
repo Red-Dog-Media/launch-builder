@@ -13,6 +13,14 @@ docs/PATTERN-SPEC.md (the contract the 36 design patterns were written to).
 - All admin screens render without PHP notices; 39 audit checks run.
 - Style Library: `Design_Hub::style_library()` saves and activates a set (`lb-home-services`) after the class-name fix (no leading backslash in container lookups).
 
+## Added after the first handoff: names and Elements list (checked on Playground)
+
+Names drop the plugin name ("Service hero", "Site header", "Main menu", "Sub-service list"); an Element a person renamed keeps its name (the ledger remembers
+the title Launch Builder wrote). The Kadence Elements list has a Launch Builder view, a Shows on column and a Change design link; the Element's edit screen
+carries a note (`Design_Hub_Admin::note()`). `node tools/dev/check-names.mjs` checks all of it on a running test site (13 checks passed on WordPress 7.1.3, PHP 8.2,
+Kadence 1.5.2, Kadence Blocks Pro 2.8.20.1, Theme Kit Pro 1.2.6, Meta Box AIO 2.1.0; set `LB_URL`, default http://127.0.0.1:9432). Turn the Elements module on first
+(`set-option` `kadence_pro_theme_config` `{"elements":true}`), then build a brief and run it.
+
 ## Fixed at the end of the session: the HTTP 500 with all pieces placed
 
 Cause (found by the home-services pattern helper, confirmed in `Query_Lists::build`): the root `kadence/query` and `kadence/query-card`

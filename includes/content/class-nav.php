@@ -472,7 +472,7 @@ final class Nav {
 		$root = [ [ 'blockName' => 'kadence/navigation', 'attrs' => [], 'innerBlocks' => $kids, 'innerHTML' => '', 'innerContent' => array_merge( [ "\n" ], array_fill( 0, count( $kids ), null ), [ "\n" ] ) ] ];
 		self::walk( $root, 'nav-' . $key ); // Auto children are written with the menu (one write).
 		$auto = substr_count( serialize_blocks( $root ), 'lb-auto-child' );
-		$id = Abilities::upsert_post( 'kadence_navigation', 'nav-' . $key, 'Launch Builder: ' . $key, serialize_blocks( $root ) );
+		$id = Abilities::upsert_post( 'kadence_navigation', 'nav-' . $key, ucfirst( str_replace( '-', ' ', $key ) ), serialize_blocks( $root ) );
 		if ( is_wp_error( $id ) ) {
 			return $id;
 		}
@@ -533,7 +533,7 @@ final class Nav {
 		if ( $nav_id ) {
 			self::set_nav_id( $blocks, $nav_id );
 		}
-		$id = Abilities::upsert_post( 'kadence_header', 'site-header', 'Launch Builder: site header', serialize_blocks( $blocks ) );
+		$id = Abilities::upsert_post( 'kadence_header', 'site-header', 'Site header', serialize_blocks( $blocks ) );
 		if ( is_wp_error( $id ) ) {
 			return $id;
 		}

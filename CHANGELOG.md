@@ -23,7 +23,10 @@ See docs/V2-PLAN.md and docs/ARCHITECTURE.md.
 - Meta Box sync: Services and Service areas are listed under Meta Box > Post Types and their fields under Meta Box > Custom Fields, so they are edited there. Works with the Meta Box Builder in Meta Box AIO (4.x) as well as the plugin-directory one.
 - docs/ARCHITECTURE.md: how the plugin fits together and how to check a change (tools/surface-snapshot.php and tools/surface-diff.php).
 
+- Kadence Elements list: a "Launch Builder (N)" view of the Elements the Design hub placed, a "Shows on" column (page types in plain words and which look), a "Change design" link on each row, and a note on the Element's edit screen that says what it is, where it shows, that your changes are kept and how to leave one page out.
+
 ### Changed
+- Names: the Elements, the block header, the menu and the Query Loop lists and cards Launch Builder makes are named for what they are ("Service hero", "Site header", "Main menu", "Sub-service list", "Sub-service list card"), without "Launch Builder" in front. A name you give an Element yourself is kept when its design is placed again.
 - Service categories become parent services: each category turns into a service and its services move under it (migration `entries-categories`). Menus that listed a category now list that service's sub-services.
 - Menus: a live menu item can list the children of any service or area, and show sub-services as a second dropdown level (depth 2).
 - Page roles are simpler: home, page, contact (conversion), legal, thank-you, the two hubs, service and area. The per-page hero switch is gone (the hero is a Kadence Element now).

@@ -260,6 +260,19 @@ final class Query_Lists {
 		return $ids;
 	}
 
+	/**
+	 * A list's name in Kadence's Query lists screen: the design piece it belongs to ("Sub-service list", "Footer list",
+	 * "Sub-service list 2" for a second list in one piece), or the key in words for any other list.
+	 */
+	private static function list_title( string $key ): string {
+		if ( 1 === preg_match( '/^design-([a-z0-9-]+)-list-(\d+)$/', $key, $m ) && isset( Design_Hub::PIECES[ $m[1] ] ) ) {
+			$label = (string) Design_Hub::PIECES[ $m[1] ]['label'];
+			$label = ' list' === substr( strtolower( $label ), -5 ) ? $label : $label . ' list';
+			return (int) $m[2] > 0 ? $label . ' ' . ( (int) $m[2] + 1 ) : $label;
+		}
+		return ucfirst( str_replace( '-', ' ', $key ) );
+	}
+
 	/** One placeholder => card post + query post + reference block (in place). @return int|\WP_Error query post id */
 	private static function build( array &$b, string $key ) {
 		if ( ! self::available() ) {
@@ -273,11 +286,11 @@ final class Query_Lists {
 			$v = is_array( $v ) ? array_values( $v ) : $def;
 			return array_map( 'strval', array_slice( array_pad( $v, 3, '' ), 0, 3 ) );
 		};
-		$label = ucfirst( str_replace( '-', ' ', $key ) );
+		$label = self::list_title( $key );
 
 		// The card: the template blocks inside a kadence/query-card block (Kadence strips that wrapper when it renders).
 		$template = serialize_blocks( (array) ( $b['innerBlocks'] ?? [] ) );
-		$card_id = Abilities::upsert_post( 'kadence_query_card', $key . '-card', 'Launch Builder: ' . $label . ' card', '' );
+		$card_id = Abilities::upsert_post( 'kadence_query_card', $key . '-card', $label . ' card', '' );
 		if ( is_wp_error( $card_id ) ) {
 			return $card_id;
 		}
@@ -300,7 +313,7 @@ final class Query_Lists {
 		}
 
 		// The query: Kadence's own settings, the card inside it, and the mode.
-		$ql_id = Abilities::upsert_post( 'kadence_query', $key, 'Launch Builder: ' . $label, '' );
+		$ql_id = Abilities::upsert_post( 'kadence_query', $key, $label, '' );
 		if ( is_wp_error( $ql_id ) ) {
 			return $ql_id;
 		}

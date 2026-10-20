@@ -15,8 +15,169 @@ final class Design_Hub_Admin {
 
 	const ACTION = 'lb_design';
 
+	/** Query arg of the Launch Builder view on the Kadence Elements list. */
+	const VIEW = 'lb_managed';
+
 	public static function boot(): void {
 		add_action( 'admin_post_' . self::ACTION, [ __CLASS__, 'handle' ] );
+		// The Elements Launch Builder placed are named for the piece ("Service hero"), so the Elements list says whose they are.
+		add_filter( 'views_edit-kadence_element', [ __CLASS__, 'element_views' ], 20 );
+		add_filter( 'manage_kadence_element_posts_columns', [ __CLASS__, 'element_columns' ], 20 );
+		add_action( 'manage_kadence_element_posts_custom_column', [ __CLASS__, 'element_column' ], 10, 2 );
+		add_action( 'pre_get_posts', [ __CLASS__, 'element_filter' ], 20 );
+		add_action( 'restrict_manage_posts', [ __CLASS__, 'keep_view' ] );
+		add_filter( 'post_row_actions', [ __CLASS__, 'row_actions' ], 25, 2 );
+		add_action( 'admin_notices', [ __CLASS__, 'element_note' ] );
+		add_action( 'enqueue_block_editor_assets', [ __CLASS__, 'editor_note' ] );
+	}
+
+	/* ------------------------------------------------------------------ the Kadence Elements screens */
+
+	/** The design piece an Element placed by the Design hub is ('' for any other Element). */
+	private static function piece_of( int $id ): string {
+		$piece = (string) get_post_meta( $id, '_lb_piece', true );
+		return isset( Design_Hub::PIECES[ $piece ] ) && 'element' === Design_Hub::PIECES[ $piece ]['kind'] && in_array( $id, Design_Hub::element_ids(), true ) ? $piece : '';
+	}
+
+	private static function view_on(): bool {
+		return ! empty( $_GET[ self::VIEW ] ); // phpcs:ignore WordPress.Security.NonceVerification -- a read-only list filter.
+	}
+
+	/** "Launch Builder (N)" next to All / Published: only the Elements the Design hub placed. */
+	public static function element_views( $views ) {
+		$views = (array) $views;
+		$n = count( Design_Hub::element_ids() );
+		if ( ! $n ) {
+			return $views;
+		}
+		$on = self::view_on();
+		if ( $on ) {
+			foreach ( $views as $k => $v ) {
+				$views[ $k ] = str_replace( [ ' class="current"', ' aria-current="page"' ], '', (string) $v );
+			}
+		}
+		$url = add_query_arg( [ 'post_type' => 'kadence_element', self::VIEW => 1 ], admin_url( 'edit.php' ) );
+		$views['lb_managed'] = '<a href="' . esc_url( $url ) . '"' . ( $on ? ' class="current" aria-current="page"' : '' ) . '>' . esc_html__( 'Launch Builder', 'launch-builder' ) . ' <span class="count">(' . (int) $n . ')</span></a>';
+		return $views;
+	}
+
+	/** The list form carries the view along, so a search or a bulk action stays inside it. */
+	public static function keep_view( $post_type = '' ): void {
+		if ( self::view_on() && 'kadence_element' === $post_type ) {
+			echo '<input type="hidden" name="' . esc_attr( self::VIEW ) . '" value="1">';
+		}
+	}
+
+	/** The Launch Builder view: only the Elements the Design hub placed, in the order of the Design hub. */
+	public static function element_filter( $query ): void {
+		if ( ! is_admin() || ! $query instanceof \WP_Query || ! $query->is_main_query() || ! self::view_on() || 'kadence_element' !== $query->get( 'post_type' ) ) {
+			return;
+		}
+		$ids = Design_Hub::element_ids();
+		$query->set( 'post__in', $ids ? $ids : [ 0 ] );
+		if ( empty( $_GET['orderby'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- a read-only list order.
+			$query->set( 'orderby', 'post__in' );
+		}
+	}
+
+	/** "Shows on" straight after the title. */
+	public static function element_columns( $cols ): array {
+		$out = [];
+		$done = false;
+		foreach ( (array) $cols as $k => $label ) {
+			$out[ $k ] = $label;
+			if ( 'title' === $k ) {
+				$out['lb_shows_on'] = esc_html__( 'Shows on', 'launch-builder' );
+				$done = true;
+			}
+		}
+		if ( ! $done ) {
+			$out['lb_shows_on'] = esc_html__( 'Shows on', 'launch-builder' );
+		}
+		return $out;
+	}
+
+	/** The cell: the page types in plain words, and which design it is. */
+	public static function element_column( $column, $post_id ): void {
+		if ( 'lb_shows_on' !== $column ) {
+			return;
+		}
+		$piece = self::piece_of( (int) $post_id );
+		if ( '' === $piece ) {
+			echo '<span aria-hidden="true">&mdash;</span><span class="screen-reader-text">' . esc_html__( 'Not placed by Launch Builder', 'launch-builder' ) . '</span>';
+			return;
+		}
+		$look = (string) get_post_meta( (int) $post_id, '_lb_look', true );
+		$look = Design_Hub::LOOKS[ $look ] ?? '';
+		/* translators: %s: name of a look, such as "Home services" */
+		$what = '' !== $look ? sprintf( __( 'Design hub · %s look', 'launch-builder' ), $look ) : __( 'Design hub', 'launch-builder' );
+		echo '<strong>' . esc_html( Design_Hub::shows_on( $piece ) ) . '</strong><br><span class="description">' . esc_html( $what ) . '</span>';
+	}
+
+	/** A link from the Element's row to its place in the Design hub (where its design is swapped). */
+	public static function row_actions( $actions, $post ) {
+		$actions = (array) $actions;
+		if ( ! $post instanceof \WP_Post || 'kadence_element' !== $post->post_type || ! current_user_can( 'edit_theme_options' ) ) {
+			return $actions;
+		}
+		$piece = self::piece_of( (int) $post->ID );
+		if ( '' === $piece ) {
+			return $actions;
+		}
+		$link = '<a href="' . esc_url( admin_url( 'admin.php?page=' . self::PAGE . '#piece-' . $piece ) ) . '">' . esc_html__( 'Change design', 'launch-builder' ) . '</a>';
+		$out = [];
+		foreach ( $actions as $k => $v ) {
+			$out[ $k ] = $v;
+			if ( 'edit' === $k ) {
+				$out['lb_design'] = $link;
+			}
+		}
+		return isset( $out['lb_design'] ) ? $out : [ 'lb_design' => $link ] + $actions;
+	}
+
+	/** The words of the note on an Element's edit screen, with where it leads ('' = no note for this post). @return array{text:string,url:string,label:string}|null */
+	public static function note( int $id ): ?array {
+		$piece = self::piece_of( $id );
+		if ( '' === $piece || ! current_user_can( 'edit_post', $id ) ) {
+			return null;
+		}
+		$look = Design_Hub::LOOKS[ (string) get_post_meta( $id, '_lb_look', true ) ] ?? '';
+		/* translators: 1: design piece such as "Service hero", 2: look such as "Home services" (may be empty), 3: page types such as "Service pages" */
+		$text = sprintf( __( 'This is the %1$s%2$s that Launch Builder placed. It shows on: %3$s. Edit it here like any Kadence Element: Launch Builder keeps your changes when you pick designs again and asks before replacing them. To leave one page out, add it under Hide On in this Element\'s settings.', 'launch-builder' ), Design_Hub::PIECES[ $piece ]['label'], '' !== $look ? ' (' . $look . ')' : '', Design_Hub::shows_on( $piece ) );
+		return [ 'text' => $text, 'url' => current_user_can( 'edit_theme_options' ) ? admin_url( 'admin.php?page=' . self::PAGE . '#piece-' . $piece ) : '', 'label' => __( 'Change design in the Design hub', 'launch-builder' ) ];
+	}
+
+	private static function editing_id(): int {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'post' !== $screen->base || 'kadence_element' !== $screen->post_type ) {
+			return 0;
+		}
+		return isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification -- reading which post is open.
+	}
+
+	/** The note at the top of the classic edit screen. */
+	public static function element_note(): void {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		$id = self::editing_id();
+		$n = $id && ! ( $screen && method_exists( $screen, 'is_block_editor' ) && $screen->is_block_editor() ) ? self::note( $id ) : null;
+		if ( ! $n ) {
+			return;
+		}
+		echo '<div class="notice notice-info"><p>' . esc_html( $n['text'] ) . ( '' !== $n['url'] ? ' <a href="' . esc_url( $n['url'] ) . '">' . esc_html( $n['label'] ) . '</a>' : '' ) . '</p></div>';
+	}
+
+	/** In the block editor the same note is an editor notice (the editor covers page-level notices). */
+	public static function editor_note(): void {
+		$id = self::editing_id();
+		$n = $id ? self::note( $id ) : null;
+		if ( ! $n ) {
+			return;
+		}
+		$actions = '' !== $n['url'] ? [ [ 'label' => $n['label'], 'url' => $n['url'] ] ] : [];
+		$flags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT; // Safe inside a script element whatever the words hold.
+		wp_register_script( 'lb-element-note', false, [ 'wp-data', 'wp-dom-ready', 'wp-notices' ], LB_VERSION, true );
+		wp_enqueue_script( 'lb-element-note' );
+		wp_add_inline_script( 'lb-element-note', 'wp.domReady(function(){wp.data.dispatch("core/notices").createNotice("info",' . wp_json_encode( $n['text'], $flags ) . ',{id:"lb-element-note",isDismissible:true,actions:' . wp_json_encode( $actions, $flags ) . '.map(function(a){return{label:a.label,url:a.url,variant:"primary"};})});});' );
 	}
 
 	/** A preview of one pattern in a frame (the Admin preview route renders it as a page of its role). */

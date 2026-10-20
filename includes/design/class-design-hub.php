@@ -122,6 +122,43 @@ final class Design_Hub {
 		return isset( self::PIECES[ $piece ] ) ? 'page' : '';
 	}
 
+	/** A page type as it reads in a sentence about where a piece shows. */
+	private static function role_phrase( string $role ): string {
+		$p = [
+			'home'         => __( 'home page', 'launch-builder' ),
+			'page'         => __( 'standard pages', 'launch-builder' ),
+			'legal'        => __( 'legal pages', 'launch-builder' ),
+			'services_hub' => __( 'services hub page', 'launch-builder' ),
+			'areas_hub'    => __( 'service areas hub page', 'launch-builder' ),
+			'service'      => __( 'service pages', 'launch-builder' ),
+			'area'         => __( 'service area pages', 'launch-builder' ),
+			'conversion'   => __( 'contact pages', 'launch-builder' ),
+			'thanks'       => __( 'thank-you pages', 'launch-builder' ),
+			'post'         => __( 'blog posts', 'launch-builder' ),
+			'blog'         => __( 'blog and archive pages', 'launch-builder' ),
+			'search'       => __( 'search results', 'launch-builder' ),
+			'notfound'     => __( '404 page', 'launch-builder' ),
+		];
+		return $p[ $role ] ?? strtolower( Roles::label( $role ) );
+	}
+
+	/** The page types a piece shows on, in plain words: "Every page", "Every page except home page", "Service pages". */
+	public static function shows_on( string $piece ): string {
+		$roles = self::roles_of( $piece );
+		$all = array_values( array_diff( array_keys( Roles::ROLES ), [ 'other' ] ) );
+		$missing = array_values( array_diff( $all, $roles ) );
+		if ( ! $missing ) {
+			return __( 'Every page', 'launch-builder' );
+		}
+		if ( count( $roles ) >= 8 ) {
+			/* translators: %s: page types left out, such as "home page" */
+			return sprintf( __( 'Every page except %s', 'launch-builder' ), implode( ', ', array_map( [ __CLASS__, 'role_phrase' ], $missing ) ) );
+		}
+		$names = array_map( [ __CLASS__, 'role_phrase' ], $roles );
+		$last = array_pop( $names );
+		return ucfirst( $names ? implode( ', ', $names ) . ' ' . __( 'and', 'launch-builder' ) . ' ' . $last : $last );
+	}
+
 	/** Every role a piece shows on (the '*' and '-role' notation expanded). */
 	public static function roles_of( string $piece ): array {
 		$def = (array) ( self::PIECES[ $piece ]['roles'] ?? [] );
@@ -420,7 +457,13 @@ final class Design_Hub {
 		if ( 'sidebar' === $def['kind'] ) {
 			return self::place_sidebar( $content, $state );
 		}
-		$title = 'Launch Builder: ' . $def['label'];
+		// The Element is named for the piece ("Service hero"), no plugin name in front: the Launch Builder view on the Elements
+		// list says whose it is. A name a person gave it stays (the ledger remembers the one Launch Builder wrote).
+		$last = Ledger::title( 'design:' . $piece );
+		$had = (int) ( $state['pieces'][ $piece ]['id'] ?? 0 );
+		$now = $had && get_post( $had ) ? (string) get_post_field( 'post_title', $had, 'raw' ) : '';
+		$renamed = null !== $last && '' !== $now && $now !== $last;
+		$title = $renamed ? $now : $def['label'];
 		$id = Abilities::upsert_post( 'kadence_element', 'design-' . $piece, $title, '' );
 		if ( is_wp_error( $id ) ) {
 			return $id;
@@ -453,7 +496,7 @@ final class Design_Hub {
 		foreach ( $lists as $ql ) {
 			add_post_meta( $id, Query_Lists::LIST_META, (int) $ql );
 		}
-		Ledger::record( 'design:' . $piece, 'kadence_element', $id, Ledger::hash_post( $id, [ '_kad_element_hook', '_kad_element_show_conditionals', '_kad_element_hide_conditionals' ] ), 'publish', $title );
+		Ledger::record( 'design:' . $piece, 'kadence_element', $id, Ledger::hash_post( $id, [ '_kad_element_hook', '_kad_element_show_conditionals', '_kad_element_hide_conditionals' ] ), 'publish', $renamed ? (string) $last : $title );
 		return (int) $id;
 	}
 
