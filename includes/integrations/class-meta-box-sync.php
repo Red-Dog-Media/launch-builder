@@ -633,8 +633,11 @@ final class Meta_Box_Sync {
 			return;
 		}
 		$kinds = [ 'edit-mb-post-type' => 'post_type', 'edit-mb-taxonomy' => 'taxonomy', 'edit-meta-box' => 'fields' ];
+		if ( ! isset( $kinds[ $screen->id ] ) && ! in_array( $screen->post_type, self::MB_TYPES, true ) ) {
+			return; // Only Meta Box's own screens.
+		}
 		$flash = get_transient( self::FLASH . get_current_user_id() );
-		if ( is_array( $flash ) && 2 === count( $flash ) && ( isset( $kinds[ $screen->id ] ) || in_array( $screen->post_type, self::MB_TYPES, true ) ) ) {
+		if ( is_array( $flash ) && 2 === count( $flash ) ) {
 			delete_transient( self::FLASH . get_current_user_id() );
 			echo '<div class="notice notice-' . ( 'error' === $flash[0] ? 'error' : 'success' ) . ' is-dismissible"><p>' . esc_html( (string) $flash[1] ) . '</p></div>';
 		}
