@@ -10,7 +10,7 @@
  * Look: landscaping
  */
 ?>
-<!-- wp:kadence/rowlayout {"uniqueID":"ftl_0","columns":3,"tabletLayout":"first-row","mobileLayout":"row","colLayout":"equal","columnGutter":"wider","bgColor":"palette7","align":"full","textColor":"palette4","linkColor":"palette3","linkHoverColor":"palette1","inheritMaxWidth":true,"borderRadius":[32,32,0,0],"mobileBorderRadius":[20,20,0,0],"padding":["xxl","","lg",""],"tabletPadding":["xl","","md",""],"mobilePadding":["lg","","md",""],"kbVersion":2} -->
+<!-- wp:kadence/rowlayout {"uniqueID":"ftl_0","columns":3,"tabletLayout":"first-row","mobileLayout":"row","colLayout":"equal","columnGutter":"wider","bgColor":"palette7","align":"full","textColor":"palette4","inheritMaxWidth":true,"borderRadius":[32,32,0,0],"mobileBorderRadius":[20,20,0,0],"padding":["xxl","","lg",""],"tabletPadding":["xl","","md",""],"mobilePadding":["lg","","md",""],"kbVersion":2} -->
 <!-- wp:kadence/column {"borderWidth":["","","",""],"uniqueID":"ftl_1","kbVersion":2} -->
 <div class="wp-block-kadence-column kadence-columnftl_1"><div class="kt-inside-inner-col"><!-- wp:kadence/identity {"uniqueID":"ftl_2"} -->
 <!-- wp:site-logo {"width":120,"isLink":false,"style":{"spacing":{"margin":{"right":"var:preset|spacing|40"}}}} /-->
