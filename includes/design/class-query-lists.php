@@ -51,7 +51,7 @@ final class Query_Lists {
 		$mode = in_array( $spec['mode'] ?? '', self::MODES, true ) ? (string) $spec['mode'] : 'top';
 		$pt = in_array( $spec['postType'] ?? '', [ Entries::SERVICE, Entries::AREA ], true ) ? (string) $spec['postType'] : Entries::SERVICE;
 		$viewed = is_singular() ? (int) get_queried_object_id() : (int) get_the_ID();
-		$args = self::args_for( $mode, $pt, $viewed ) + [ 'post_type' => $pt, 'post_status' => 'publish', 'posts_per_page' => max( 1, min( 24, (int) ( $spec['perPage'] ?? 12 ) ) ), 'orderby' => [ 'menu_order' => 'ASC', 'title' => 'ASC' ], 'post__not_in' => $viewed ? [ $viewed ] : [] ];
+		$args = self::args_for( $mode, $pt, $viewed ) + [ 'post_type' => $pt, 'post_status' => 'publish', 'posts_per_page' => max( 1, min( 24, (int) ( $spec['perPage'] ?? 12 ) ) ), 'orderby' => [ 'menu_order' => 'ASC', 'title' => 'ASC' ], 'post__not_in' => $viewed && 'top' !== $mode ? [ $viewed ] : [] ];
 		$posts = get_posts( $args );
 		$tpl = serialize_blocks( (array) ( $block['innerBlocks'] ?? [] ) );
 		$cols = max( 1, (int) ( ( (array) ( $spec['columns'] ?? [ 3 ] ) )[0] ?? 3 ) );
@@ -120,6 +120,13 @@ final class Query_Lists {
 		$pt = is_array( $query['post_type'] ?? null ) ? (string) reset( $query['post_type'] ) : (string) ( $query['post_type'] ?? '' );
 		unset( $query['post_parent__in'] );
 		$args = self::args_for( $mode, $pt, self::viewed( (int) $ql_id ) );
+		if ( 'top' === $mode ) {
+			// Remove Kadence's automatic exclusion, while keeping an editor's explicit choice.
+			$viewed = self::viewed( (int) $ql_id );
+			if ( ! in_array( $viewed, array_map( 'intval', (array) ( $meta['exclude'] ?? [] ) ), true ) ) {
+				$query['post__not_in'] = array_values( array_diff( (array) ( $query['post__not_in'] ?? [] ), [ $viewed ] ) );
+			}
+		}
 		if ( isset( $args['meta_query'] ) ) {
 			$args['meta_query'] = array_merge( (array) ( $query['meta_query'] ?? [] ), $args['meta_query'] ); // phpcs:ignore WordPress.DB.SlowDBQuery
 		}
@@ -139,7 +146,7 @@ final class Query_Lists {
 			return self::$sizes[ $k ] = 1; // Not ours: assume it has something to show.
 		}
 		$args = self::args_for( $mode, $pt, $viewed ) + [ 'post_type' => $pt, 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids', 'no_found_rows' => true ];
-		if ( $viewed ) {
+		if ( $viewed && 'top' !== $mode ) {
 			$args['post__not_in'] = [ $viewed ];
 		}
 		return self::$sizes[ $k ] = count( get_posts( $args ) );
@@ -164,6 +171,45 @@ final class Query_Lists {
 	}
 
 	/* ------------------------------------------------------------------ building lists */
+
+	/** Native query/card state owned by a design, also used when snapshotting an explicit replacement. */
+	public static function dependencies( string $design_key ): array {
+		$posts = get_posts( [ 'post_type' => [ 'kadence_query', 'kadence_query_card' ], 'post_status' => [ 'publish', 'draft', 'pending', 'private', 'future', 'trash' ], 'numberposts' => -1, 'meta_key' => '_lb_key', 'meta_value' => $design_key . '-list-', 'meta_compare' => 'LIKE', 'suppress_filters' => true ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
+		$out = [];
+		foreach ( $posts as $post ) {
+			$key = (string) get_post_meta( $post->ID, '_lb_key', true );
+			if ( 0 !== strpos( $key, $design_key . '-list-' ) ) {
+				continue;
+			}
+			$out[] = [ 'id' => (int) $post->ID, 'meta' => self::owned_meta( (int) $post->ID ), 'ledger' => 'query-list:' . $key ];
+		}
+		return $out;
+	}
+
+	/** Kadence's editable list settings, excluding generated CSS caches and unrelated plugin metadata. */
+	private static function owned_meta( int $id ): array {
+		$keys = array_filter( array_keys( get_post_meta( $id ) ), static function ( $key ) {
+			return 0 === strpos( $key, '_kad_query_' ) || self::META === $key;
+		} );
+		sort( $keys );
+		return array_values( $keys );
+	}
+
+	/** Keep edited native dependencies, including legacy lists for which no ownership baseline was recorded. */
+	public static function edited( string $design_key ): bool {
+		foreach ( self::dependencies( $design_key ) as $spec ) {
+			$row = Ledger::get( $spec['ledger'] );
+			$id = $spec['id'];
+			if ( ! $row || (int) $row['id'] !== $id || $row['status'] !== get_post_status( $id ) || (string) ( $row['title'] ?? '' ) !== (string) get_post_field( 'post_title', $id, 'raw' ) || Ledger::is_edited( $spec['ledger'], Ledger::hash_post( $id, $spec['meta'] ) ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static function record( int $id, string $key ): void {
+		Ledger::record( 'query-list:' . $key, (string) get_post_type( $id ), $id, Ledger::hash_post( $id, self::owned_meta( $id ) ), (string) get_post_status( $id ), (string) get_post_field( 'post_title', $id, 'raw' ) );
+	}
 
 	/** Can this site hold Query Loops (Kadence Blocks Pro)? */
 	public static function available(): bool {
@@ -285,6 +331,8 @@ final class Query_Lists {
 			'infiniteScroll'   => false,
 		] );
 		update_post_meta( $ql_id, self::META, $mode );
+		self::record( (int) $card_id, $key . '-card' );
+		self::record( (int) $ql_id, $key );
 
 		$b = [ 'blockName' => 'kadence/query', 'attrs' => [ 'uniqueID' => $ql_uid, 'id' => (int) $ql_id ], 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => [] ];
 		return (int) $ql_id;
@@ -317,6 +365,11 @@ add_filter( 'kadence_blocks_pro_query_loop_query_vars', function ( $query, $meta
 	$pt = is_array( $query['post_type'] ?? null ) ? (string) reset( $query['post_type'] ) : (string) ( $query['post_type'] ?? '' );
 	unset( $query['post_parent__in'] );
 	if ( 'top' === $mode ) {
+		$key = $ql_id . '_query_exclude_post_id';
+		$id = isset( $_GET[ $key ] ) && is_numeric( $_GET[ $key ] ) ? absint( $_GET[ $key ] ) : ( is_singular() ? get_queried_object_id() : 0 );
+		if ( ! in_array( $id, array_map( 'intval', (array) ( $meta['exclude'] ?? [] ) ), true ) ) {
+			$query['post__not_in'] = array_values( array_diff( (array) ( $query['post__not_in'] ?? [] ), [ $id ] ) );
+		}
 		$query['post_parent'] = 0;
 		if ( 'lb_area' === $pt ) {
 			$query['meta_query'][] = [ 'key' => '_lb_service', 'compare' => 'NOT EXISTS' ];

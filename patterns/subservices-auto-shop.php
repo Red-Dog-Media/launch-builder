@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: services, sub-services, list, checklist, grid, auto
  * Piece: subservices
+ * Requires: kadence-blocks-pro
  * Look: auto-shop
  */
 ?>

@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: sub-services, services, list, checklist, grid, landscaping
  * Piece: subservices
+ * Requires: kadence-blocks-pro
  * Look: landscaping
  */
 ?>

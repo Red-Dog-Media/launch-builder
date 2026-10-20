@@ -27,7 +27,7 @@ final class Launch {
 
 	/** Post types detokenize reads, by scope. */
 	const CONTENT_TYPES = [ 'page', 'post', 'lb_service', 'lb_area' ];
-	const DESIGN_TYPES  = [ 'wp_block', 'kadence_element', 'kadence_header', 'kadence_navigation', 'kadence_form', 'kadence_conversions' ];
+	const DESIGN_TYPES  = [ 'wp_block', 'kadence_element', 'kadence_header', 'kadence_navigation', 'kadence_query', 'kadence_query_card', 'kadence_form', 'kadence_conversions' ];
 
 	public static function boot(): void {
 		Audit::register_check( 'legal_review_pending', 'content', [ __CLASS__, 'audit_legal' ] );
@@ -51,7 +51,7 @@ final class Launch {
 				'limit'   => [ 'type' => 'integer', 'description' => 'Posts per call, 1-100 (default 40).' ],
 			] ], [ __CLASS__, 'detokenize' ], 'manage_options' );
 
-		Abilities::add( 'prepare-removal', 'Prepare to remove Launch Builder', 'Hands the site over to Kadence and Meta Box before the plugin is removed. Reports, and with dry_run false does: Meta Box holds the services, areas, their fields and Business Info (sync-meta-box); Business Info tokens and other tokens are baked into the content and the designs (detokenize scope all, first batch; call detokenize with next_offset for the rest). Returns the hand-off pack: the services\' root URLs mapped to the URLs WordPress will use without the plugin (url_map, plus .htaccess lines to paste after removal; add them before deactivating only as Rank Math redirections, never while Launch Builder runs), and lists_snippet: a small mu-plugin that keeps the "children of this page" lists working.',
+		Abilities::add( 'prepare-removal', 'Prepare to remove Launch Builder', 'Hands the site over to Kadence and Meta Box before the plugin is removed. Reports, and with dry_run false does: Meta Box holds the services, areas, their fields and Business Info (sync-meta-box); Business Info tokens and other tokens are baked into the content and the designs (detokenize scope all, first batch; call detokenize with next_offset for the rest). Returns the hand-off pack: the services\' root URLs mapped to the URLs WordPress will use without the plugin (url_map, plus .htaccess lines to paste after removal; add them before deactivating only as Rank Math redirections, never while Launch Builder runs), lists_snippet for list-only handoff, and runtime_snippet for built-in designs (lists, contextual text and breadcrumbs). Install only the runtime snippet for a full handoff; it stays inactive while Launch Builder is active.',
 			[ 'properties' => [
 				'dry_run' => [ 'type' => 'boolean', 'description' => 'Report only (default true).' ],
 			] ], [ __CLASS__, 'prepare_removal' ], 'manage_options' );
@@ -70,7 +70,7 @@ final class Launch {
 	public static function playbook( array &$pb ): void {
 		$pb['launch'] = [
 			'go_live'       => 'go-live runs the audit and refuses on errors (force overrides), then sets the site public, refreshes the sitemap and purges caches, and lists what only a person can do (needs_a_human). Once a site is live a build never hides it again, whatever launch.indexing says. Until then Rank Math Instant Indexing submissions are held back while a build is running, while Settings > Reading discourages search engines and when the brief says launch.indexing false.',
-			'before_removal' => 'prepare-removal hands the site over to Kadence and Meta Box before the plugin is removed (dry run first): tokens baked into the content (detokenize), redirects for the service URLs, and the two snippets that keep root service URLs and "children of this page" lists working. convert-page-to-entry turns an old page into a service or area entry and redirects its URL.',
+			'before_removal' => 'prepare-removal hands the site over to Kadence and Meta Box before the plugin is removed (dry run first): tokens baked into the content (detokenize), redirects for the service URLs, and runtime_snippet for lists, contextual design text and breadcrumbs. Finish all token batches, install the exported companion, and install the URL redirects after deactivation. convert-page-to-entry turns an old page into a service or area entry and redirects its URL.',
 		];
 		$pb['tools_by_job']['Launch'] = 'go-live, prepare-removal, detokenize, convert-page-to-entry';
 	}
@@ -294,7 +294,7 @@ final class Launch {
 
 		// 2. Tokens baked in.
 		$dt = self::detokenize( [ 'scope' => 'all', 'dry_run' => $dry ] );
-		$out['detokenize'] = is_wp_error( $dt ) ? $dt->get_error_message() : array_intersect_key( $dt, array_flip( [ 'totals', 'next_offset', 'skipped_demo', 'dynamic' ] ) );
+		$out['detokenize'] = is_wp_error( $dt ) ? $dt->get_error_message() : array_intersect_key( $dt, array_flip( [ 'totals', 'next_offset', 'remaining' ] ) );
 
 		// 3. Root URLs of services: WordPress alone serves them under the post type base.
 		$map = [];
@@ -311,8 +311,19 @@ final class Launch {
 		// 4. Lists: the "children of this page" filter as a mu-plugin.
 		$out['lists'] = count( array_filter( Query_Lists::made(), static function ( $id ) { return 'kadence_query' === get_post_type( $id ); } ) ) . ' list(s) use Launch Builder\'s "children of this page" setting.';
 		$out['lists_snippet'] = Query_Lists::snippet();
-		$out['next'] = $dry ? 'Run again with dry_run false to move everything into Meta Box and bake the tokens.' : 'Save lists_snippet as wp-content/mu-plugins/service-lists.php, deactivate Launch Builder, then add the htaccess lines (or the same redirects in Rank Math).';
+		$out['runtime_snippet'] = self::removal_runtime();
+		$out['runtime_handles'] = [ 'query_lists', 'empty_list_elements', 'rank-math/breadcrumb', 'page.title', 'area.name' ];
+		$out['next'] = $dry ? 'Run again with dry_run false to move everything into Meta Box and bake the tokens.' : 'Before deactivating, finish every detokenize batch (scope all, dry_run false, offset from next_offset until null). Resolve remaining blocks, demo values and contextual tokens other than page.title and area.name. Save runtime_snippet as wp-content/mu-plugins/launch-builder-handoff.php (it includes lists_snippet; install only one). Then deactivate Launch Builder and add the htaccess lines or the same redirects in Rank Math. The handoff plugin stays inactive while Launch Builder is active.';
 		return $out;
+	}
+
+	/** Standalone runtime for native designs; embed hub ids so deleting Launch Builder's settings cannot break it. */
+	private static function removal_runtime(): string {
+		$hubs = Roles::hubs();
+		$template = (string) file_get_contents( LB_DIR . 'assets/snippets/removal-runtime.php' );
+		$template = str_replace( '__LB_HANDOFF_HUBS__', var_export( [ Entries::SERVICE => (int) $hubs['services'], Entries::AREA => (int) $hubs['areas'] ], true ), substr( $template, 5 ) );
+		return "<?php\n/**\n * Plugin Name: Launch Builder handoff\n * Description: Native design runtime exported before removing Launch Builder.\n */\ndefined( 'ABSPATH' ) || exit;\nadd_action( 'plugins_loaded', static function () {\n\tif ( class_exists( 'LaunchBuilder\\\\Plugin' ) ) { return; }\n"
+			. substr( Query_Lists::snippet(), 5 ) . "\n" . $template . "\n}, 20 );\n";
 	}
 
 	/* ------------------------------------------------------------------ convert-page-to-entry */
@@ -484,6 +495,9 @@ final class Launch {
 		$skipped_demo = [];
 		$snap_ids = [];
 		$plans = [];
+		$widgets = (array) get_option( 'widget_block', [] );
+		$widgets_changed = false;
+		$totals['changed_widgets'] = 0;
 		$uid = get_current_user_id();
 		wp_set_current_user( 0 ); // Tokens are baked as a visitor sees them: no editor markers for empty values.
 		try {
@@ -530,12 +544,33 @@ final class Launch {
 				}
 			}
 		}
+		if ( 0 === $offset && in_array( $scope, [ 'designs', 'all' ], true ) ) {
+			foreach ( $widgets as $number => &$widget ) {
+				if ( ! is_array( $widget ) || ! is_string( $widget['content'] ?? null ) ) {
+					continue;
+				}
+				$res = self::bake_post( new \WP_Post( (object) [ 'post_content' => $widget['content'] ] ), true, $demo );
+				foreach ( $res['dynamic_blocks'] as $key => $n ) { $dynamic['blocks'][ $key ] = ( $dynamic['blocks'][ $key ] ?? 0 ) + $n; }
+				foreach ( $res['left'] as $key => $n ) { $dynamic['tokens'][ $key ] = ( $dynamic['tokens'][ $key ] ?? 0 ) + $n; }
+				foreach ( $res['demo'] as $key ) { $skipped_demo[ $key ] = ( $skipped_demo[ $key ] ?? 0 ) + 1; }
+				if ( null !== $res['content'] && $res['content'] !== $widget['content'] ) {
+					$widget['content'] = $res['content'];
+					$widgets_changed = true;
+					$totals['changed_widgets']++;
+					$totals['tokens'] += $res['n'];
+				}
+			}
+			unset( $widget );
+		}
 		} finally {
 			wp_set_current_user( $uid );
 		}
 		$snapshot = null;
-		if ( ! $dry && $plans ) {
-			$snapshot = Abilities::snapshot( 'detokenize', [], [], $snap_ids );
+		if ( ! $dry && ( $plans || $widgets_changed ) ) {
+			$snapshot = Abilities::snapshot( 'detokenize', [], $widgets_changed ? [ 'widget_block' ] : [], $snap_ids );
+			if ( $widgets_changed ) {
+				update_option( 'widget_block', $widgets );
+			}
 			foreach ( $plans as $plan ) {
 				$args = [ 'ID' => $plan['id'] ];
 				if ( null !== $plan['new_content'] ) {

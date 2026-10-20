@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: service areas, areas, towns, cities, locations, list, grid, map pin, home services
  * Piece: areas
+ * Requires: kadence-blocks-pro
  * Look: home-services
  */
 ?>

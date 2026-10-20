@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: area, services, local, list, checklist, grid, auto
  * Piece: area-services
+ * Requires: kadence-blocks-pro
  * Look: auto-shop
  */
 ?>

@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: service areas, locations, towns, list, grid, landscaping
  * Piece: areas
+ * Requires: kadence-blocks-pro
  * Look: landscaping
  */
 ?>

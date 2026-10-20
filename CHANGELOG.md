@@ -31,6 +31,13 @@ See docs/V2-PLAN.md and docs/ARCHITECTURE.md.
 - Rank Math: Launch Builder writes the business name, email, phone, logo and contact page into the knowledge graph with sync-seo; address, hours and business type are set in Rank Math's Local SEO screen.
 - The code is organised in folders by part of the plugin, one class per file.
 
+### Fixed
+- Breadcrumb fallback calls Kadence's namespaced template tags; generated menus default to vertical tablet/mobile layouts.
+- Top-level service lists include the current service while preserving explicit editor exclusions; list patterns declare their Pro dependency.
+- Reapplying designs preserves edited native queries, cards and sidebar widgets. Explicit replacement snapshots their state for undo.
+- Removal bakes sidebar widgets and exports a companion runtime for contextual design text, breadcrumbs and lists after deactivation or deletion. The removal report exposes incomplete token batches and unsupported tokens.
+- Surface snapshots no longer reference the retired service-category constant.
+
 ### Removed
 - The rating widget block and its designs.
 - The per-role page chrome system, Style DNA (its CSS and presets), the global areas and the Launch list blocks (entries, menu links, post body, breadcrumbs): Kadence Elements, the Style Library and Query Loops do these now.

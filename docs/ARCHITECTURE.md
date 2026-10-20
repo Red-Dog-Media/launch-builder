@@ -160,7 +160,16 @@ notice on Meta Box's screens, the `sync-meta-box` tool, `wp launch-builder meta-
 
 `prepare-removal` (Launch) hands the site over: it runs the Meta Box sync, bakes tokens into content and designs
 (`detokenize` scope all), maps the services' root URLs to the ones WordPress will use (with `.htaccess` lines), and returns
-`Query_Lists::snippet()`, a small mu-plugin that keeps the "children of this page" lists working.
+`lists_snippet` for list-only handoff and `runtime_snippet` for the complete built-in designs. Install only the latter
+for a full handoff: it includes the list filter, empty-list visibility, the breadcrumb fallback and the two shared
+contextual tokens (`page.title`, `area.name`). Its hub ids are embedded so uninstall cleanup cannot remove them. The
+companion stays inactive while Launch Builder is active. Block-widget Business Info is baked and snapshotted too;
+finish every token batch and resolve any unsupported tokens before deactivating.
+
+Native list ownership is separate from Element ownership. Query/card content, editable `_kad_query_*` settings and
+mode metadata have `query-list:<key>` ledger rows. A design keeps those dependencies if edited or lacking a baseline;
+an explicit replacement snapshots them along with the parent. Generated sidebar widgets have a content/membership
+hash in the design state, and the existing option snapshots restore that state and the widgets together.
 
 ## Adding a class or a module
 

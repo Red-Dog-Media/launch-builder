@@ -292,15 +292,16 @@ final class Design_Hub {
 			} elseif ( 'element' === $def['kind'] && 'areas' === $piece && ! Roles::hubs()['areas'] ) {
 				$row['action'] = 'skip';
 				$row['note'] = 'No service areas hub page yet: give the /service-areas/ page the role areas_hub (set-page-role), then place it.';
-			} elseif ( $row['id'] && self::edited( $piece, $row['id'] ) && ! $force ) {
+			} elseif ( self::edited( $piece, $row['id'] ) && ! $force ) {
 				$row['action'] = 'keep';
-				$row['note'] = 'Changed in Kadence since Launch Builder placed it: kept (force replaces it).';
+				$row['note'] = 'The design or its native lists were edited, or a list has no ownership baseline: kept (force replaces it).';
 			} else {
 				$exists = 'sidebar' === $def['kind'] ? (bool) $state['sidebar'] : ( $row['id'] && get_post( $row['id'] ) );
 				$row['action'] = $exists ? 'update' : 'create';
 				if ( $row['id'] && 'element' === $def['kind'] ) {
 					$snap_posts[] = [ 'id' => $row['id'], 'meta' => self::element_meta_keys(), 'ledger' => 'design:' . $piece ];
 				}
+				$snap_posts = array_merge( $snap_posts, Query_Lists::dependencies( 'design-' . $piece ) );
 			}
 			$plan[ $piece ] = $row + [ 'c' => $c ];
 		}
@@ -335,6 +336,9 @@ final class Design_Hub {
 				} else {
 					$row['id'] = (int) $r;
 					$state['pieces'][ $piece ] = [ 'look' => $c['look'], 'pattern' => $row['pattern'], 'id' => (int) $r, 'placement' => (string) ( $c['placement'] ?? ( $state['pieces'][ $piece ]['placement'] ?? ( self::PIECES[ $piece ]['placement'] ?? '' ) ) ), 'time' => time() ];
+					if ( 'sidebar' === $piece ) {
+						$state['pieces'][ $piece ]['hash'] = self::sidebar_hash( $state['sidebar'] );
+					}
 				}
 			} elseif ( 'remove' === $row['action'] ) {
 				self::remove( $piece, $state );
@@ -360,11 +364,33 @@ final class Design_Hub {
 
 	/** Was a piece's object changed outside Launch Builder since it was placed? */
 	private static function edited( string $piece, int $id ): bool {
-		if ( 'sidebar' === self::PIECES[ $piece ]['kind'] || ! get_post( $id ) ) {
+		if ( Query_Lists::edited( 'design-' . $piece ) ) {
+			return true;
+		}
+		if ( 'sidebar' === self::PIECES[ $piece ]['kind'] ) {
+			$state = self::state();
+			$hash = (string) ( $state['pieces'][ $piece ]['hash'] ?? '' );
+			return $state['sidebar'] && ( '' === $hash || ! hash_equals( $hash, self::sidebar_hash( $state['sidebar'] ) ) );
+		}
+		if ( ! $id || ! get_post( $id ) ) {
 			return false;
 		}
 		$meta = 'element' === self::PIECES[ $piece ]['kind'] ? [ '_kad_element_hook', '_kad_element_show_conditionals', '_kad_element_hide_conditionals' ] : [];
 		return Ledger::is_edited( 'design:' . $piece, Ledger::hash_post( $id, $meta ) );
+	}
+
+	/** Only the generated widgets and their sidebar membership, so unrelated widgets do not mark the piece edited. */
+	private static function sidebar_hash( array $numbers ): string {
+		$instances = (array) get_option( 'widget_block', [] );
+		$owned = array_map( static function ( $number ) { return 'block-' . $number; }, $numbers );
+		$locations = [];
+		foreach ( wp_get_sidebars_widgets() as $sidebar => $widgets ) {
+			$matches = is_array( $widgets ) ? array_values( array_intersect( $widgets, $owned ) ) : [];
+			if ( $matches ) {
+				$locations[ $sidebar ] = $matches;
+			}
+		}
+		return Ledger::hash_value( [ 'widgets' => array_intersect_key( $instances, array_flip( $numbers ) ), 'locations' => $locations ] );
 	}
 
 	/** Write one piece. @return int|\WP_Error the object's post id (0 for the sidebar) */
@@ -638,8 +664,8 @@ final class Design_Hub {
 		if ( function_exists( 'rank_math_get_breadcrumbs' ) ) {
 			return (string) rank_math_get_breadcrumbs();
 		}
-		if ( function_exists( 'kadence' ) && is_object( kadence() ) && is_callable( [ kadence(), 'get_breadcrumb' ] ) ) {
-			return (string) kadence()->get_breadcrumb( [ 'show_title' => true ] );
+		if ( function_exists( 'Kadence\\kadence' ) ) {
+			return (string) \Kadence\kadence()->get_breadcrumb( [ 'show_title' => true ] );
 		}
 		return '';
 	}
@@ -709,7 +735,7 @@ final class Design_Hub {
 				'placed_as' => [ 'header' => 'Kadence block header', 'element' => 'Kadence Element', 'sidebar' => 'Sidebar widget' ][ $def['kind'] ],
 				'look'      => $placed[ $piece ]['look'] ?? null,
 				'id'        => $id ?: null,
-				'edited'    => $id ? self::edited( $piece, $id ) : false,
+				'edited'    => self::edited( $piece, $id ),
 				'placement' => isset( $def['placement'] ) ? ( ( $placed[ $piece ]['placement'] ?? '' ) ?: $def['placement'] ) : null,
 				'shows_on'  => self::roles_of( $piece ),
 				'looks'     => $looks,

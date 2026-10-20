@@ -7,6 +7,7 @@
  * Keywords: footer, services, contact, address, copyright, landscaping
  * Inserter: no
  * Piece: footer
+ * Requires: kadence-blocks-pro
  * Look: landscaping
  */
 ?>

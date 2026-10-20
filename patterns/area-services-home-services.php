@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: area services, services, local, list, grid, checklist, cards, home services
  * Piece: area-services
+ * Requires: kadence-blocks-pro
  * Look: home-services
  */
 ?>

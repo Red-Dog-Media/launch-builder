@@ -29,7 +29,7 @@ Rockledge, FL"). Pages are normal pages.
 Colours: ONLY Kadence palette slugs `palette1`..`palette9` (palette1 action, palette2 accent, palette3 darkest
 headings/dark bands, palette4 body text, palette5-6 muted text, palette7-8 light tints, palette9 white). Never hex.
 Never set font families. Buttons: Kadence `kadence/singlebtn` with `"inheritStyles":"inherit"` (Theme Base) or
-`"inheritStyles":"secondary"`/outline variants (they follow the site's button settings); you may set a radius per look.
+`"inheritStyles":"inherit-secondary"`/outline variants (they follow the site's button settings); you may set a radius per look.
 Rows: `kadence/rowlayout` with `"inheritMaxWidth":true` and `"align":"full"` for bands.
 
 ## Pieces: 12 per look, one file each = `patterns/{piece}-{look}.php`
@@ -84,7 +84,7 @@ old header patterns). Title format: `Header (Auto shop)`, `Hero: home (Landscapi
 
 - Page title / summary in heroes for services, areas and pages: use CORE blocks so they work without Launch Builder:
   `<!-- wp:post-title {"level":1,...} /-->` and `<!-- wp:post-excerpt {"moreText":"","excerptLength":30} /-->`
-  (style them with `"textColor":"palette9"` etc. and `style.typography` / `fontSize` presets as core allows). The
+  (style them with `"textColor":"theme-palette9"` etc. and `style.typography` / `fontSize` presets as core allows). The
   Element renders on a singular page, so these get the viewed post.
 - Home hero: static editable text (a real-sounding headline for the look's trade, e.g. auto: "Honest Auto Repair,
   Done Right the First Time"); the business name via `{{lb.name}}` where natural.

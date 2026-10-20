@@ -476,6 +476,10 @@ final class Nav {
 		if ( is_wp_error( $id ) ) {
 			return $id;
 		}
+		// Navigation styles live on the menu post, shared by desktop and the mobile slide-out.
+		// Set responsive defaults only on first creation; keep subsequent editor changes.
+		add_post_meta( $id, '_kad_navigation_orientationTablet', 'vertical', true );
+		add_post_meta( $id, '_kad_navigation_orientationMobile', 'vertical', true );
 		Cache::purge_later();
 		$out = [ 'navigation_id' => $id, 'items' => count( $kids ), 'auto_items' => $auto ];
 		if ( $warnings ) {

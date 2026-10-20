@@ -7,6 +7,7 @@
  * Keywords: sidebar, contact, phone, services, links, widget, auto
  * Inserter: no
  * Piece: sidebar
+ * Requires: kadence-blocks-pro
  * Look: auto-shop
  */
 ?>

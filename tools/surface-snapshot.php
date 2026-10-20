@@ -97,8 +97,9 @@ foreach ( [ LB\Entries::SERVICE, LB\Entries::AREA ] as $name ) {
 	$out['post_types'][ $name ] = $pt ? [ 'args' => $norm( $pt ), 'supports' => get_all_post_type_supports( $name ) ] : null;
 	$out['meta'][ $name ] = $norm( get_registered_meta_keys( 'post', $name ) );
 }
-$tx = get_taxonomy( LB\Entries::CAT );
-$out['taxonomies'][ LB\Entries::CAT ] = $tx ? $norm( $tx ) : null;
+// Keep the retired taxonomy visible so a leftover pre-v2 registration is detected.
+$tx = get_taxonomy( 'lb_service_cat' );
+$out['taxonomies']['lb_service_cat'] = $tx ? $norm( $tx ) : null;
 
 // Tools.
 foreach ( LB\Abilities::defs() as $name => $d ) {

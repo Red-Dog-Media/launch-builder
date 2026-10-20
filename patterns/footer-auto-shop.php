@@ -7,6 +7,7 @@
  * Keywords: footer, dark, services, contact, address, copyright, auto
  * Inserter: no
  * Piece: footer
+ * Requires: kadence-blocks-pro
  * Look: auto-shop
  */
 ?>

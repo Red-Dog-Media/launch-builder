@@ -7,6 +7,7 @@
  * Keywords: sidebar, contact, phone, services, widget, landscaping
  * Inserter: no
  * Piece: sidebar
+ * Requires: kadence-blocks-pro
  * Look: landscaping
  */
 ?>

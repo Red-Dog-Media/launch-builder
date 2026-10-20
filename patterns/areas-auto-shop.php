@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: areas, service areas, locations, cities, towns, list, grid, auto
  * Piece: areas
+ * Requires: kadence-blocks-pro
  * Look: auto-shop
  */
 ?>

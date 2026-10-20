@@ -6,6 +6,7 @@
  * Categories: launch-builder-lists, launch-builder
  * Keywords: sub-services, services, list, grid, checklist, cards, home services
  * Piece: subservices
+ * Requires: kadence-blocks-pro
  * Look: home-services
  */
 ?>

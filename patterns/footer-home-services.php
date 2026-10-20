@@ -7,6 +7,7 @@
  * Keywords: footer, navy, services, contact, phone, email, address, directions, home services
  * Inserter: no
  * Piece: footer
+ * Requires: kadence-blocks-pro
  * Look: home-services
  */
 ?>

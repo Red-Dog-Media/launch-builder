@@ -7,6 +7,7 @@
  * Keywords: sidebar, widget, contact, phone, email, button, services, links, home services
  * Inserter: no
  * Piece: sidebar
+ * Requires: kadence-blocks-pro
  * Look: home-services
  */
 ?>
