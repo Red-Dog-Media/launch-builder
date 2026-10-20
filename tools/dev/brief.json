@@ -1,0 +1,14 @@
+{
+  "business": { "name": "Bayside Air", "phone": "(321) 555-0142", "email": "hello@baysideair.test", "address": "12 Harbor Rd, Rockledge, FL 32955", "cta_label": "Get a Free Quote", "cta_url": "/contact/" },
+  "look": "home-services",
+  "colors": { "primary": "#1e5bd8" },
+  "services": [
+    { "title": "Air Conditioning", "summary": "Cooling repair, replacement and tune-ups.", "icon": "fe_wind", "text": "## Fast, honest AC service\n\nWe keep Brevard County cool.\n\n- Same-day repair\n- Upfront prices", "children": [ { "title": "Installation and Replacement", "summary": "New systems sized right." }, { "title": "Repair", "summary": "Same-day AC repair." }, { "title": "Maintenance" } ] },
+    { "title": "Heating", "summary": "Heat pumps and furnaces.", "children": [ { "title": "Heat Pump Repair" } ] }
+  ],
+  "areas": [
+    { "title": "Rockledge, FL", "summary": "AC service across Rockledge.", "services": [ "installation-and-replacement", "repair" ] },
+    { "title": "Bayside, FL", "services": [ "air-conditioning/installation-and-replacement" ] }
+  ],
+  "pages": [ { "title": "Home", "type": "home", "text": "Welcome to Bayside Air." }, { "title": "About", "text": "## Locally owned since 2009" }, { "title": "Contact", "type": "contact" } ]
+}

@@ -296,7 +296,8 @@ final class Design_Hub {
 				$row['action'] = 'keep';
 				$row['note'] = 'Changed in Kadence since Launch Builder placed it: kept (force replaces it).';
 			} else {
-				$row['action'] = $row['id'] && get_post( $row['id'] ) ? 'update' : 'create';
+				$exists = 'sidebar' === $def['kind'] ? (bool) $state['sidebar'] : ( $row['id'] && get_post( $row['id'] ) );
+				$row['action'] = $exists ? 'update' : 'create';
 				if ( $row['id'] && 'element' === $def['kind'] ) {
 					$snap_posts[] = [ 'id' => $row['id'], 'meta' => self::element_meta_keys(), 'ledger' => 'design:' . $piece ];
 				}
@@ -543,8 +544,9 @@ final class Design_Hub {
 	public static function style_library( string $look ) {
 		$st = self::LOOK_STYLE[ $look ] ?? null;
 		$c = function_exists( 'kadence_blocks' ) ? kadence_blocks() : null;
-		$store = '\\KadenceWP\\KadenceBlocks\\Design_Tokens\\Database\\Token_Store';
-		$active = '\\KadenceWP\\KadenceBlocks\\Design_Tokens\\Database\\Active_Token_Library_Store';
+		// Class names without a leading backslash: the container's contextual bindings are keyed on Foo::class.
+		$store = 'KadenceWP\\KadenceBlocks\\Design_Tokens\\Database\\Token_Store';
+		$active = 'KadenceWP\\KadenceBlocks\\Design_Tokens\\Database\\Active_Token_Library_Store';
 		if ( ! $st || ! is_object( $c ) || ! method_exists( $c, 'get' ) || ! class_exists( $store ) || ! class_exists( $active ) ) {
 			return 'not available (Kadence Blocks 3.8 or later has the Style Library)';
 		}
@@ -563,7 +565,7 @@ final class Design_Hub {
 		];
 		$slug = 'lb-' . $look;
 		try {
-			$validator = '\\KadenceWP\\KadenceBlocks\\Design_Tokens\\Schema\\Validation\\Dtcg_Validator';
+			$validator = 'KadenceWP\\KadenceBlocks\\Design_Tokens\\Schema\\Validation\\Dtcg_Validator';
 			if ( class_exists( $validator ) && method_exists( $validator, 'get_context_overrides' ) ) {
 				$res = $c->get( $validator )->validate( $doc, $validator::get_context_overrides() );
 				if ( is_object( $res ) && method_exists( $res, 'is_valid' ) && ! $res->is_valid() ) {

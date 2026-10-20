@@ -1,0 +1,55 @@
+<?php
+/**
+ * Title: Sidebar (Landscaping)
+ * Slug: launch-builder/sidebar-landscaping
+ * Description: Two rounded sidebar cards: a light green contact card with your phone, email and a full-width pill button, and a white "Our services" card listing your main services with small leaf markers.
+ * Categories: launch-builder-sidebars, launch-builder
+ * Keywords: sidebar, contact, phone, services, widget, landscaping
+ * Inserter: no
+ * Piece: sidebar
+ * Look: landscaping
+ */
+?>
+<!-- wp:kadence/rowlayout {"uniqueID":"sbl_0","columns":1,"colLayout":"equal","bgColor":"palette8","borderRadius":[24,24,24,24],"padding":["0","","0",""],"margin":["","","md",""],"kbVersion":2} -->
+<!-- wp:kadence/column {"borderWidth":["","","",""],"uniqueID":"sbl_1","padding":["lg","md","lg","md"],"kbVersion":2} -->
+<div class="wp-block-kadence-column kadence-columnsbl_1"><div class="kt-inside-inner-col"><!-- wp:kadence/advancedheading {"uniqueID":"sbl_2","color":"palette1","fontWeight":"600","margin":["","","6",""],"htmlTag":"p","fontSize":[14,"",""],"icon":"fas_leaf","iconColor":"palette1","iconPadding":["","8","",""],"iconSize":["14","",""]} -->
+<p class="kt-adv-headingsbl_2 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headingsbl_2">Free estimate</p>
+<!-- /wp:kadence/advancedheading -->
+
+<!-- wp:kadence/advancedheading {"uniqueID":"sbl_3","color":"palette3","fontWeight":"700","margin":["","","14",""],"fontSize":[22,"",20],"fontHeight":[1.25,null,null],"fontHeightType":"em"} -->
+<h2 class="kt-adv-headingsbl_3 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headingsbl_3">Talk to a local expert</h2>
+<!-- /wp:kadence/advancedheading -->
+
+<!-- wp:kadence/advancedheading {"uniqueID":"sbl_4","color":"palette3","fontWeight":"700","margin":["","","8",""],"htmlTag":"p","link":"#lb-phone_link","linkStyle":"none","fontSize":[21,"",""],"icon":"fe_phone","iconColor":"palette1","iconPadding":["","8","",""],"iconSize":["18","",""]} -->
+<p class="kt-adv-headingsbl_4 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headingsbl_4">{{lb.phone}}</p>
+<!-- /wp:kadence/advancedheading -->
+
+<!-- wp:kadence/advancedheading {"uniqueID":"sbl_5","color":"palette4","margin":["","","20",""],"htmlTag":"p","fontSize":[15,"",""],"icon":"fe_mail","iconColor":"palette1","iconPadding":["","8","",""],"iconSize":["16","",""]} -->
+<p class="kt-adv-headingsbl_5 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headingsbl_5">{{lb.email}}</p>
+<!-- /wp:kadence/advancedheading -->
+
+<!-- wp:kadence/advancedbtn {"hAlign":"left","uniqueID":"sbl_6"} -->
+<div class="wp-block-kadence-advancedbtn kb-buttons-wrap kb-btnssbl_6"><!-- wp:kadence/singlebtn {"uniqueID":"sbl_7","text":"{{lb.cta_label}}","link":"#lb-cta_url","widthType":"full","borderRadius":[100,100,100,100],"icon":"fe_arrowRight","inheritStyles":"inherit"} /--></div>
+<!-- /wp:kadence/advancedbtn --></div></div>
+<!-- /wp:kadence/column -->
+<!-- /wp:kadence/rowlayout -->
+
+<!-- wp:kadence/rowlayout {"uniqueID":"sbl_8","columns":1,"colLayout":"equal","bgColor":"palette9","borderRadius":[24,24,24,24],"borderStyle":[{"top":["palette7","",1],"right":["palette7","",1],"bottom":["palette7","",1],"left":["palette7","",1],"unit":"px"}],"padding":["0","","0",""],"kbVersion":2} -->
+<!-- wp:kadence/column {"borderWidth":["","","",""],"uniqueID":"sbl_9","padding":["lg","md","lg","md"],"kbVersion":2} -->
+<div class="wp-block-kadence-column kadence-columnsbl_9"><div class="kt-inside-inner-col"><!-- wp:kadence/advancedheading {"uniqueID":"sbl_10","color":"palette3","fontWeight":"700","margin":["","","16",""],"fontSize":[20,"",""],"fontHeight":[1.25,null,null],"fontHeightType":"em"} -->
+<h2 class="kt-adv-headingsbl_10 wp-block-kadence-advancedheading" data-kb-block="kb-adv-headingsbl_10">Our services</h2>
+<!-- /wp:kadence/advancedheading -->
+
+<!-- wp:kadence/query {"lbList":{"mode":"top","postType":"lb_service","perPage":8,"columns":["1","1","1"],"columnGap":["","",""],"rowGap":["12","12","10"]}} -->
+<!-- wp:group {"style":{"spacing":{"blockGap":"10px"}},"layout":{"type":"flex","flexWrap":"nowrap","verticalAlignment":"center"}} -->
+<div class="wp-block-group"><!-- wp:kadence/icon {"uniqueID":"sbl_11"} -->
+<div class="wp-block-kadence-icon kt-svg-icons kt-svg-iconssbl_11 alignnone"><!-- wp:kadence/single-icon {"uniqueID":"sbl_12","icon":"fas_leaf","size":13,"color":"palette1"} -->
+<div class="wp-block-kadence-single-icon kt-svg-style-default kt-svg-icon-wrap kt-svg-item-sbl_12"><span data-name="fas_leaf" class="kadence-dynamic-icon"></span></div>
+<!-- /wp:kadence/single-icon --></div>
+<!-- /wp:kadence/icon -->
+
+<!-- wp:post-title {"level":0,"isLink":true,"style":{"typography":{"fontSize":"16px","fontWeight":"500","lineHeight":"1.45"},"spacing":{"margin":{"top":"0","bottom":"0"}},"elements":{"link":{"color":{"text":"var:preset|color|theme-palette3"},":hover":{"color":{"text":"var:preset|color|theme-palette1"}}}}}} /--></div>
+<!-- /wp:group -->
+<!-- /wp:kadence/query --></div></div>
+<!-- /wp:kadence/column -->
+<!-- /wp:kadence/rowlayout -->
