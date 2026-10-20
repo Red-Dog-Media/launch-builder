@@ -55,6 +55,7 @@ return [
 	'Mcp'                 => 'ai/class-mcp.php',
 	'Media'               => 'content/class-media.php',
 	'Menu_Links'          => 'content/class-menu-links.php',
+	'Meta_Box_Sync'       => 'integrations/class-meta-box-sync.php',
 	'Migrate'             => 'core/class-migrate.php',
 	'Modules'             => 'core/class-modules.php',
 	'Nav'                 => 'content/class-nav.php',

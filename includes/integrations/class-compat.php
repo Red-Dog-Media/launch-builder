@@ -603,6 +603,8 @@ final class Compat {
 			$mb = self::mb_status();
 			if ( ! $mb['active'] ) {
 				unset( $mb['fields'], $mb['owns_card_fields'], $mb['settings_pages'] ); // Same shape as before: just active and version.
+			} elseif ( Modules::enabled( Meta_Box_Sync::class ) ) {
+				$mb['sync'] = array_map( static function ( $r ) { return [ 'state' => $r['state'], 'note' => $r['note'] ]; }, Meta_Box_Sync::status() ); // See sync-meta-box.
 			}
 			$out['meta_box'] = $mb;
 		}

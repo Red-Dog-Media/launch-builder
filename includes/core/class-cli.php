@@ -13,6 +13,7 @@ defined( 'ABSPATH' ) || exit;
  *   wp launch-builder sync --user=admin [--apply]         # repair drift (dry run unless --apply)
  *   wp launch-builder inspect /contact/ --user=admin      # what one page prints for a visitor
  *   wp launch-builder modules [list|enable|disable] <slug> --user=admin
+ *   wp launch-builder meta-box-sync --user=admin [--apply] # services, areas and categories into Meta Box
  */
 final class CLI {
 
@@ -221,5 +222,34 @@ final class CLI {
 			\WP_CLI::error( $r->get_error_message() );
 		}
 		\WP_CLI::success( $r['changed'] ? 'Switched: ' . wp_json_encode( $r['changed'] ) . '. Snapshot ' . $r['snapshot'] . '.' : 'Nothing changed.' );
+	}
+
+	/**
+	 * List services, service areas and service categories in Meta Box (Post Types, Taxonomies) and the Card details
+	 * fields as field groups, so they are edited there. A dry run unless --apply.
+	 *
+	 * [--apply]
+	 * : Write the changes (without it, only report the plan).
+	 *
+	 * [--force=<keys>]
+	 * : Overwrite copies changed, drafted, trashed or renamed in Meta Box: "all" or comma-separated keys.
+	 *
+	 * [--undo]
+	 * : Move Launch Builder's copies in Meta Box to the Trash (with --apply).
+	 */
+	public function meta_box_sync( $args, $assoc ) {
+		$this->admin_or_bail();
+		if ( ! Modules::enabled( Meta_Box_Sync::class ) ) {
+			\WP_CLI::error( 'The Meta Box sync module is off: wp launch-builder modules enable meta-box-sync --user=<admin>.' );
+		}
+		$force = isset( $assoc['force'] ) ? array_filter( array_map( 'trim', explode( ',', (string) $assoc['force'] ) ) ) : false;
+		$r = Meta_Box_Sync::run( [ 'dry_run' => ! isset( $assoc['apply'] ), 'force' => $force, 'undo' => isset( $assoc['undo'] ) ] );
+		if ( is_wp_error( $r ) ) {
+			\WP_CLI::error( $r->get_error_message() );
+		}
+		foreach ( $r['objects'] as $key => $o ) {
+			\WP_CLI::line( sprintf( '%-18s %-12s %-9s %s', $key, $o['state'], $o['action'], $o['note'] ) );
+		}
+		\WP_CLI::success( ( $r['dry_run'] ? 'Dry run: nothing changed. ' : '' ) . (string) ( $r['message'] ?? '' ) );
 	}
 }

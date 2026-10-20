@@ -18,6 +18,12 @@ defined( 'ABSPATH' ) || exit;
  * filters), so a Meta Box field or a REST client using that id keeps working. _lb_icon (a Kadence icon name, case
  * kept) and _lb_services (areas: one integer row per service offered there, none = every service) are plain post meta.
  * When Meta Box registers a field with one of these ids, the Card details box leaves that field to it.
+ *
+ * Registration: Launch Builder registers the three types only when nothing has yet. When Meta Box's post types and
+ * taxonomies hold them (Meta_Box_Sync puts them there, init priority 0), its settings win, so they are edited in Meta
+ * Box, except what the lists, URLs and editors here rely on (type_args(), taxonomy_args()): public, in REST, no
+ * archive (the hubs are pages), areas hierarchical, categories hierarchical and on services, the supports in
+ * KEEP_SUPPORTS and a URL base (Meta Box's, else the default) passed through launch_builder_entry_rewrite_args.
  */
 final class Entries {
 
@@ -62,9 +68,20 @@ final class Entries {
 	/** @var array<string,bool> svc-{slug} anchors already printed on this page. */
 	private static $anchors = [];
 
+	/** Supports services and areas always keep, whoever registers them (summary = excerpt, order, image, meta in REST). */
+	const KEEP_SUPPORTS = [ 'title', 'editor', 'excerpt', 'thumbnail', 'page-attributes', 'custom-fields' ];
+
+	/** URL base of each type when the registration that wins gives none (before launch_builder_entry_rewrite_args). */
+	const BASES = [ self::SERVICE => 'services', self::AREA => 'service-areas', self::CAT => 'service-category' ];
+
+	/** @var bool register() is registering (its own arguments pass type_args() / taxonomy_args() untouched). */
+	private static $registering = false;
+
 	public static function boot(): void {
 		add_action( 'init', [ __CLASS__, 'register' ], 5 );
 		add_action( 'init', [ __CLASS__, 'maybe_flush' ], 99 );
+		add_filter( 'register_post_type_args', [ __CLASS__, 'type_args' ], 20, 2 );
+		add_filter( 'register_taxonomy_args', [ __CLASS__, 'taxonomy_args' ], 20, 2 );
 		add_filter( 'the_content', [ __CLASS__, 'wrap' ], 8 );
 		add_action( 'add_meta_boxes', [ __CLASS__, 'meta_boxes' ] );
 		add_action( 'save_post', [ __CLASS__, 'save_meta' ], 10, 2 );
@@ -100,7 +117,11 @@ final class Entries {
 
 	/* ------------------------------------------------------------------ registration */
 
-	public static function register(): void {
+	/**
+	 * How Launch Builder registers its three types, in registration order: name => { kind (post_type | taxonomy), args,
+	 * object_type (taxonomies) }. register() uses it, and Meta_Box_Sync builds Meta Box's copies from it.
+	 */
+	public static function definitions(): array {
 		$labels = static function ( string $one, string $many ): array {
 			return [ 'name' => $many, 'singular_name' => $one, 'menu_name' => $many, 'all_items' => 'All ' . strtolower( $many ), 'add_new_item' => 'Add ' . strtolower( $one ), 'edit_item' => 'Edit ' . strtolower( $one ), 'new_item' => 'New ' . strtolower( $one ), 'view_item' => 'View ' . strtolower( $one ), 'search_items' => 'Search ' . strtolower( $many ), 'not_found' => 'None yet' ];
 		};
@@ -110,18 +131,56 @@ final class Entries {
 			return (array) apply_filters( 'launch_builder_entry_rewrite_args', [ 'slug' => $slug, 'with_front' => false ], $object );
 		};
 		$supports = [ 'title', 'editor', 'excerpt', 'thumbnail', 'page-attributes', 'revisions', 'custom-fields' ];
-		register_post_type( self::SERVICE, [
-			'labels' => $labels( 'Service', 'Services' ), 'public' => true, 'show_in_rest' => true, 'menu_icon' => 'dashicons-hammer', 'menu_position' => 21,
-			'supports' => $supports, 'has_archive' => false, 'hierarchical' => false, 'rewrite' => $rewrite( 'services', self::SERVICE ),
-		] );
-		register_taxonomy( self::CAT, [ self::SERVICE ], [
-			'labels' => [ 'name' => 'Service categories', 'singular_name' => 'Service category', 'menu_name' => 'Categories', 'all_items' => 'All categories', 'add_new_item' => 'Add category' ],
-			'hierarchical' => true, 'public' => true, 'show_in_rest' => true, 'show_admin_column' => true, 'rewrite' => $rewrite( 'service-category', self::CAT ),
-		] );
-		register_post_type( self::AREA, [
-			'labels' => $labels( 'Service area', 'Service areas' ), 'public' => true, 'show_in_rest' => true, 'menu_icon' => 'dashicons-location-alt', 'menu_position' => 22,
-			'supports' => $supports, 'has_archive' => false, 'hierarchical' => true, 'rewrite' => $rewrite( 'service-areas', self::AREA ),
-		] );
+		return [
+			self::SERVICE => [ 'kind' => 'post_type', 'args' => [
+				'labels' => $labels( 'Service', 'Services' ), 'public' => true, 'show_in_rest' => true, 'menu_icon' => 'dashicons-hammer', 'menu_position' => 21,
+				'supports' => $supports, 'has_archive' => false, 'hierarchical' => false, 'rewrite' => $rewrite( 'services', self::SERVICE ),
+			] ],
+			self::CAT     => [ 'kind' => 'taxonomy', 'object_type' => [ self::SERVICE ], 'args' => [
+				'labels' => [ 'name' => 'Service categories', 'singular_name' => 'Service category', 'menu_name' => 'Categories', 'all_items' => 'All categories', 'add_new_item' => 'Add category' ],
+				'hierarchical' => true, 'public' => true, 'show_in_rest' => true, 'show_admin_column' => true, 'rewrite' => $rewrite( 'service-category', self::CAT ),
+			] ],
+			self::AREA    => [ 'kind' => 'post_type', 'args' => [
+				'labels' => $labels( 'Service area', 'Service areas' ), 'public' => true, 'show_in_rest' => true, 'menu_icon' => 'dashicons-location-alt', 'menu_position' => 22,
+				'supports' => $supports, 'has_archive' => false, 'hierarchical' => true, 'rewrite' => $rewrite( 'service-areas', self::AREA ),
+			] ],
+		];
+	}
+
+	/**
+	 * One of definitions() as WordPress would hold it, without registering it: a WP_Post_Type or WP_Taxonomy with every
+	 * label filled in. Null for another name.
+	 *
+	 * @return \WP_Post_Type|\WP_Taxonomy|null
+	 */
+	public static function definition_object( string $name ) {
+		$def = self::definitions()[ $name ] ?? null;
+		if ( ! $def ) {
+			return null;
+		}
+		self::$registering = true; // Launch Builder's own arguments: type_args() / taxonomy_args() leave them as they are.
+		$object = 'taxonomy' === $def['kind'] ? new \WP_Taxonomy( $name, $def['object_type'], $def['args'] ) : new \WP_Post_Type( $name, $def['args'] );
+		self::$registering = false;
+		return $object;
+	}
+
+	public static function register(): void {
+		// A type that is registered already (Meta Box, init 0) keeps that registration; see type_args().
+		self::$registering = true;
+		foreach ( self::definitions() as $name => $def ) {
+			if ( 'taxonomy' === $def['kind'] ) {
+				if ( ! taxonomy_exists( $name ) ) {
+					register_taxonomy( $name, $def['object_type'], $def['args'] );
+				} else {
+					foreach ( $def['object_type'] as $type ) {
+						register_taxonomy_for_object_type( $name, $type ); // Categories always belong to services.
+					}
+				}
+			} elseif ( ! post_type_exists( $name ) ) {
+				register_post_type( $name, $def['args'] );
+			}
+		}
+		self::$registering = false;
 		add_post_type_support( 'page', 'excerpt' ); // The summary store of every type (page.summary, page heroes, SEO descriptions).
 		$can = static function () { return current_user_can( 'edit_posts' ); };
 		foreach ( [ self::SERVICE, self::AREA ] as $pt ) {
@@ -133,6 +192,39 @@ final class Entries {
 		foreach ( self::summary_types() as $t ) {
 			add_action( 'rest_insert_' . $t, [ __CLASS__, 'rest_excerpt' ], 10, 2 );
 		}
+	}
+
+	/**
+	 * register_post_type_args: services and areas registered by something else (Meta Box) keep its settings, except what
+	 * Launch Builder relies on. register() itself passes untouched (its own arguments already are these).
+	 */
+	public static function type_args( $args, $post_type ) {
+		if ( self::$registering || ! is_array( $args ) || ! in_array( $post_type, [ self::SERVICE, self::AREA ], true ) ) {
+			return $args;
+		}
+		$args = array_merge( $args, [ 'public' => true, 'publicly_queryable' => true, 'show_ui' => true, 'show_in_rest' => true, 'has_archive' => false, 'hierarchical' => self::AREA === $post_type ] );
+		$args['supports'] = array_values( array_unique( array_merge( is_array( $args['supports'] ?? null ) ? $args['supports'] : [], self::KEEP_SUPPORTS ) ) );
+		$args['rewrite'] = self::kept_rewrite( $args['rewrite'] ?? null, (string) $post_type );
+		return $args;
+	}
+
+	/** register_taxonomy_args: the same for service categories (register() also keeps them on services). */
+	public static function taxonomy_args( $args, $taxonomy ) {
+		if ( self::$registering || ! is_array( $args ) || self::CAT !== $taxonomy ) {
+			return $args;
+		}
+		$args = array_merge( $args, [ 'public' => true, 'publicly_queryable' => true, 'show_ui' => true, 'show_in_rest' => true, 'hierarchical' => true ] );
+		$args['rewrite'] = self::kept_rewrite( $args['rewrite'] ?? null, (string) $taxonomy );
+		return $args;
+	}
+
+	/** A registration's rewrite with a URL base (its own, else BASES), through launch_builder_entry_rewrite_args. */
+	private static function kept_rewrite( $rewrite, string $object ): array {
+		$rewrite = is_array( $rewrite ) ? $rewrite : [];
+		$base = trim( (string) ( $rewrite['slug'] ?? '' ), '/' );
+		$rewrite['slug'] = '' !== $base ? $base : self::BASES[ $object ];
+		$rewrite['with_front'] = ! empty( $rewrite['with_front'] );
+		return (array) apply_filters( 'launch_builder_entry_rewrite_args', $rewrite, $object );
 	}
 
 	/** New permalinks need one rewrite flush, once per plugin version. */
@@ -370,6 +462,9 @@ final class Entries {
 		if ( $taken ) {
 			/* translators: %s: field names, for example "Icon" */
 			return sprintf( __( 'Meta Box edits %s, so this box leaves it out.', 'launch-builder' ), implode( ', ', $taken ) );
+		}
+		if ( Modules::enabled( Meta_Box_Sync::class ) && Meta_Box_Sync::support()['fields'] ) {
+			return __( 'Using Meta Box? Meta Box > Custom Fields can add these fields as field groups (Launch Builder offers it there), and Meta Box then edits them.', 'launch-builder' );
 		}
 		return self::AREA === $post_type
 			? __( 'Using Meta Box? A field with the id _lb_icon or _lb_services takes over from this box.', 'launch-builder' )

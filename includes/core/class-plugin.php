@@ -74,6 +74,7 @@ final class Plugin {
 		Migrate::class,     // versioned data migrations
 		Audit::class,       // site audit, sync-site, preview-urls
 		Compat::class,      // third-party compatibility (stub)
+		Meta_Box_Sync::class, // services, areas and categories as Meta Box post types, taxonomy and field groups (toggleable)
 		Updater::class,     // updates from GitHub releases
 		Inspect::class,     // inspect-page (loopback GET + parse), role body class
 		Modules::class,     // module switches (get-modules / set-modules)
