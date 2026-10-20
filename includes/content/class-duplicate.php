@@ -87,7 +87,7 @@ final class Duplicate {
 	const SHARED_REFS = [ 'kadence/advanced-form' => 'id', 'kadence/navigation' => 'id', 'kadence/header' => 'id', 'core/block' => 'ref', 'core/navigation' => 'ref' ];
 
 	/** The type's "category" for overrides.category. */
-	const CATEGORY_TAX = [ 'lb_service' => 'lb_service_cat', 'post' => 'category' ];
+	const CATEGORY_TAX = [ 'post' => 'category' ];
 
 	/** Other duplicator plugins that can clash. The first has known security flaws (SQL injection, XSS, CSRF by any logged-in user). Slugs are assembled from parts so the list reads as data. */
 	const CONFLICTS = [
@@ -1334,7 +1334,7 @@ final class Duplicate {
 						'properties' => [
 							'excerpt'  => [ 'type' => 'string', 'description' => 'Summary of the copy.' ],
 							'parent'   => [ 'type' => 'integer', 'description' => 'Same as parent.' ],
-							'category' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Replace the category (lb_service_cat for services, category for posts): existing term IDs, slugs or names.' ],
+							'category' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Replace the category (posts): existing term IDs, slugs or names.' ],
 						],
 					],
 				],

@@ -10,14 +10,14 @@ defined( 'ABSPATH' ) || exit;
  * Contracts other modules print for it:
  *  - Role: <body> carries the class lb-role-{role} (Roles::current()), added here on body_class unless a class starting
  *    with lb-role- is already there (filter launch_builder_role_body_class returns false to turn it off).
- *  - Chrome slots: whatever prints a shared design marks it so a page can say which design printed where:
- *      <div data-lb-slot="hero" data-lb-key="chrome-hero-ab12cd34" data-lb-source="element" data-lb-id="123">...</div>
- *    data-lb-slot (required) = a Chrome::SLOTS key; data-lb-key = the design/group key (_lb_key); data-lb-source =
- *    element | synced | pattern | theme; data-lb-id = the element or synced pattern post id. A wrapper or the design's
- *    first element may carry it. Without marks, Kadence Pro's own <!-- [element-ID] --> comments are read and mapped
- *    through the element's _lb_slot / _lb_key meta (else its hook), and the patterns-mode wrappers (.lb-chrome--{slot}),
- *    the legacy global areas (.lb-global--{area}) and the theme's own title banner (section.entry-hero), header
- *    (#masthead) and footer (#colophon) are recognised. A mark naming an element id replaces that element's comment.
+ *  - Design slots: whatever prints a shared design may mark it so a page can say which design printed where:
+ *      <div data-lb-slot="hero" data-lb-key="design-hero-service" data-lb-source="element" data-lb-id="123">...</div>
+ *    data-lb-slot (required) = header | hero | crumbs | list | before_footer | footer; data-lb-key = the design key
+ *    (_lb_key); data-lb-source = element | synced | pattern | theme; data-lb-id = the element post id. Without marks,
+ *    Kadence Pro's own <!-- [element-ID] --> comments are read and mapped through the element's _lb_slot / _lb_key meta
+ *    (the Design hub writes both; else its hook), and the theme's own title banner (section.entry-hero), header
+ *    (#masthead) and footer (#colophon) are recognised. Wrappers of sites built before v2 (.lb-chrome--{slot},
+ *    .lb-global--{area}) are still read. A mark naming an element id replaces that element's comment.
  *
  * Tools: inspect-page { url | post_id | role, check_links, max_links } and preview-urls { roles[], designs }.
  */
@@ -25,7 +25,7 @@ final class Inspect {
 
 	const UA = 'LaunchBuilder-Inspect/1.0';
 
-	/** Kadence Pro element hook => chrome slot (for elements without _lb_slot meta, e.g. legacy LB elements). */
+	/** Kadence Pro element hook => design slot (for elements without _lb_slot meta). */
 	const HOOK_SLOTS = [ 'replace_header' => 'header', 'kadence_before_header' => 'notice', 'replace_hero_header' => 'hero', 'kadence_hero_header' => 'crumbs', 'replace_single_content' => 'template', 'replace_404' => 'notfound_body', 'kadence_before_footer' => 'before_footer', 'replace_footer' => 'footer', 'fixed_on_footer' => 'sticky_bar' ];
 
 	/** Legacy global areas (Globals) => chrome slot. */
@@ -46,7 +46,7 @@ final class Inspect {
 		}
 		foreach ( $classes as $c ) {
 			if ( 0 === strpos( (string) $c, 'lb-role-' ) ) {
-				return $classes; // Already printed (by Chrome or a theme).
+				return $classes; // Already printed (by a theme or another plugin).
 			}
 		}
 		$role = Roles::current();
@@ -69,7 +69,7 @@ final class Inspect {
 				'max_links'   => [ 'type' => 'integer', 'description' => 'Internal links to check, at most 50 (default 20).' ],
 			] ], [ __CLASS__, 'page_tool' ], 'edit_pages', $ro );
 
-		Abilities::add( 'preview-urls', 'URLs to screenshot', 'One URL per page role (a sample page of each role) and one per shared design in the chrome map (a page that shows it), for screenshots at 1440 and 390 px wide. Roles without a page yet are listed with url null.',
+		Abilities::add( 'preview-urls', 'URLs to screenshot', 'One URL per page role (a sample page of each role) and one per design piece the Design hub placed (a page that shows it), for screenshots at 1440 and 390 px wide. Roles without a page yet are listed with url null.',
 			[ 'properties' => [
 				'roles'   => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Only these roles (default all).' ],
 				'designs' => [ 'type' => 'boolean', 'description' => 'Also list one URL per chrome design (default true).' ],
@@ -175,13 +175,6 @@ final class Inspect {
 			$cats = get_categories( [ 'hide_empty' => true, 'number' => 1 ] );
 			return $cats ? [ 'url' => (string) get_category_link( $cats[0] ), 'post_id' => null ] : null;
 		}
-		if ( 'category' === $role && taxonomy_exists( Entries::CAT ) ) {
-			$terms = get_terms( [ 'taxonomy' => Entries::CAT, 'hide_empty' => true, 'number' => 1 ] );
-			if ( $terms && ! is_wp_error( $terms ) ) {
-				$link = get_term_link( $terms[0] );
-				return is_wp_error( $link ) ? null : [ 'url' => (string) $link, 'post_id' => null ];
-			}
-		}
 		return null;
 	}
 
@@ -200,30 +193,12 @@ final class Inspect {
 		$out = [ 'roles' => $roles, 'viewports' => [ [ 'name' => 'desktop', 'width' => 1440 ], [ 'name' => 'mobile', 'width' => 390, 'height' => 844, 'device_scale_factor' => 2, 'mobile' => true ] ] ];
 		if ( ! array_key_exists( 'designs', $input ) || ! empty( $input['designs'] ) ) {
 			$designs = [];
-			$map = Chrome::get();
-			foreach ( array_keys( Chrome::SLOTS ) as $slot ) {
-				foreach ( array_keys( Roles::ROLES ) as $role ) {
-					$d = Chrome::design( $slot, $role );
-					if ( false === $d || null === $d || '' === $d ) {
-						continue;
-					}
-					$key = $slot . ':' . md5( (string) wp_json_encode( $d ) );
-					if ( ! isset( $designs[ $key ] ) ) {
-						$designs[ $key ] = [ 'slot' => $slot, 'design' => $d, 'roles' => [], 'url' => null, 'shown_on' => null ];
-					}
-					$designs[ $key ]['roles'][] = $role;
-					if ( null === $designs[ $key ]['url'] ) {
-						$r = self::role_url( $role );
-						if ( $r ) {
-							$designs[ $key ]['url'] = $r['url'];
-							$designs[ $key ]['shown_on'] = $role;
-						}
-					}
-				}
+			foreach ( Design_Hub::placements() as $piece => $pl ) {
+				$role = (string) ( $pl['roles'][0] ?? '' );
+				$r = '' !== $role ? self::role_url( $role ) : null;
+				$designs[] = [ 'piece' => $piece, 'pattern' => $pl['pattern'], 'id' => $pl['id'], 'roles' => $pl['roles'], 'url' => $r['url'] ?? null, 'shown_on' => $r ? $role : null ];
 			}
-			unset( $map );
-			$out['designs'] = array_values( $designs );
-			$out['chrome_mode'] = Chrome::mode();
+			$out['designs'] = $designs;
 		}
 		return $out;
 	}
@@ -435,7 +410,7 @@ final class Inspect {
 		}
 		$out['crumbs'] = $crumbs;
 
-		// Chrome: which design printed in each slot.
+		// Designs: which design printed in each slot.
 		$out['chrome'] = self::chrome( $html );
 
 		// Where to look for tokens and demo copy: the HTML without scripts and styles (attributes such as href count),
@@ -554,7 +529,7 @@ final class Inspect {
 	}
 
 	/**
-	 * Chrome slots printed: data-lb-slot marks, Kadence element comments (unless a mark already names that id), the
+	 * Design slots printed: data-lb-slot marks, Kadence element comments (unless a mark already names that id), the
 	 * lb-chrome--{slot} wrappers of the patterns-mode printer, legacy global areas, theme parts.
 	 */
 	private static function chrome( string $html ): array {
@@ -704,19 +679,18 @@ final class Inspect {
 			if ( ! $pid && ! empty( $opts['url'] ) ) {
 				$pid = (int) url_to_postid( (string) $opts['url'] );
 			}
-			$own = $pid ? (string) get_post_meta( $pid, '_lb_hero', true ) : ''; // 'content' / 'none': the page opted out of the chrome hero.
-			$d = Chrome::design( 'hero', $role );
-			if ( $d && ! in_array( $own, [ 'content', 'none' ], true ) ) {
-				$add( 'info', 'hero_missing', 'No shared hero printed on this ' . $role . ' page (the chrome map gives it one), unless its own content opens with a hero.' );
+			unset( $pid );
+			if ( '' !== Design_Hub::role_markup( $role, [ 'hero' ] ) ) {
+				$add( 'info', 'hero_missing', 'No hero printed on this ' . $role . ' page, though the Design hub places one on it (is the Kadence Elements module on?).' );
 			}
 		}
 		if ( '' !== $role ) {
-			$want = Chrome::crumbs_on( $role );
+			$want = Design_Hub::crumbs_on( $role );
 			$have = (bool) $o['crumbs'];
-			if ( $have && ( ! $want || in_array( $role, [ 'home', 'conversion', 'thanks' ], true ) ) ) {
-				$add( 'warning', 'crumbs_on_excluded_role', 'Breadcrumbs are printed on a ' . $role . ' page, which should have none.' );
+			if ( $have && 'home' === $role ) {
+				$add( 'warning', 'crumbs_on_excluded_role', 'Breadcrumbs are printed on the home page, which should have none.' );
 			} elseif ( ! $have && $want ) {
-				$add( 'info', 'crumbs_missing', 'No breadcrumb trail on a ' . $role . ' page (the chrome map gives this role crumbs).' );
+				$add( 'info', 'crumbs_missing', 'No breadcrumb trail on a ' . $role . ' page, though the Design hub places the breadcrumb bar on it.' );
 			}
 			$robots = strtolower( $o['seo']['robots'] );
 			if ( 'thanks' === $role && false === strpos( $robots, 'noindex' ) ) {

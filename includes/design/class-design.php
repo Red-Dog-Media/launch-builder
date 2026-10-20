@@ -4,11 +4,19 @@ namespace LaunchBuilder;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Design controls that sit above individual patterns: the theme button style, menu + dropdown styling, the page title
- * and layout standard for inner pages, and Kadence's "block defaults". Patterns stay free of one-off styling, so a client's
- * look is changed here once and every page follows. Everything is snapshotted so a change can be undone with restore-snapshot.
+ * Brand controls, all stored as Kadence's own settings: the palette, fonts and logo, the theme button styles, menu +
+ * dropdown styling, the page title and layout standard, and Kadence's "block defaults". Patterns stay free of one-off
+ * styling, so a client's look is changed here once and every page follows. Everything is snapshotted so a change can be
+ * undone with restore-snapshot.
  */
 final class Design {
+
+	/** The theme mods set-buttons writes (snapshotted before a change). */
+	const BUTTON_MODS = [
+		'buttons_color', 'buttons_background', 'buttons_border', 'buttons_border_colors', 'buttons_border_radius', 'buttons_padding', 'buttons_typography', 'buttons_shadow', 'buttons_shadow_hover',
+		'buttons_secondary_color', 'buttons_secondary_background', 'buttons_secondary_border', 'buttons_secondary_border_colors', 'buttons_secondary_border_radius', 'buttons_secondary_padding', 'buttons_secondary_typography', 'buttons_secondary_shadow', 'buttons_secondary_shadow_hover',
+		'buttons_outline_color', 'buttons_outline_background', 'buttons_outline_border', 'buttons_outline_border_colors', 'buttons_outline_border_radius', 'buttons_outline_padding', 'buttons_outline_typography', 'buttons_outline_shadow', 'buttons_outline_shadow_hover',
+	];
 
 	public static function define_tools(): void {
 		Abilities::add( 'set-brand', 'Set brand: palette, fonts, logo', 'One call to restyle the whole Kadence site. palette: palette1 (primary accent), palette2 (darker accent), palette3 (headings, darkest), palette4 (body text), palette5-6 (muted text), palette7-8 (light backgrounds), palette9 (white/base). fonts: body/headings/h1..h6. Snapshots first.',
@@ -18,17 +26,14 @@ final class Design {
 				'logo_attachment_id' => [ 'type' => 'integer' ],
 			] ], [ __CLASS__, 'set_brand' ] );
 
-		Abilities::add( 'set-buttons', 'Design the site-wide buttons', 'Buttons in patterns use the Kadence "Theme Base" style, so this one call restyles every button on the site. primary = the standard button, secondary = Theme Secondary, outline = Outline. Each takes any of: background, color, hover_background, hover_color (palette1-9, #hex, rgb(a) or transparent; outline takes a background too), border_color, hover_border_color, border_width (px), radius (px, or "pill"), padding ("sm"|"md"|"lg"|"xl" or [vertical, horizontal] px), weight (400-900), size (px), uppercase (bool), shadow ("none"|"soft" = same shadow on hover|"lift" = grows on hover|"hard" = offset block shadow). The result has a contrast report (button colours against the light page and the dark surface tokens, normal and hover; text on the button); auto_fix:true adjusts a hover colour that vanishes on a dark surface or a hover text that does not read.',
-			[ 'properties' => [ 'primary' => [ 'type' => 'object' ], 'secondary' => [ 'type' => 'object' ], 'outline' => [ 'type' => 'object' ], 'auto_fix' => [ 'type' => 'boolean' ] ] ], [ __CLASS__, 'set_buttons' ], 'edit_theme_options' );
+		Abilities::add( 'set-buttons', 'Design the site-wide buttons', 'Buttons in patterns use the Kadence "Theme Base" style, so this one call restyles every button on the site. primary = the standard button, secondary = Theme Secondary, outline = Outline. Each takes any of: background, color, hover_background, hover_color (palette1-9, #hex, rgb(a) or transparent; outline takes a background too), border_color, hover_border_color, border_width (px), radius (px, or "pill"), padding ("sm"|"md"|"lg"|"xl" or [vertical, horizontal] px), weight (400-900), size (px), uppercase (bool), shadow ("none"|"soft" = same shadow on hover|"lift" = grows on hover|"hard" = offset block shadow). The result has a contrast report: the text on each button, normal and hover.',
+			[ 'properties' => [ 'primary' => [ 'type' => 'object' ], 'secondary' => [ 'type' => 'object' ], 'outline' => [ 'type' => 'object' ] ] ], [ __CLASS__, 'set_buttons' ], 'edit_theme_options' );
 
 		Abilities::add( 'set-nav-style', 'Style the menu and its dropdowns', 'Design the main menu (block header) and the sub-menu dropdown. links: {color, hover, active, style ("standard"|"underline"|"underline-fullheight"|"bold"), weight, size, uppercase}. dropdown: {background, hover_background, color, hover_color, active_color, width (px), radius (px), shadow ("none"|"soft"|"strong"), reveal ("none"|"fade"|"fade-up"|"fade-down"), divider (bool or colour), padding ([vertical, horizontal] px per item), spacing (gap under the parent, px), size (px), align ("left"|"center"|"right")}. Applies to the menus this plugin made (or one key), and with theme:true also to the Customizer dropdown used by non-block headers.',
 			[ 'properties' => [ 'key' => [ 'type' => 'string' ], 'links' => [ 'type' => 'object' ], 'dropdown' => [ 'type' => 'object' ], 'theme' => [ 'type' => 'boolean' ] ] ], [ __CLASS__, 'set_nav_style' ], 'edit_theme_options' );
 
-		Abilities::add( 'set-page-style', 'Standardise inner pages: title banner and layout', 'Sets the Kadence Customizer defaults every ordinary page inherits, so inner pages need no hero pattern and can be plain text. title: {show, layout ("above" = banner above the content, "normal"), align ("left"|"center"|"right"), height (px), background (palette/hex), color (title colour), overlay, breadcrumbs (bool; Kadence\'s own title-bar breadcrumbs are never switched on while Launch Builder breadcrumbs are on for pages, see get-chrome)}. content: {width ("normal"|"narrow"|"fullwidth"|"right"|"left" = with sidebar), style ("boxed"|"unboxed"), padding ("show"|"hide")}. site: {content_width (px, the max width rows inherit), edge_spacing (rem)}. preset: "banner" gives a tinted title banner with breadcrumbs and unboxed content (recommended for text pages).',
+		Abilities::add( 'set-page-style', 'Standardise inner pages: title banner and layout', 'Sets the Kadence Customizer defaults every ordinary page inherits, so inner pages need no hero pattern and can be plain text. title: {show, layout ("above" = banner above the content, "normal"), align ("left"|"center"|"right"), height (px), background (palette/hex), color (title colour), overlay, breadcrumbs (bool: Kadence\'s own title-bar breadcrumbs; leave off when the Design hub places a breadcrumb bar)}. content: {width ("normal"|"narrow"|"fullwidth"|"right"|"left" = with sidebar), style ("boxed"|"unboxed"), padding ("show"|"hide")}. site: {content_width (px, the max width rows inherit), edge_spacing (rem)}. preset: "banner" gives a tinted title banner with breadcrumbs and unboxed content (recommended for text pages).',
 			[ 'properties' => [ 'preset' => [ 'type' => 'string', 'enum' => [ 'banner', 'plain' ] ], 'title' => [ 'type' => 'object' ], 'content' => [ 'type' => 'object' ], 'site' => [ 'type' => 'object' ] ] ], [ __CLASS__, 'set_page_style' ], 'edit_theme_options' );
-
-		Abilities::add( 'set-sidebar', 'Fill the theme sidebar', 'Puts a synced pattern (by key, from set-synced-pattern; sidebar-contact and sidebar-services are made for it) into the theme sidebar widget area. Every page whose layout has a sidebar (set-page-layout type "sidebar", or width "right"/"left") then shows it; edit it once and all update. key "" removes it. sidebar defaults to the Kadence "sidebar-primary".',
-			[ 'properties' => [ 'key' => [ 'type' => 'string' ], 'sidebar' => [ 'type' => 'string' ] ], 'required' => [ 'key' ] ], [ __CLASS__, 'set_sidebar' ], 'edit_theme_options' );
 
 		Abilities::add( 'set-block-defaults', 'Set Kadence block defaults', 'What a newly inserted Kadence block starts with. preset "standard" makes buttons use Theme Base, rows inherit the theme max width, and icon lists start as a stylised check list in the brand colour. defaults: {"kadence/iconlist": {...attributes}} merges extra block defaults. reset:true clears them all.',
 			[ 'properties' => [ 'preset' => [ 'type' => 'string', 'enum' => [ 'standard' ] ], 'defaults' => [ 'type' => 'object' ], 'reset' => [ 'type' => 'boolean' ] ] ], [ __CLASS__, 'set_block_defaults' ], 'edit_theme_options' );
@@ -123,7 +128,7 @@ final class Design {
 				}
 			}
 			update_option( 'kadence_global_palette', wp_json_encode( $pal ) );
-			Style::forget(); // The style CSS and its contrast checks read the palette.
+			Color::forget(); // Contrast checks read the palette.
 			$changed[] = 'palette';
 			$palette_used = $active;
 		}
@@ -261,36 +266,40 @@ final class Design {
 	public static function set_buttons( $input ) {
 		$input = (array) $input;
 		$plan = self::button_mods( $input );
-		if ( ! $plan && empty( $input['auto_fix'] ) ) {
+		if ( ! $plan ) {
 			return new \WP_Error( 'lb_empty', 'Nothing to set. Give primary, secondary and/or outline settings.', [ 'status' => 400 ] );
 		}
-		$snap = Abilities::snapshot( 'set-buttons', Style::BUTTON_MODS );
+		$snap = Abilities::snapshot( 'set-buttons', self::BUTTON_MODS );
 		foreach ( $plan as $k => $v ) {
 			set_theme_mod( $k, $v );
 		}
-		Style::record_buttons(); // Launch Builder's own write: a later set-style sees these as ours, not as Customizer edits.
-		Style::forget();
-		// Contrast guard: the theme button colours against the light page and the dark surface tokens, normal and hover.
-		$report = Style::contrast_report();
-		$fixed = null;
-		if ( ! empty( $input['auto_fix'] ) && ! $report['ok'] ) {
-			$fix = Style::hover_fixes( $report );
-			if ( $fix['mods'] ) {
-				Style::write_button_mods( $fix['mods'], true );
-				$plan = array_merge( $plan, $fix['mods'] );
-				$report = Style::contrast_report();
-			}
-			$fixed = $fix['changes'];
-		}
 		Cache::purge_later();
-		$out = [
+		$issues = self::button_contrast();
+		return [
 			'changed'  => array_keys( $plan ),
 			'snapshot' => $snap,
-			'note'     => 'Buttons set to "Theme Base" in patterns follow the primary style; "Theme Secondary" follows secondary. On dark sections (lbd-sec--dark, lbd-hero, dark Kadence rows and columns) the style DNA gives every theme button a visible on-dark hover and focus state.',
-			'contrast' => [ 'ok' => $report['ok'], 'issues' => array_column( $report['issues'], 'message' ) ],
+			'note'     => 'Buttons set to "Theme Base" in patterns follow the primary style; "Theme Secondary" follows secondary.',
+			'contrast' => [ 'ok' => ! $issues, 'issues' => $issues ],
 		];
-		if ( null !== $fixed ) {
-			$out['auto_fix'] = $fixed;
+	}
+
+	/** Text on the primary and secondary theme buttons, normal and hover, below WCAG AA (4.5:1). @return string[] */
+	public static function button_contrast(): array {
+		$out = [];
+		foreach ( [ 'primary' => 'buttons', 'secondary' => 'buttons_secondary' ] as $kind => $p ) {
+			$col = self::mod( $p . '_color' );
+			$bg = self::mod( $p . '_background' );
+			foreach ( [ 'color' => 'normal', 'hover' => 'hover' ] as $k => $state ) {
+				$text = (string) ( $col[ $k ] ?? '' );
+				$back = (string) ( $bg[ $k ] ?? '' );
+				if ( '' === $text || '' === $back || ! Color::hex( $text ) || ! Color::hex( $back ) ) {
+					continue; // Theme defaults or transparent: nothing to measure.
+				}
+				$ratio = Color::contrast( $text, $back );
+				if ( $ratio < Color::MIN_TEXT ) {
+					$out[] = sprintf( '%s button, %s: text %s on %s is %.2f:1 (needs %.1f:1).', $kind, $state, $text, $back, $ratio, Color::MIN_TEXT );
+				}
+			}
 		}
 		return $out;
 	}
@@ -500,10 +509,10 @@ final class Design {
 		if ( isset( $title['breadcrumbs'] ) ) {
 			$bc = self::mod( 'page_title_element_breadcrumb', [ 'enabled' => false, 'show_title' => true ] );
 			$want = (bool) $title['breadcrumbs'];
-			if ( $want && Chrome::crumbs_on( 'page' ) ) {
-				// One breadcrumb system per page: Launch Builder's crumbs are on for pages, so Kadence's stay off.
+			if ( $want && Design_Hub::placed( 'breadcrumbs' ) ) {
+				// One breadcrumb trail per page: the Design hub's breadcrumb bar is placed, so Kadence's stay off.
 				$want = false;
-				$notes[] = 'Kadence title-bar breadcrumbs left off: Launch Builder breadcrumbs are on for pages (chrome map crumbs.roles).';
+				$notes[] = 'Kadence title-bar breadcrumbs left off: the Design hub\'s breadcrumb bar is placed.';
 			}
 			$bc['enabled'] = $want;
 			$plan['page_title_element_breadcrumb'] = $bc;
@@ -535,51 +544,6 @@ final class Design {
 			$out['notes'] = $notes;
 		}
 		return $out;
-	}
-
-	/* ------------------------------------------------------------------ sidebar */
-
-	/** Show a synced pattern in a theme sidebar through one block widget this plugin owns. */
-	public static function set_sidebar( $input ) {
-		global $wp_registered_sidebars;
-		$sid = sanitize_key( $input['sidebar'] ?? 'sidebar-primary' ) ?: 'sidebar-primary';
-		if ( empty( $wp_registered_sidebars[ $sid ] ) ) {
-			return new \WP_Error( 'lb_sidebar', 'Unknown sidebar "' . $sid . '". Registered: ' . implode( ', ', array_keys( (array) $wp_registered_sidebars ) ), [ 'status' => 404 ] );
-		}
-		$key = sanitize_key( $input['key'] ?? '' );
-		$bid = '' === $key ? 0 : Blueprint::find_synced( $key );
-		if ( '' !== $key && ! $bid ) {
-			return new \WP_Error( 'lb_key', 'No synced pattern with key "' . $key . '". Create it with set-synced-pattern first.', [ 'status' => 404 ] );
-		}
-		$snap = Abilities::snapshot( 'set-sidebar', [], [ 'sidebars_widgets', 'widget_block', 'launch_builder_sidebar_widget' ] );
-		$instances = (array) get_option( 'widget_block', [] );
-		$num = (int) get_option( 'launch_builder_sidebar_widget', 0 );
-		$sw = wp_get_sidebars_widgets();
-		if ( $num ) {
-			foreach ( $sw as $k => $list ) {
-				if ( is_array( $list ) ) {
-					$sw[ $k ] = array_values( array_diff( $list, [ 'block-' . $num ] ) );
-				}
-			}
-		}
-		if ( '' === $key ) {
-			unset( $instances[ $num ] );
-			update_option( 'widget_block', $instances );
-			delete_option( 'launch_builder_sidebar_widget' );
-			wp_set_sidebars_widgets( $sw );
-			return [ 'sidebar' => $sid, 'cleared' => true, 'snapshot' => $snap ];
-		}
-		if ( ! $num || ! isset( $instances[ $num ] ) ) {
-			$nums = array_filter( array_keys( $instances ), 'is_int' );
-			$num = $nums ? max( $nums ) + 1 : 2;
-		}
-		$instances[ $num ] = [ 'content' => '<!-- wp:block {"ref":' . $bid . '} /-->' ];
-		$instances['_multiwidget'] = 1;
-		update_option( 'widget_block', $instances );
-		update_option( 'launch_builder_sidebar_widget', $num );
-		$sw[ $sid ] = array_merge( [ 'block-' . $num ], array_values( array_diff( (array) ( $sw[ $sid ] ?? [] ), [ 'block-' . $num ] ) ) );
-		wp_set_sidebars_widgets( $sw );
-		return [ 'sidebar' => $sid, 'synced_id' => $bid, 'widget' => 'block-' . $num, 'snapshot' => $snap, 'note' => 'Pages show it when their layout has a sidebar: set-page-layout type "sidebar".' ];
 	}
 
 	/* ------------------------------------------------------------------ block defaults */
@@ -618,6 +582,6 @@ final class Design {
 		}
 		// Unescaped slashes, as Kadence's own settings screen saves it ("kadence/iconlist", not "kadence\/iconlist").
 		update_option( 'kadence_blocks_config_blocks', $cur ? (string) wp_json_encode( $cur, JSON_UNESCAPED_SLASHES ) : '' );
-		return [ 'blocks' => array_keys( $cur ), 'snapshot' => $snap, 'note' => 'New Kadence blocks inserted in the editor start with these. Existing blocks and patterns are unchanged. build-site applies them only when the blueprint asks (design.block_defaults: "standard").' ];
+		return [ 'blocks' => array_keys( $cur ), 'snapshot' => $snap, 'note' => 'New Kadence blocks inserted in the editor start with these. Existing blocks and patterns are unchanged.' ];
 	}
 }

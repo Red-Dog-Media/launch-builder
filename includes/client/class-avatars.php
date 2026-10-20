@@ -884,8 +884,7 @@ final class Avatars {
 		if ( isset( $cache[ $px ] ) ) {
 			return $cache[ $px ];
 		}
-		$bi = Company::values();
-		$cands = [ (string) get_option( 'site_icon', '' ), (string) ( $bi['logo'] ?? '' ), (string) get_theme_mod( 'custom_logo', '' ) ];
+		$cands = [ (string) get_option( 'site_icon', '' ), (string) get_theme_mod( 'custom_logo', '' ) ];
 		$out = [ '', false ];
 		foreach ( $cands as $c ) {
 			$c = trim( $c );

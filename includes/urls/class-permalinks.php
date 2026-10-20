@@ -34,7 +34,7 @@ final class Permalinks {
 	const MODULE = [
 		'slug'        => 'permalinks',
 		'label'       => 'URLs',
-		'description' => 'Custom URLs for pages, entries and terms, URL patterns per type (e.g. services under their category), automatic 301s when a URL changes, conflict checks and bulk URL tools.',
+		'description' => 'Custom URLs for pages, entries and terms, URL patterns per type (services at the root of the site: /air-conditioning/installation/), automatic 301s when a URL changes, conflict checks and bulk URL tools.',
 		'default'     => true,
 		'note'        => 'Off: every URL goes back to the WordPress default and custom URLs stop answering until it is on again.',
 	];
@@ -64,6 +64,9 @@ final class Permalinks {
 		'redirect_store'  => 'auto', // auto (Rank Math when its Redirections module is on) | own | rankmath
 		'permastructures' => [ 'post_types' => [], 'taxonomies' => [] ],
 	];
+
+	/** The services' URL pattern: a service at the root of the site, a sub-service under it (/air-conditioning/installation/). */
+	const ROOT_SERVICES = '/%parent%/%postname%/';
 
 	/** Options that move WordPress's own URLs (see native_urls_changed()). */
 	const NATIVE_URL_OPTIONS = [ 'permalink_structure', 'category_base', 'tag_base', 'woocommerce_permalinks', 'rank-math-options-general' ];
@@ -138,6 +141,7 @@ final class Permalinks {
 		add_action( 'admin_init', [ __CLASS__, 'term_fields' ] );
 		add_action( 'admin_post_lb_permalinks', [ __CLASS__, 'admin_post' ] );
 		add_action( 'admin_notices', [ __CLASS__, 'admin_notice' ] );
+		Migrate::register_step( 'root-service-urls', [ __CLASS__, 'migrate_root_services' ], [ 'after' => [ 'permalinks-install', 'entries-categories' ] ] );
 
 		Migrate::register_step( 'permalinks-install', [ __CLASS__, 'migrate_install' ], [ 'every_version' => true ] );
 		Migrate::register_step( 'permalinks-index', [ __CLASS__, 'migrate_index' ], [ 'after' => [ 'permalinks-install' ] ] );
@@ -365,9 +369,9 @@ final class Permalinks {
 		return $p instanceof \WP_Post && 'publish' === $p->post_status && self::managed_post_type( $p->post_type ) && ! self::is_front( $p );
 	}
 
-	/** A term whose URL is its category page (the term_link rule for service categories): we leave its link alone. */
+	/** A term whose URL is its category page (service categories of sites built before v2): we leave its link alone. */
 	private static function category_page( \WP_Term $t ): bool {
-		if ( Entries::CAT !== $t->taxonomy ) {
+		if ( Entries::LEGACY_CAT !== $t->taxonomy ) {
 			return false;
 		}
 		$page = (int) get_term_meta( $t->term_id, '_lb_page', true );
@@ -1711,12 +1715,12 @@ final class Permalinks {
 
 	public static function define_tools(): void {
 		$ro = [ 'readonly' => true ];
-		$types = [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Post types and/or taxonomies (e.g. ["lb_service", "lb_service_cat"]); empty = all.' ];
+		$types = [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Post types and/or taxonomies (e.g. ["lb_service", "lb_area"]); empty = all.' ];
 		Abilities::add( 'get-permalinks', 'List URLs', 'Every public post and term with its URL path and where the path comes from (custom = set by hand, auto = from the permastructure of its type, native = WordPress). Filter by type (post type or taxonomy), source, search (part of the path) or duplicates_only. Paginated: offset, limit <= 200. The first page also returns the settings and permastructures.',
 			[ 'properties' => [ 'type' => [ 'type' => 'string' ], 'source' => [ 'type' => 'string', 'enum' => [ 'custom', 'auto', 'native' ] ], 'search' => [ 'type' => 'string' ], 'duplicates_only' => [ 'type' => 'boolean' ], 'offset' => [ 'type' => 'integer' ], 'limit' => [ 'type' => 'integer' ] ] ], [ __CLASS__, 'tool_get' ], 'edit_pages', $ro );
 		Abilities::add( 'set-uri', 'Set the URL of a page, entry or term', 'Give one object (post:ID, term:ID, {post_type}:{slug}, {taxonomy}:{slug} or its current URL) its own URL path, e.g. uri "plumbing/drain-cleaning". The old URL gets a 301 (Rank Math Redirections or our table). uri "" or "auto" goes back to the automatic URL (permastructure, else WordPress). Refuses reserved paths and paths another object uses (force: true shares it; the audit flags it). With slug sync on, the slug follows the last segment. dry_run shows the result.',
 			[ 'properties' => [ 'object' => [ 'type' => 'string' ], 'uri' => [ 'type' => 'string' ], 'force' => [ 'type' => 'boolean' ], 'dry_run' => [ 'type' => 'boolean' ] ], 'required' => [ 'object', 'uri' ] ], [ __CLASS__, 'tool_set_uri' ], 'edit_posts' );
-		Abilities::add( 'set-permastructure', 'Set the URL pattern of a post type or taxonomy', 'type = a post type (lb_service, lb_area, page, post, product...) or taxonomy (lb_service_cat, category...). structure uses tags: posts %postname% (required, or %post_id%), %parent% (ancestor slugs), %parent_uri% (the parent\'s full URL path), %lb_area_parent% (direct parent slug), %post_type%, %year%, %monthnum%, %day%, %author%, %{taxonomy}% (primary term with its parents, e.g. %lb_service_cat%); terms %term% (or %slug%, %term_id%), %parent%, %parent_uri%, %taxonomy%, %{taxonomy}% (term path incl. parents); plus static text. Examples: services "/%lb_service_cat%/%postname%/", areas "/service-areas/%parent%/%postname%/". structure "" = WordPress default. Existing objects are regenerated (first 200 now, next_cursor for regenerate-uris) and their old URLs 301. dry_run previews.',
+		Abilities::add( 'set-permastructure', 'Set the URL pattern of a post type or taxonomy', 'type = a post type (lb_service, lb_area, page, post, product...) or taxonomy (category, product_cat...). structure uses tags: posts %postname% (required, or %post_id%), %parent% (ancestor slugs), %parent_uri% (the parent\'s full URL path), %lb_area_parent% (direct parent slug), %post_type%, %year%, %monthnum%, %day%, %author%, %{taxonomy}% (primary term with its parents, e.g. %lb_service_cat%); terms %term% (or %slug%, %term_id%), %parent%, %parent_uri%, %taxonomy%, %{taxonomy}% (term path incl. parents); plus static text. Examples: services "/%parent%/%postname%/" (the default: a service at the root, a sub-service under it), areas "/service-areas/%parent%/%postname%/". structure "" = WordPress default. Existing objects are regenerated (first 200 now, next_cursor for regenerate-uris) and their old URLs 301. dry_run previews.',
 			[ 'properties' => [ 'type' => [ 'type' => 'string' ], 'structure' => [ 'type' => 'string' ], 'regenerate' => [ 'type' => 'boolean' ], 'dry_run' => [ 'type' => 'boolean' ] ], 'required' => [ 'type', 'structure' ] ], [ __CLASS__, 'tool_set_structure' ] );
 		Abilities::add( 'regenerate-uris', 'Rebuild URLs from the permastructures', 'Recompute the automatic URL of every object of the given types (all types when empty) from their permastructures; custom URLs are kept unless include_custom. dry_run (DEFAULT true) returns the diff [{object, title, old, new}] without writing; dry_run false writes and adds 301s. Paged: pass next_cursor back as cursor; limit <= 200.',
 			[ 'properties' => [ 'types' => $types, 'include_custom' => [ 'type' => 'boolean' ], 'dry_run' => [ 'type' => 'boolean' ], 'cursor' => [ 'type' => 'string' ], 'limit' => [ 'type' => 'integer' ] ] ], [ __CLASS__, 'tool_regenerate' ] );
@@ -2292,67 +2296,34 @@ final class Permalinks {
 	}
 
 	public static function playbook( array &$pb ): void {
-		$pb['urls'] = 'URLs: every page, entry and term can have its own URL path. Set a pattern per type with set-permastructure (services "/%lb_service_cat%/%postname%/" puts a service under its category, e.g. /plumbing/drain-cleaning/; areas "/service-areas/%parent%/%postname%/"), one object with set-uri, many with regenerate-uris / find-replace-uris (dry_run first; both default to dry runs). Every URL change leaves a 301 (Rank Math Redirections when its module is on, else our table) and chains are collapsed. Moving a site: import-url-map with the old sitemap maps old URLs to the new pages. get-permalinks lists URLs; audit check uri_duplicate flags two objects on one URL. A service category and its landing page (the page mapped to the category) share one URL on purpose: the category archive redirects to the page, so that pair is not reported.';
+		$pb['urls'] = 'URLs: every page, entry and term can have its own URL path. Set a pattern per type with set-permastructure (services default to "/%parent%/%postname%/": /air-conditioning/ and its sub-service /air-conditioning/installation-and-replacement/; areas are /service-areas/rockledge-fl/ and their area service pages /service-areas/rockledge-fl/ac-installation/), one object with set-uri, many with regenerate-uris / find-replace-uris (dry_run first; both default to dry runs). Every URL change leaves a 301 (Rank Math Redirections when its module is on, else our table) and chains are collapsed. Moving a site: import-url-map with the old sitemap maps old URLs to the new pages. get-permalinks lists URLs; audit check uri_duplicate flags two objects on one URL.';
 		$pb['tools_by_job']['URLs and redirects'] = 'get-permalinks, set-uri, set-permastructure, regenerate-uris, find-replace-uris, import-url-map, set-permalink-settings, get-redirects, set-redirect, delete-redirect';
 	}
 
-	public static function brief_schema( array &$schema ): void {
-		$schema['properties']['urls'] = [
-			'type'        => 'object',
-			'description' => 'URL structure and redirects (Permalinks module).',
-			'properties'  => [
-				'permastructures' => [ 'type' => 'object', 'description' => 'post type or taxonomy => structure, e.g. {"lb_service": "/%lb_service_cat%/%postname%/", "lb_area": "/service-areas/%parent%/%postname%/"}.', 'additionalProperties' => [ 'type' => 'string' ] ],
-				'redirects'       => [ 'type' => 'array', 'description' => '[{from, to, code}] extra redirects (to = path, URL, post:ID or term:ID).', 'items' => [ 'type' => 'object' ] ],
-				'old_sitemap_url' => [ 'type' => 'string', 'description' => 'The old site\'s XML sitemap: its URLs are mapped to the new pages with 301s (import-url-map).' ],
-				'settings'        => [ 'type' => 'object', 'description' => 'set-permalink-settings values (trailing_slash, lowercase, ...).' ],
-			],
-		];
-	}
-
-	/** build-site: blueprint key urls {settings, permastructures, redirects, old_sitemap_url} applied at the end. */
-	public static function blueprint_steps(): array {
-		return [ [ 'id' => 'urls', 'at' => 'done', 'run' => [ __CLASS__, 'blueprint_urls' ] ] ];
-	}
-
-	public static function blueprint_urls( array $bp, array $ctx ) {
-		unset( $ctx );
-		$u = isset( $bp['urls'] ) && is_array( $bp['urls'] ) ? $bp['urls'] : [];
-		if ( ! array_intersect_key( $u, array_flip( [ 'settings', 'permastructures', 'redirects', 'old_sitemap_url' ] ) ) ) {
-			return [ 'skipped' => 'no urls in the blueprint' ];
+	/**
+	 * Migration step root-service-urls (once per site): services move to the root of the site (ROOT_SERVICES) unless a
+	 * pattern was set for them already. Their old /services/... URLs get 301s like any URL change.
+	 */
+	public static function migrate_root_services( $cursor, int $batch ): array {
+		unset( $cursor, $batch );
+		if ( ! self::active() || ! post_type_exists( Entries::SERVICE ) ) {
+			return [ 'done' => true, 'report' => 'URLs module off: services keep the WordPress URLs (/services/...).' ];
+		}
+		$have = (string) ( self::settings()['permastructures']['post_types'][ Entries::SERVICE ] ?? '' );
+		if ( '' !== $have ) {
+			return [ 'done' => true, 'report' => 'services keep their URL pattern ' . $have ];
 		}
 		if ( ! self::installed() ) {
 			self::install();
 		}
-		$out = [ 'warnings' => [] ];
-		if ( ! empty( $u['settings'] ) && is_array( $u['settings'] ) ) {
-			$out['settings'] = self::tool_settings( $u['settings'] )['changed'];
+		$r = self::tool_set_structure( [ 'type' => Entries::SERVICE, 'structure' => self::ROOT_SERVICES ] );
+		if ( is_wp_error( $r ) ) {
+			return [ 'done' => true, 'report' => 'services pattern not set: ' . $r->get_error_message() ];
 		}
-		foreach ( (array) ( $u['permastructures'] ?? [] ) as $type => $st ) {
-			$r = self::tool_set_structure( [ 'type' => (string) $type, 'structure' => (string) $st ] );
-			if ( is_wp_error( $r ) ) {
-				$out['warnings'][] = 'permastructure ' . $type . ': ' . $r->get_error_message();
-			} else {
-				$out['permastructures'][ $type ] = [ 'structure' => $r['structure'], 'changed' => $r['regenerated']['changed'] ?? 0, 'next_cursor' => $r['regenerated']['next_cursor'] ?? null ];
-			}
-		}
-		foreach ( (array) ( $u['redirects'] ?? [] ) as $rd ) {
-			$rd = (array) $rd;
-			$r = Redirects::add( (string) ( $rd['from'] ?? '' ), (string) ( $rd['to'] ?? '' ), (int) ( $rd['code'] ?? 301 ), 'import' );
-			if ( is_wp_error( $r ) ) {
-				$out['warnings'][] = 'redirect ' . ( $rd['from'] ?? '' ) . ': ' . $r->get_error_message();
-			}
-		}
-		if ( ! empty( $u['old_sitemap_url'] ) ) {
-			$r = self::tool_import( [ 'old_sitemap_url' => (string) $u['old_sitemap_url'], 'dry_run' => false ] );
-			$out['import'] = is_wp_error( $r ) ? $r->get_error_message() : [ 'mapped' => count( $r['mapped'] ), 'unmatched' => count( $r['unmatched'] ), 'next_offset' => $r['next_offset'] ];
-			if ( ! is_wp_error( $r ) ) {
-				$out['warnings'] = array_merge( $out['warnings'], $r['errors'] );
-			}
-		}
-		return $out;
+		return [ 'done' => true, 'report' => 'services at the root (' . self::ROOT_SERVICES . '), ' . (int) ( $r['regenerated']['changed'] ?? 0 ) . ' URL(s) moved with 301s' ];
 	}
 
-	/* ------------------------------------------------------------------ audit */
+	/* ------------------------------------------------------------------ audit */	/* ------------------------------------------------------------------ audit */
 
 	/** Two or more objects on one URL. */
 	public static function audit_duplicates( array $args ): array {
@@ -2767,7 +2738,7 @@ final class Permalinks {
 			}
 			echo '</p>';
 		}
-		echo '<p class="lb-hint">' . esc_html__( 'Use %{taxonomy}% with a taxonomy name, for example %lb_service_cat%.', 'launch-builder' ) . '</p></div>';
+		echo '<p class="lb-hint">' . esc_html__( 'Use %{taxonomy}% with a taxonomy name, for example %product_cat%.', 'launch-builder' ) . '</p></div>';
 		echo '<div class="lb-rows">';
 		foreach ( self::post_types() as $pt ) {
 			$o = get_post_type_object( $pt );

@@ -5,11 +5,12 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Versioned data migrations: ordered, idempotent, resumable steps that bring an existing site's data up to what this
- * version of the plugin expects (legacy chrome -> chrome map, page heroes -> _lb_hero, ...). "Nothing missed on update".
+ * version of the plugin expects (service categories -> parent services, Business Info -> Meta Box, ...). "Nothing missed on
+ * update".
  *
  * A step is registered by the module that owns the data, in its boot():
- *   Migrate::register_step( 'chrome-adopt-legacy', [ Chrome::class, 'migrate_adopt' ] );
- *   Migrate::register_step( 'chrome-reapply', [ Chrome::class, 'migrate_reapply' ], [ 'every_version' => true, 'after' => [ 'chrome-adopt-legacy' ] ] );
+ *   Migrate::register_step( 'entries-categories', [ Entries::class, 'migrate_categories' ] );
+ *   Migrate::register_step( 'seo', [ Compat::class, 'migrate_seo' ], [ 'every_version' => true, 'after' => [ 'entries-categories' ] ] );
  * and is called as  callable( mixed $cursor, int $batch ): array|\WP_Error  returning
  *   [ 'done' => bool, 'cursor' => mixed (where to resume; ignored once done), 'report' => string|array (what changed) ]
  * Each call handles at most $batch (50) objects and must be safe to repeat; a step snapshots what it changes itself

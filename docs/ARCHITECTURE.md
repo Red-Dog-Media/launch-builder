@@ -1,7 +1,8 @@
 # Launch Builder architecture
 
-How the plugin fits together, so a change can be made knowing what it touches. It is drawn from a map of the code (every
-class, what it calls and what calls it) made for the 0.12 restructure, and it lists the things a change must keep.
+How the plugin fits together, so a change can be made knowing what it touches. Version 2 follows one rule:
+**Launch Builder sets the site up; Kadence and Meta Box run it.** Everything it creates is a native object that keeps
+working when the plugin is removed (docs/V2-PLAN.md has the reasoning).
 
 ## The shape
 
@@ -10,119 +11,156 @@ class, what it calls and what calls it) made for the 0.12 restructure, and it li
 - `Plugin::MODULES` (`includes/core/class-plugin.php`) lists the modules in boot order. At plugin load each module's
   `boot()` adds its WordPress hooks. A module switched off on the Modules screen is skipped everywhere, so it adds no
   hooks, tools or checks at all.
-- The parts of the plugin that every module can add to (AI tools, site-state, the playbook, audit checks, build steps,
-  the brief schema, activation) are collected through `Plugin::modules( $method )`: a module takes part by having the
-  method. Nothing else has to be edited to add one. This registry is the main seam in the plugin.
-- Everything else is direct static calls between classes (`Company::get()`, `Entries::summary()`, `Cache::purge_later()`).
+- The parts every module can add to (AI tools, site-state, the playbook, audit checks, activation) are collected through
+  `Plugin::modules( $method )`: a module takes part by having the method. This registry is the main seam in the plugin.
+- Everything else is direct static calls between classes (`Company::get()`, `Entries::query()`, `Cache::purge_later()`).
+
+## What a site is made of
+
+| What | Native object | Written by | Without Launch Builder |
+| --- | --- | --- | --- |
+| Services and sub-services | post type `lb_service` (hierarchical), a Meta Box post type | Entries, Meta_Box_Sync | stays (Meta Box registers it) |
+| Service areas and area service pages | post type `lb_area` (hierarchical; a page about a service carries `_lb_service`) | Entries, Meta_Box_Sync | stays |
+| Their fields (icon, the service a page is about) | Meta Box field groups | Meta_Box_Sync | stays |
+| Business Info (8 values) | option `business_info`, a Meta Box settings page | Company, Meta_Box_Sync | stays; tokens are baked in first (detokenize) |
+| Header | Kadence block header (`kadence_header` + theme mods `blocks_header`, `blocks_header_id`) | Design_Hub via Nav::set_header | stays |
+| Heroes, breadcrumb bar, lists, before-footer call to action, footer | Kadence Elements (`kadence_element`) with display rules | Design_Hub | stays |
+| Lists of services and areas | Kadence Query Loop (Adv): a `kadence_query` and a `kadence_query_card` post | Query_Lists | stays; "children of this page" needs the snippet prepare-removal hands over |
+| Sidebar | a block widget in `sidebar-primary` | Design_Hub | stays |
+| Colours, buttons | Kadence palette and button settings, a Kadence Style Library set | Design_Hub, Design | stays |
+| Layouts | Customizer settings per post type, page meta `_kad_post_*` | Design_Hub, Content | stays |
+| Services at the root (`/air-conditioning/installation/`) | the URLs module (permastructure `/%parent%/%postname%/`) | Permalinks | back to `/services/...`; prepare-removal lists the redirects |
+| Menus | Kadence navigation (`kadence_navigation`) with live service/area items | Nav | stays; the items stop updating themselves |
 
 ## Folders
 
-`includes/<folder>/class-<name>.php`. A folder groups the classes that do one job. The folders are not layers: most
-folders call into most others, so a folder is a place to find things, not a wall.
+`includes/<folder>/class-<name>.php`. A folder groups the classes that do one job; most folders call into most others, so
+a folder is a place to find things, not a wall.
 
 | Folder | What it does | Classes |
 | --- | --- | --- |
-| `core/` | Bootstrap, module registry and switches, migrations, the plumbing every module uses | Plugin, Modules, Migrate, Cache, Lock, Ledger, Context, Updater, CLI |
+| `core/` | Bootstrap, module registry and switches, migrations, colour helpers, the plumbing every module uses | Plugin, Modules, Migrate, Cache, Lock, Ledger, Context, Color, Updater, CLI |
 | `ai/` | The tool registry, snapshots and undo, the REST proxy, and the `/mcp` endpoint | Abilities, Mcp |
-| `business/` | Business Info: the facts every page prints, its admin screen, its tidy-up | Company, Company_Admin, Company_Tidy |
-| `content/` | Services, areas and categories, page roles, dynamic text, menus, Markdown pages, the playbook, duplication, media hygiene | Entries, Roles, Tokens, Nav, Menu_Links, Content, Duplicate, Media |
-| `design/` | Patterns, Style DNA, brand and buttons, the per-role chrome (header, hero, breadcrumbs, footer), the Design hub, the rating widget | Patterns, Style, Design, Chrome, Chrome_Admin, Globals, Breadcrumbs, Design_Hub, Unique_Ids, Rating |
-| `build/` | Briefs in, sites out: validate, plan, build in steps, export; the older blueprint builder | Brief, Brief_Validate, Brief_Build, Brief_Export, Blueprint |
-| `launch/` | The site audit, page inspection, go-live and the legal texts | Audit, Inspect, Launch, Launch_Legal |
+| `business/` | Business Info: the eight facts every page prints through tokens | Company |
+| `content/` | Services and areas, page roles, dynamic text, menus, Markdown pages, the playbook, duplication, media hygiene | Entries, Roles, Tokens, Nav, Content, Duplicate, Media |
+| `design/` | Patterns, brand controls, the Design hub (pieces in three looks), Query Loop lists, Kadence ids | Patterns, Design, Design_Hub, Query_Lists, Unique_Ids |
+| `build/` | build-site: a six-section brief in, a site out | Builder |
+| `launch/` | The site audit, page inspection, go-live, detokenize and prepare-removal | Audit, Inspect, Launch |
 | `urls/` | Custom URLs, URL patterns and redirects | Permalinks, Redirects |
-| `integrations/` | Other plugins: Rank Math and Yoast, Kadence, Meta Box, Perfmatters, Kadence Conversions | Compat (+ its traits), Meta_Box_Sync, Conversions |
-| `admin/` | The Launch Builder screens, the dashboard and the shared admin look | Admin, Dashboard |
-| `client/` | What the site owner sees: branding, local avatars, login links | Branding, Branding_Admin, Branding_Chrome, Branding_Client, Branding_Colors, Avatars, Avatars_Admin, Login_Links, Login_Links_Guard, Login_Links_CLI |
+| `integrations/` | Rank Math and Yoast, Kadence, Meta Box, Perfmatters; the Meta Box sync | Compat (+ its traits), Meta_Box_Sync |
+| `admin/` | The Launch Builder screens, the dashboard, the Design hub screen | Admin, Dashboard, Design_Hub_Admin |
+| `client/` | What the site owner sees: branding, local avatars, login links | Branding (+ Admin, Chrome, Client, Colors), Avatars, Avatars_Admin, Login_Links, Login_Links_Guard, Login_Links_CLI |
 
-`Compat` is one class split over files: `class-compat.php` holds its constants, its per-request state, the module hooks,
-detection, audit checks and tools, and each integration's methods are a trait next to it
-(`trait-compat-seo.php`, `-seo-business`, `-seo-output`, `-kadence`, `-meta-box`, `-perfmatters`). They are all methods
-of `Compat`, so callers and hooks name `Compat`.
+`Compat` is one class split over files: `class-compat.php` holds its constants, state, module hooks, detection, checks
+and tools, and each integration's methods are a trait next to it (`trait-compat-seo.php`, `-seo-business`,
+`-seo-output`, `-kadence`, `-meta-box`, `-perfmatters`).
 
-`includes/classmap.php` maps every class to its file for the autoloader. It is generated by `php tools/classmap.php`
-and checked in CI (`--check`), together with the layout rules: one class per file, the file named after the class
-(`class-foo-bar.php` for `Foo_Bar`, `trait-` for a trait), no files loose in `includes/`. A class missing from the map is
-still found by its file name.
+`includes/classmap.php` maps every class to its file for the autoloader. It is generated by `php tools/classmap.php` and
+checked in CI (`--check`), together with the layout rules: one class per file, named after the class, no loose files.
+
+## The content model
+
+- `lb_service` is hierarchical: a service and its sub-services. With the URLs module on, services live at the root of
+  the site (`Permalinks::ROOT_SERVICES`, set once by the migration step `root-service-urls`); every URL change leaves a
+  301. WordPress alone serves them under `/services/`.
+- `lb_area` is hierarchical: an area (`/service-areas/rockledge-fl/`) and its children. A child that carries
+  `_lb_service` is an **area service page** (`/service-areas/rockledge-fl/ac-installation/`, title "AC Installation in
+  Rockledge, FL"). `Entries::sync_area_services()` creates, republishes or drafts them from an area's service list.
+- The hubs (`/services/`, `/service-areas/`) are pages; `Roles::hubs()` names them (option `launch_builder_hubs`).
+- Service categories (taxonomy `lb_service_cat`, before v2) are migrated into parent services by the step
+  `entries-categories`: each category becomes a parent service and its services move under it.
+
+## The Design hub
+
+`design/class-design-hub.php`. Twelve **pieces** (`Design_Hub::PIECES`: header, hero-home, hero-service, hero-area,
+hero-page, breadcrumbs, subservices, areas, area-services, cta, footer, sidebar), each in three **looks**
+(`Design_Hub::LOOKS`: auto-shop, home-services, landscaping). A piece in a look is the pattern whose file headers say
+`Piece:` and `Look:` (`patterns/{piece}-{look}.php`). Placing it:
+
+1. builds the pattern (`Patterns::build_pattern`), turns its list placeholders into Query Loops (`Query_Lists::materialize`)
+   and gives its Kadence blocks ids of their own (`Unique_Ids::rekey`);
+2. writes ONE object per piece, keyed `design-{piece}`: the block header (`Nav::set_header`), a Kadence Element with the
+   hook and display rules of the piece (heroes replace the title area, `replace_hero_header`; the breadcrumb bar follows
+   it on `kadence_hero_header` priority 20; lists sit in the content at top, middle or bottom; the call to action is on
+   `kadence_before_footer`; the footer replaces the theme's), or the sidebar widget;
+3. records it in the Ledger (`design:{piece}`): an Element changed in Kadence since is kept unless the call says force.
+
+Choosing a whole look also sets its colours and buttons (`Design_Hub::LOOK_STYLE`: the Kadence palette, button settings
+and a Style Library set `lb-{look}` made active) and the layouts (`Design_Hub::layout_plan`: the title area "above" so
+the hero replaces it, the right sidebar for pages, services and areas, the front page and contact pages full width).
+State: option `launch_builder_design_hub`. Tools `get-designs`, `set-design`; screen Launch Builder > Design hub.
+
+The breadcrumb bar prints Rank Math's `rank-math/breadcrumb` block; without Rank Math the Design hub registers that block
+name and prints the Kadence theme's trail. Both trails get the hub page after Home on services and areas.
+
+## Lists
+
+`design/class-query-lists.php`. A pattern describes a list as a `kadence/query` block with an `lbList` attribute
+(`{mode, postType, perPage, columns, columnGap, rowGap}`) whose inner blocks are the card template. Placing the design
+creates the `kadence_query_card` post (the card) and the `kadence_query` post (the query, with meta `_lb_query` = the
+mode), keyed so placing it again updates them. Modes: `top` (top-level entries), `children` (children of the page being
+viewed, else its siblings), `area-services` (the area service pages of the area being viewed). The filter
+`kadence_blocks_pro_query_loop_query_vars` applies the mode on the page and in Kadence's REST pagination; an Element
+whose lists are all empty on a page is not printed (`kadence_element_display`, meta `_lb_list`).
 
 ## Anchors: what must not change without a migration
 
-These are read by sites, other plugins, stored data or AI clients. Renaming one breaks something outside this code.
-
-- **Class names** in `LaunchBuilder\` (a theme or site plugin may call `LaunchBuilder\Company::get()`; blocks'
-  `render.php` files call classes directly).
-- **Hook names**: every `launch_builder_*` action and filter, for example `launch_builder_modules`,
-  `launch_builder_entry_rewrite_args`, `launch_builder_field_owned_elsewhere`, `launch_builder_module_enabled`.
-- **Tool names** (`site-state`, `build-from-brief`, `sync-meta-box`...) and their input schemas: AI clients and the
-  WordPress Abilities API (`launch-builder/<name>`) call them.
-- **Stored names**: options `launch_builder_*` (one per Ledger row: `launch_builder_ledger_<md5>`), post meta `_lb_*`,
-  term meta `_lb_page`, the post types `lb_service` and `lb_area`, the taxonomy `lb_service_cat`, Ledger keys.
-- **Front-end names**: blocks `launch/*`, pattern slugs `launch-builder/*`, tokens `{{lb.*}}`, the REST namespace
+- **Class names** in `LaunchBuilder\` (a theme or site plugin may call `LaunchBuilder\Company::get()`).
+- **Hook names**: every `launch_builder_*` action and filter.
+- **Tool names** (`site-state`, `build-site`, `set-design`, `sync-meta-box`...) and their input schemas: AI clients and
+  the WordPress Abilities API (`launch-builder/<name>`) call them.
+- **Stored names**: options `launch_builder_*` and `business_info`, post meta `_lb_*` (`_lb_key`, `_lb_service`,
+  `_lb_icon`, `_lb_query`, `_lb_list`, `_lb_piece`...), the post types `lb_service` and `lb_area`, Ledger keys
+  (`design:{piece}`, `meta-box-sync:{key}`), the Meta Box objects' slugs (`business-info`, `launch-builder-*`).
+- **Front-end names**: pattern slugs `launch-builder/*`, tokens `{{lb.*}}` and `#lb-*` links, the REST namespace
   `launch-builder/v1` and `/mcp`, CLI commands under `wp launch-builder`.
 
 ## Bridges: how the parts meet
 
 | Bridge | What it carries | Where |
 | --- | --- | --- |
-| Module methods | `boot`, `define_tools`, `site_state`, `playbook`, `audit_checks`, `blueprint_steps`, `brief_schema`, `activate`, `deactivate` | `Plugin::modules()`; collectors in Abilities, Content, Audit, Blueprint, Brief, Plugin |
-| Ledger | Ownership of what Launch Builder wrote outside its own options, so a re-run tells its work from an admin's edit and keeps the edit | `core/class-ledger.php` |
+| Module methods | `boot`, `define_tools`, `site_state`, `playbook`, `audit_checks`, `activate`, `deactivate` | `Plugin::modules()`; collectors in Abilities, Content, Audit, Plugin |
+| Ledger | Ownership of what Launch Builder wrote outside its own options, so a re-run keeps an admin's edit | `core/class-ledger.php` |
 | Snapshots | Every write to settings or posts is snapshotted first; `restore-snapshot` undoes it | `Abilities::snapshot()` |
 | Migrations | Versioned, resumable data updates registered by each module | `Migrate::register_step()` |
 | Cache | One page-cache purge per request after changes | `Cache::purge_later()` |
 | Locks | One writer at a time for long jobs (builds, syncs) | `Lock::acquire()` |
-| Entry definitions | How the three entry types are registered, and what Launch Builder keeps when something else registers them | `Entries::definitions()`, `Entries::type_args()` |
-
-## Blast radius
-
-How many other classes call each of the most used ones (from the code map, with Compat's traits counted as Compat). A change to one of their public methods
-reaches that many places, so it needs the widest check.
-
-| Class | Called from | Notes |
-| --- | --- | --- |
-| Abilities | 32 | Every module registers tools here and snapshots through it |
-| Entries | 25 | Services, areas and categories: lists, menus, URLs, the brief, SEO |
-| Cache | 24 | Called after almost every write |
-| Roles | 21 | Page roles decide chrome, SEO templates and breadcrumbs |
-| Company | 19 | Business Info: tokens, SEO, the brief, branding |
-| Plugin | 18 | The registry and the pattern index |
-| Chrome | 16 | Per-role designs |
-| Migrate | 14 | |
-| Patterns, Compat | 12 each | |
-| Modules, Lock, Style | 11 each | |
-
-The classes with the most outgoing calls are the orchestrators: `Brief_Build` (28 classes), `Brief_Validate` (16),
-`Launch` (16), `Chrome` (14), `Audit` (13). A change elsewhere is most likely to surface in them, so run a build and
-the audit after it.
+| Entry definitions | How the two entry types are registered, and what Launch Builder keeps when Meta Box registers them | `Entries::definitions()`, `Entries::type_args()` |
+| Piece definitions | Where each design piece goes and on which pages | `Design_Hub::PIECES`, `Design_Hub::rules()` |
 
 ## Invariants
 
 - One class per file, named after the class; the class map is current (`php tools/classmap.php --check`).
 - A module that is switched off registers nothing (`Plugin::modules()` skips it).
 - Anything written outside Launch Builder's own options gets a Ledger row; an object changed since Launch Builder wrote
-  it is kept and reported, unless the caller forces it.
+  it is kept and reported, unless the caller forces it. The builder keeps text edited since it wrote it (`_lb_brief_hash`).
 - Writes take a snapshot first. Tools that change a lot are dry runs unless asked.
-- Services, service areas and service categories are registered by Launch Builder only when nothing has registered them
-  yet. Whatever registers them, Launch Builder keeps: public and in REST, no archive, areas and categories hierarchical,
-  categories on services, the supports in `Entries::KEEP_SUPPORTS`, and a URL base passed through
-  `launch_builder_entry_rewrite_args`.
+- Services and areas are registered by Launch Builder only when nothing has registered them yet. Whatever registers
+  them, Launch Builder keeps: public and in REST, no archive, hierarchical, the supports in `Entries::KEEP_SUPPORTS`,
+  and a URL base passed through `launch_builder_entry_rewrite_args`.
+- Patterns use palette slugs only, core blocks for the viewed post's title and summary, `rank-math/breadcrumb` for the
+  trail and the list placeholder for lists, so a placed design never depends on a Launch Builder block.
 
 ## Meta Box sync
 
-`integrations/class-meta-box-sync.php`. Meta Box only lists the post types and field groups it stores itself, so it
-never showed the three entry types, and a type created there by hand used to be overwritten by Launch Builder's own
-registration. The sync stores them in Meta Box:
+`integrations/class-meta-box-sync.php` stores the objects in Meta Box:
 
 | Object | Stored in Meta Box as |
 | --- | --- |
 | `lb_service`, `lb_area` | an `mb-post-type` post (MB Custom Post Types), settings as JSON in its content |
-| `lb_service_cat` | an `mb-taxonomy` post |
-| Card details (`_lb_icon`) and Services offered (`_lb_services`) | `meta-box` field groups (MB Builder), saved with the Builder's own parser and save path |
+| `business-info` | an `mb-settings-page` post (MB Settings Page) storing the option `business_info` |
+| `card-details` (`_lb_icon`), `area-service` (`_lb_service`), `business-info-fields` | `meta-box` field groups (MB Builder), saved the way the Builder's own Save does (both the plugin-directory Builder and the 4.x Builder in Meta Box AIO) |
 
-Meta Box then registers the types at `init` priority 0 and `Entries::register()` (priority 5) leaves them alone apart
-from the kept settings above. The field groups use the meta keys the cards read, so Meta Box edits the same stored
-values and the Card details box steps aside. Each copy has a Ledger row (`meta-box-sync:<key>`): a copy changed in Meta
-Box is kept, a copy drafted, trashed or not read (MB Custom Post Types off) hands the type back to Launch Builder, and
-undo moves the copies to the Trash. Entry points: the notice on Meta Box's Post Types, Taxonomies and Custom Fields
-screens, the `sync-meta-box` tool and `wp launch-builder meta-box-sync`.
+Meta Box then registers the types at `init` priority 0 and `Entries::register()` (priority 5) leaves them alone apart from
+the kept settings. Each copy has a Ledger row (`meta-box-sync:<key>`): a copy changed in Meta Box is kept, a copy drafted,
+trashed or not read hands the type back to Launch Builder, and undo moves the copies to the Trash. Entry points: the
+notice on Meta Box's screens, the `sync-meta-box` tool, `wp launch-builder meta-box-sync`, build-site and prepare-removal.
+
+## Removing Launch Builder
+
+`prepare-removal` (Launch) hands the site over: it runs the Meta Box sync, bakes tokens into content and designs
+(`detokenize` scope all), maps the services' root URLs to the ones WordPress will use (with `.htaccess` lines), and returns
+`Query_Lists::snippet()`, a small mu-plugin that keeps the "children of this page" lists working.
 
 ## Adding a class or a module
 
@@ -132,9 +170,7 @@ screens, the `sync-meta-box` tool and `wp launch-builder meta-box-sync`.
    `MODULE` constant makes it switchable on the Modules screen (see `core/class-modules.php`).
 3. Run `php tools/classmap.php` and commit `includes/classmap.php`.
 
-## Checking a refactor
-
-A change that should not change behaviour can be checked against the running plugin, not only read:
+## Checking a change
 
 ```sh
 wp eval-file tools/surface-snapshot.php --user=admin > before.json
@@ -144,7 +180,5 @@ php tools/surface-diff.php before.json after.json
 ```
 
 The snapshot covers every class (methods with a hash of their source, constants, properties), the module registry, the
-entry types and their meta, tools, REST routes, blocks, patterns, every hook with a Launch Builder callback, option
-names, site-state, playbook keys, audit checks, build steps, the brief schema and the module switches. Moving code
-between files prints nothing; anything else shows up. For the 0.12 restructure this was run with the default modules
-and with every module on, together with the rendered pages of a site built from a brief and its `export-brief` output.
+entry types and their meta, tools, REST routes, blocks, patterns, every hook with a Launch Builder callback, option names,
+site-state, playbook keys, audit checks, the Design hub pieces and the module switches.

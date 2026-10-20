@@ -6,7 +6,7 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Site audit, sync and their registries.
  *
- * Checks are registered by the module that owns the data (Chrome and Roles checks by Chrome, token
+ * Checks are registered by the module that owns the data (Design hub checks by Design_Hub, token
  * checks by Tokens...): Audit::register_check( code, scope, callable, batched ) or the module hook
  * audit_checks(): [ code => [ scope, callable, batched? ] ]. Precedence for one code: the built-in generic checks
  * below < module audit_checks() < register_check(), so an owner can replace a built-in check by registering its code.
@@ -46,14 +46,11 @@ final class Audit {
 	/** Statuses whose content counts as live for the content checks. */
 	const LIVE = [ 'publish', 'future', 'private' ];
 
-	/** Tokens resolved outside the token engine (per-entry templates of launch/entries, Entries::render_custom). */
+	/** Tokens a list card resolves for each entry it shows (never "unresolved" in stored content). */
 	const RESOLVED_ELSEWHERE = [ 'entry.title', 'entry.summary', 'entry.image', 'entry.url' ];
 
 	/** Demo copy besides Business Info's demo values. */
 	const DEMO_EXTRA = [ 'Lorem ipsum', '887+ Combined Reviews', '555-0123', 'yourbusiness.com', 'Your City, ST' ];
-
-	/** Business Info fields a live site must not leave at the demo value (the name reads the site title, so it shows here only while that is a WordPress placeholder). */
-	const ESSENTIAL = [ 'name', 'phone', 'email', 'address', 'city', 'hours' ];
 
 	/** Slot fields that hold copy (default_copy_left). */
 	const COPY_FIELDS = [ 'text', 'title', 'quote', 'label', 'learn_more' ];
@@ -112,13 +109,11 @@ final class Audit {
 			'default_copy_left'       => $c( 'content', 'check_default_copy', true ),
 			'placeholder_image'       => $c( 'content', 'check_placeholder_images', true ),
 			'demo_claims_left'        => $c( 'content', 'check_demo_claims', true ),
-			'form_embed_placeholder'  => $c( 'company', 'check_form_embed' ),
 			'brand_missing'           => $c( 'company', 'check_brand' ),
 			'wordpress_sample_content' => $c( 'content', 'check_wordpress_samples' ),
 			'duplicate_uniqueid'      => $c( 'content', 'check_uniqueids', true ),
-			'company_default'         => $c( 'company', 'check_company' ),
 			'menu_dead_link'          => $c( 'menus', 'check_menus' ),
-			'elements_module_off'     => $c( 'chrome', 'check_elements_module' ),
+			'elements_module_off'     => $c( 'designs', 'check_elements_module' ),
 			'seo_rm_types_missing'    => $c( 'seo', 'check_rm_types' ),
 			'seo_elements_in_sitemap' => $c( 'seo', 'check_rm_elements' ),
 			'one_h1'                  => $c( 'render', 'check_one_h1', true ),
@@ -473,8 +468,6 @@ final class Audit {
 
 	public static function check_demo( array $args ): array {
 		$demo = self::demo_strings();
-		$v = Company::values();
-		$rated = '' !== trim( (string) ( $v['rating'] ?? '' ) ) || '' !== trim( (string) ( $v['review_count'] ?? '' ) );
 		$out = [];
 		foreach ( self::window_posts( $args ) as $p ) {
 			$c = (string) $p->post_content;
@@ -484,20 +477,8 @@ final class Audit {
 					$hits[] = $d;
 				}
 			}
-			$ratings = 0;
-			if ( false !== strpos( $c, 'wp:launch/rating' ) ) {
-				self::walk( self::blocks( $p ), static function ( $b ) use ( &$ratings, $rated ) {
-					$a = (array) ( $b['attrs'] ?? [] );
-					if ( 'launch/rating' === $b['blockName'] && ! array_key_exists( 'text', $a ) && ! array_key_exists( 'rating', $a ) && ( empty( $a['useGlobal'] ) || ! $rated ) ) {
-						$ratings++;
-					}
-				} );
-			}
-			if ( $ratings ) {
-				$hits[] = $ratings . ' rating widget(s) on the demo rating and review count';
-			}
 			if ( $hits ) {
-				$out[] = self::post_finding( $p, 'warning', 'demo_left', 'Demo copy in the content: ' . implode( '; ', array_slice( $hits, 0, 6 ) ), 'Replace it with real copy or a Business Info token ({{lb.name}}, {{lb.phone}}...), and fill the review figures in Business Info.' );
+				$out[] = self::post_finding( $p, 'warning', 'demo_left', 'Demo copy in the content: ' . implode( '; ', array_slice( $hits, 0, 6 ) ), 'Replace it with real copy or a Business Info token ({{lb.name}}, {{lb.phone}}...).' );
 			}
 		}
 		return $out;
@@ -572,6 +553,11 @@ final class Audit {
 		return $hit;
 	}
 
+	/** A design piece the Design hub placed (its stock wording is the design's own, edited in Kadence). */
+	private static function design_piece( \WP_Post $p ): bool {
+		return '' !== (string) get_post_meta( $p->ID, '_lb_piece', true );
+	}
+
 	public static function check_default_copy( array $args ): array {
 		$posts = self::window_posts( $args );
 		if ( ! $posts ) {
@@ -580,6 +566,9 @@ final class Audit {
 		$defaults = self::default_texts();
 		$out = [];
 		foreach ( $posts as $p ) {
+			if ( self::design_piece( $p ) ) {
+				continue;
+			}
 			$hits = [];
 			foreach ( Patterns::slots( self::blocks( $p ) ) as $s ) {
 				if ( ! in_array( $s['field'], self::COPY_FIELDS, true ) ) {
@@ -613,7 +602,7 @@ final class Audit {
 		$claims = self::demo_claims();
 		$out = [];
 		foreach ( self::window_posts( $args, [], [ 'publish', 'future', 'private', 'draft' ] ) as $p ) {
-			if ( false === strpos( (string) $p->post_content, '<!-- wp:' ) ) {
+			if ( false === strpos( (string) $p->post_content, '<!-- wp:' ) || self::design_piece( $p ) ) {
 				continue;
 			}
 			$slots = Patterns::slots( self::blocks( $p ) );
@@ -639,15 +628,6 @@ final class Audit {
 			}
 		}
 		return $out;
-	}
-
-	/** The form embed in Business Info is a stand-in (REPLACE_WITH_FORM_ID, an example host): the forms do not work. */
-	public static function check_form_embed(): array {
-		$html = (string) ( Company::values()['form_html'] ?? '' );
-		if ( ! Launch::placeholder_embed( $html ) ) {
-			return [];
-		}
-		return [ [ 'severity' => 'warning', 'code' => 'form_embed_placeholder', 'object_type' => 'option', 'id' => Company::OPT, 'title' => 'Business Info: form embed', 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => 'The form embed is a stand-in (it still holds a placeholder such as REPLACE_WITH_FORM_ID), so the quote, contact and booking forms do not work.', 'fix' => 'Paste the real embed code: forms.quote.embed in the brief, or set-company values.form_html.' ] ];
 	}
 
 	/** No logo or no site icon. */
@@ -752,40 +732,6 @@ final class Audit {
 
 	/* ------------------------------------------------------------------ site-wide checks */
 
-	public static function check_company(): array {
-		$res = Company::resolve();
-		$fields = Company::fields();
-		$out = [];
-		$f = static function ( string $sev, string $key, string $msg, string $fix ) {
-			return [ 'severity' => $sev, 'code' => 'company_default', 'object_type' => 'option', 'id' => Company::OPT, 'title' => 'Business Info: ' . $key, 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => $msg, 'fix' => $fix, 'field' => $key ];
-		};
-		foreach ( $fields as $k => $def ) {
-			if ( 'default' !== ( $res[ $k ]['from'] ?? '' ) || '' === trim( (string) $def[2] ) || '#' === trim( (string) $def[2] ) ) {
-				continue;
-			}
-			$essential = in_array( $k, self::ESSENTIAL, true );
-			if ( 'name' === $k ) { // Nothing is typed and the site title is empty or a WordPress placeholder: a public page prints no name at all.
-				$public = ! Company::setup_mode();
-				$out[] = $f( $public ? 'error' : 'warning', $k, 'The site title is empty or still a WordPress placeholder, so ' . ( $public ? 'pages print no business name.' : 'pages show the demo name "' . $def[2] . '".' ), 'Set the site title (Settings, General), or set-company values.name.' );
-				continue;
-			}
-			$out[] = $f( $essential ? 'warning' : 'info', $k, $def[0] . ' is still the demo value "' . $def[2] . '"' . ( $essential ? ', and every page that shows it prints that.' : '.' ), 'set-company values.' . $k . ' (or Launch Builder > Business Info).' );
-		}
-		$socials = [];
-		foreach ( [ 'facebook', 'instagram', 'google', 'youtube' ] as $k ) {
-			if ( isset( $res[ $k ] ) && '#' === trim( (string) $res[ $k ]['value'] ) ) {
-				$socials[] = $k;
-			}
-		}
-		if ( $socials ) {
-			$out[] = $f( 'info', 'socials', 'Social links still point at "#": ' . implode( ', ', $socials ) . '. Icons using them go nowhere.', 'set-company with the profile URLs, or remove those icons.' );
-		}
-		if ( '#' === trim( (string) ( $res['cta_url']['value'] ?? '' ) ) ) {
-			$out[] = $f( 'warning', 'cta_url', 'The main button link has no target ("#"): set the quote page or the button link.', 'set-company values.quote_url (a page URL) or values.cta_url.' );
-		}
-		return $out;
-	}
-
 	public static function check_menus(): array {
 		$out = [];
 		$mk = static function ( string $sev, string $type, $id, string $menu, string $label, string $msg ) {
@@ -848,20 +794,14 @@ final class Audit {
 		return array_slice( $out, 0, 100 );
 	}
 
+	/** Design hub pieces placed as Kadence Elements print nothing while Theme Kit Pro's Elements module is off. */
 	public static function check_elements_module(): array {
-		global $wpdb;
-		$n = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_lb_key' WHERE p.post_type = 'kadence_element' AND p.post_status = 'publish'" ); // phpcs:ignore
-		$pref = (string) get_option( Chrome::OPT_MODE, 'auto' );
-		$mode = Chrome::mode();
-		if ( 'elements' === $mode || ( ! $n && 'elements' !== $pref ) ) {
+		$n = count( Design_Hub::element_ids() );
+		if ( ! $n || Design_Hub::elements_on() ) {
 			return [];
 		}
 		$why = Plugin::requirement_met( 'kadence-pro' ) ? 'the Elements module of Kadence Pro (Theme Kit Pro) is switched off' : 'Kadence Pro (Theme Kit Pro) is not active';
-		$base = [ 'code' => 'elements_module_off', 'object_type' => 'site', 'id' => 'kadence_pro_theme_config', 'title' => 'Kadence Pro Elements', 'url' => admin_url( 'admin.php?page=kadence-pro' ) ];
-		if ( $n ) {
-			return [ $base + [ 'severity' => 'error', 'message' => $n . ' Launch Builder element(s) (heroes, templates, footers...) exist, but ' . $why . ', so they do not print.', 'fix' => 'Turn the Elements module on (set-pro-modules { elements: true }) or switch the shared designs to patterns mode.' ] ];
-		}
-		return [ $base + [ 'severity' => 'warning', 'message' => 'The shared designs are set to Kadence Elements, but ' . $why . '; patterns mode is used instead.', 'fix' => 'Turn the Elements module on, or set the chrome preference to patterns.' ] ];
+		return [ [ 'code' => 'elements_module_off', 'object_type' => 'site', 'id' => 'kadence_pro_theme_config', 'title' => 'Kadence Pro Elements', 'url' => admin_url( 'admin.php?page=kadence-pro' ), 'severity' => 'error', 'message' => $n . ' design piece(s) from the Design hub (heroes, breadcrumbs, lists, call to action, footer) are Kadence Elements, but ' . $why . ', so they do not print.', 'fix' => 'Turn the Elements module on (set-pro-modules { elements: true }).' ] ];
 	}
 
 	/** Is Rank Math active? */
@@ -945,7 +885,7 @@ final class Audit {
 
 	/**
 	 * One H1 per page, read from the stored content for EVERY page and entry in this window (no request needed): two H1s in
-	 * the page itself, an own hero next to the shared one, or a page set to use its own hero that has none.
+	 * the page itself, or one next to the hero the Design hub places on pages of its role.
 	 */
 	public static function check_h1_static( array $args ): array {
 		$out = [];
@@ -954,18 +894,30 @@ final class Audit {
 			if ( '' === $role || 'other' === $role ) {
 				continue;
 			}
-			$n = Chrome::h1_count( (string) $p->post_content );
-			$flag = (string) get_post_meta( $p->ID, Chrome::HERO_META, true );
-			$shared = '' === $flag && ! in_array( Chrome::design( 'hero', $role ), [ false, null, '', 'theme' ], true );
+			$n = self::h1_count( (string) $p->post_content );
+			$hero = '' !== Design_Hub::role_markup( $role, [ 'hero' ] );
 			if ( $n >= 2 ) {
 				$out[] = self::post_finding( $p, 'error', 'one_h1', 'The page itself prints ' . $n . ' H1 headings (exactly one expected).', 'Keep one H1; the others become H2.', [ 'h1_count' => $n ] );
-			} elseif ( 1 === $n && $shared ) {
-				$out[] = self::post_finding( $p, 'error', 'one_h1', 'Two H1 headings: the shared hero for ' . $role . ' pages prints one and the page has its own hero.', 'Set the page to use its own hero (set-page-layout with title hide), or take the hero section out of the page; a build-from-brief does this by itself.', [ 'h1_count' => 2 ] );
-			} elseif ( 0 === $n && 'content' === $flag ) {
-				$out[] = self::post_finding( $p, 'error', 'one_h1', 'No H1: the page is set to use its own hero but its content has no heading level 1.', 'Add the hero section back, or let the page follow its role again (set-page-layout with title show).', [ 'h1_count' => 0 ] );
+			} elseif ( 1 === $n && $hero ) {
+				$out[] = self::post_finding( $p, 'error', 'one_h1', 'Two H1 headings: the ' . Roles::label( $role ) . ' hero (Design hub) prints the page title as one and the page content has another.', 'Make the heading in the content an H2.', [ 'h1_count' => 2 ] );
 			}
 		}
 		return $out;
+	}
+
+	/** Level-1 headings in stored block content (headings and titles set to level 1, and raw <h1> markup). */
+	public static function h1_count( string $content ): int {
+		$n = 0;
+		self::walk( parse_blocks( $content ), static function ( $b ) use ( &$n ) {
+			$name = (string) ( $b['blockName'] ?? '' );
+			$level = (int) ( $b['attrs']['level'] ?? 0 );
+			if ( 'core/post-title' === $name && 1 === $level ) {
+				$n++;
+			} elseif ( '' !== $name && 'core/post-title' !== $name ) {
+				$n += preg_match_all( '/<h1[\s>]/i', (string) ( $b['innerHTML'] ?? '' ) );
+			}
+		} );
+		return $n;
 	}
 
 	/** One H1 per page: the stored content of every page (see check_h1_static), then the page a visitor gets for the sample of each role in this window (the routes without a page on the last window). */

@@ -61,7 +61,7 @@ final class Branding_Admin {
 		$client = Branding::client_logo_id();
 		$login = Branding::section( 'login' );
 		wp_add_inline_script( 'lb-branding-admin', 'window.lbBranding=' . wp_json_encode( [
-			'palette' => Style::palette(),
+			'palette' => Color::palette(),
 			'logos'   => [
 				'client' => Branding::attachment_url( $client, 'large' ),
 				'agency' => Branding::attachment_url( (int) $agency['logo_id'], 'large' ),
@@ -163,7 +163,7 @@ final class Branding_Admin {
 	/** A colour: swatch, the text field (empty = the automatic colour) and a button that empties it. */
 	private static function color( array $f, string $label, string $path, string $auto, string $help = '', string $reset = '' ): string {
 		$val = (string) self::v( $f, $path );
-		$swatch = Style::hex( '' !== $val ? $val : $auto ) ?: '#FFFFFF';
+		$swatch = Color::hex( '' !== $val ? $val : $auto ) ?: '#FFFFFF';
 		$ctl = '<div class="lbb-color" data-auto="' . esc_attr( $auto ) . '"><input type="color" class="lbb-swatch" value="' . esc_attr( strtolower( $swatch ) ) . '" aria-label="' . esc_attr( sprintf( /* translators: %s: colour name */ __( 'Pick: %s', 'launch-builder' ), $label ) ) . '">'
 			. '<input type="text" class="lbb-hex" id="' . esc_attr( self::id( $path ) ) . '" name="' . esc_attr( self::name( $path ) ) . '" value="' . esc_attr( $val ) . '" placeholder="' . esc_attr( $auto ) . '" maxlength="9" autocomplete="off" spellcheck="false"' . self::aria( $path, $help ) . '>'
 			. '<button type="button" class="button-link lbb-auto">' . esc_html( '' !== $reset ? $reset : __( 'Use brand colour', 'launch-builder' ) ) . '</button></div>';
@@ -294,7 +294,7 @@ final class Branding_Admin {
 	private static function section_login( array $f ): string {
 		$l = (array) ( $f['login'] ?? [] );
 		$vars = Branding_Chrome::login_vars( Branding::section( 'login' ) );
-		$auto = [ 'bg' => Style::hex( 'palette8' ), 'form_bg' => Style::hex( 'palette9' ), 'text' => Style::hex( 'palette3' ), 'button_bg' => Style::hex( 'palette1' ), 'button_text' => $vars['colors']['button_text'], 'button_hover_bg' => Style::hex( 'palette2' ), 'link' => Style::hex( 'palette1' ) ];
+		$auto = [ 'bg' => Color::hex( 'palette8' ), 'form_bg' => Color::hex( 'palette9' ), 'text' => Color::hex( 'palette3' ), 'button_bg' => Color::hex( 'palette1' ), 'button_text' => $vars['colors']['button_text'], 'button_hover_bg' => Color::hex( 'palette2' ), 'link' => Color::hex( 'palette1' ) ];
 		$b = '<div class="lbb-login-grid"><div class="lbb-login-fields">';
 		$b .= self::check( $f, __( 'Use a branded sign-in screen', 'launch-builder' ), 'login.enabled', __( 'Your logo and colours on the page where people sign in to the site.', 'launch-builder' ) );
 		$b .= self::select( $f, __( 'Logo', 'launch-builder' ), 'login.logo_source', [ 'client' => __( 'The client\'s logo (from the theme)', 'launch-builder' ), 'agency' => __( 'The agency logo', 'launch-builder' ), 'custom' => __( 'A different image', 'launch-builder' ) ] );

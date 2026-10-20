@@ -1,8 +1,9 @@
 <?php
-// Runs when the plugin is deleted from the Plugins screen. Removes tokens, logs and settings; site content stays.
-// Business Info (launch_builder_company and its source mapping) is kept, because pages print it through tokens, unless
-// "Also delete Business Info" (option launch_builder_remove_all_data) was ticked under Launch Builder > Activity and
-// safety before deleting the plugin.
+// Runs when the plugin is deleted from the Plugins screen. Removes tokens, logs and settings; site content stays, and so
+// does everything Launch Builder set up as Kadence and Meta Box objects (headers, Elements, Query Loops, the services and
+// areas, their fields). Business Info (the option business_info) belongs to its Meta Box settings page and is never
+// deleted here. The Business Info of sites from before v2 (launch_builder_company) is kept too unless "Also delete
+// Business Info" (option launch_builder_remove_all_data) was ticked under Launch Builder > Activity and safety.
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
@@ -14,15 +15,8 @@ $lb_options = [
 	'launch_builder_snapshots',
 	'launch_builder_log',
 	'launch_builder_power',
-	// Placement, design and structure.
-	'launch_builder_globals',
-	'launch_builder_sidebar_widget',
-	'launch_builder_chrome',
-	'launch_builder_chrome_map',
-	'launch_builder_auto_update_chrome',
-	'launch_builder_parked_elements',
-	'launch_builder_style',
-	'launch_builder_style_css',
+	// Placement, design and structure (and, from before v2, launch_builder_globals, _chrome, _chrome_map, _style...).
+	'launch_builder_design_hub',
 	'launch_builder_hubs',
 	'launch_builder_urls',
 	'launch_builder_duplicate', // Duplicate settings

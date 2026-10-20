@@ -11,49 +11,46 @@ defined( 'ABSPATH' ) || exit;
  *   {{ns.key}}              the value, escaped for where it stands (text, attribute, link target)
  *   {{ns.key|fallback}}     the fallback when the value is empty or unknown ({{ns.key|}} = nothing, no marker)
  *   %7B%7Bns.key%7D%7D      inside URLs that were percent-encoded (map embeds): the value, percent-encoded
- *   href="#lb-cta_url"      hash links, for link values only: #lb-{key} where key ends in _url/_link or is a social
- *                           profile, #entry-url, #page-url, #page-parent_url, #area-url, #service-category_url,
+ *   href="#lb-cta_url"      hash links, for link values only: #lb-{key} for the Business Info links (phone_link,
+ *                           maps_url, cta_url), #entry-url, #page-url, #page-parent_url, #area-url, #service-url,
  *                           #site-url (single or double quotes). Every other # anchor is left alone.
  *
  * Rules
  *   - Cheap prefilter (strpos) before any regex; every token is replaced the first time a block's HTML is seen, so the
  *     render_block filter of each ancestor never matches it again. Unknown or empty tokens print the fallback, else
  *     nothing for visitors and a small dashed marker for users who can edit posts (text only, never in attributes).
- *   - Text values resolve one more level of tokens (lb, site, area and service only: a tagline may say {{lb.city}}),
+ *   - Text values resolve one more level of tokens (lb, site, area and service only: a summary may say {{area.name}}),
  *     then are escaped once: esc_html in text, esc_attr in attributes, esc_url for link values (javascript: is
- *     dropped), raw only for the form embed (html field). _br tokens and textarea line breaks only in text.
- *   - An empty social profile renders nothing: a block whose url/link is that token is skipped (core/social-link,
- *     Kadence icons, list items, buttons, navigation links), an inline link to it is removed, and a social-links block
- *     left with no links is removed too.
- *   - The object tokens resolve against (entry.*): the Tokens stack top (push/pop, e.g. each entry of a live list), else
+ *     dropped). Textarea line breaks only in text.
+ *   - The object tokens resolve against (entry.*): the Tokens stack top (push/pop, e.g. each card of a query loop), else
  *     the global post in the loop / REST / feed rendering, else the queried object. page.* is the page being viewed
  *     (Context::simulate() post in previews). SEO filters and seo_value() use the queried or an explicit object.
  *
- * Namespaces: lb (Business Info + computed), site, page, entry, area, service, meta (Meta Box fields registered for the
+ * Namespaces: lb (Business Info), site, page, entry, area, service, meta (Meta Box fields registered for the
  * object's type and allowed by Compat::mb_fields_for(), read with rwmb_meta and an explicit object ID; nothing without
  * Meta Box). catalog() lists them all.
  */
 final class Tokens {
 
-	/** Namespaces and their keys (the contract). lb = every Company field plus Company::computed(); meta = per site. */
+	/** Namespaces and their keys (the contract). lb = the Business Info fields (Company::FIELDS); meta = per site. */
 	const NAMESPACES = [
 		'lb'      => [],
-		'site'    => [ 'name', 'url', 'tagline' ],
-		'page'    => [ 'title', 'url', 'summary', 'parent', 'parent_url', 'role', 'role_label' ],
-		'entry'   => [ 'title', 'summary', 'url', 'image', 'icon', 'category', 'category_url', 'parent', 'parent_url', 'type' ],
+		'site'    => [ 'name', 'url', 'tagline', 'year' ],
+		'page'    => [ 'title', 'url', 'summary', 'parent', 'parent_url' ],
+		'entry'   => [ 'title', 'summary', 'url', 'image', 'icon', 'parent', 'parent_url', 'type' ],
 		'area'    => [ 'name', 'parent', 'url', 'list' ],
-		'service' => [ 'name', 'category', 'category_url' ],
+		'service' => [ 'name', 'url', 'summary' ],
 		'meta'    => [],
 	];
 
 	/** Hash links that resolve (in href="..." with single or double quotes). Other # anchors are never touched. */
-	const HASH_LINKS = [ '#lb-{key}', '#entry-url', '#page-url', '#page-parent_url', '#area-url', '#service-category_url', '#site-url' ];
+	const HASH_LINKS = [ '#lb-{key}', '#entry-url', '#page-url', '#page-parent_url', '#area-url', '#service-url', '#site-url' ];
 
 	/** Namespaces allowed inside summaries and Business Info text (no page/entry context there). */
 	const SUMMARY_NAMESPACES = [ 'lb', 'site', 'area', 'service' ];
 
 	/** Context tokens whose value is a URL (escaped with esc_url; usable as link targets). */
-	const URL_KEYS = [ 'site.url', 'page.url', 'page.parent_url', 'entry.url', 'entry.image', 'entry.category_url', 'entry.parent_url', 'area.url', 'service.category_url' ];
+	const URL_KEYS = [ 'site.url', 'page.url', 'page.parent_url', 'entry.url', 'entry.image', 'entry.parent_url', 'area.url', 'service.url' ];
 
 	/** Attributes whose value is a URL: a whole-value token there is escaped as a link, a hash link resolves there. */
 	const URL_ATTRS = [ 'href', 'src', 'action', 'formaction', 'poster', 'cite', 'data-href', 'data-src', 'data-url' ];
@@ -63,30 +60,27 @@ final class Tokens {
 		'site.name'            => 'Site title (Settings > General)',
 		'site.url'             => 'Home page URL',
 		'site.tagline'         => 'Site tagline (Settings > General)',
-		'page.title'           => 'Title of the page being viewed (term name on category archives)',
+		'site.year'            => 'The current year (copyright lines)',
+		'page.title'           => 'Title of the page being viewed (term name on archives)',
 		'page.url'             => 'URL of the page being viewed',
-		'page.summary'         => 'Excerpt of the page being viewed, else the Business Info tagline',
-		'page.parent'          => 'Title of the parent page (or parent area / parent category)',
+		'page.summary'         => 'Excerpt of the page being viewed, else the site tagline',
+		'page.parent'          => 'Title of the parent page (or parent service / parent area)',
 		'page.parent_url'      => 'URL of the parent page',
-		'page.role'            => 'Page role key (home, page, service, area, category, conversion, ...)',
-		'page.role_label'      => 'Page role name',
-		'entry.title'          => 'Title of the entry being rendered (each item of a live list, else the current post)',
+		'entry.title'          => 'Title of the entry being rendered (each card of a query loop, else the current post)',
 		'entry.summary'        => 'Summary of the entry (excerpt, else the first words of its text)',
 		'entry.url'            => 'URL of the entry',
 		'entry.image'          => 'Featured image URL of the entry (large size)',
 		'entry.icon'           => 'Icon name of the entry (_lb_icon)',
-		'entry.category'       => 'Primary service category of the entry (primary category on posts)',
-		'entry.category_url'   => 'URL of that category (its category page when it has one)',
-		'entry.parent'         => 'Title of the parent entry (parent area)',
+		'entry.parent'         => 'Title of the parent entry (parent service or area)',
 		'entry.parent_url'     => 'URL of the parent entry',
 		'entry.type'           => 'Kind of entry (Service, Service area, Page, Post)',
-		'area.name'            => 'The service area being viewed or rendered, else the Business Info city',
+		'area.name'            => 'The service area being viewed or rendered (on an area service page: its area)',
 		'area.parent'          => 'Parent area of that area (e.g. the county)',
 		'area.url'             => 'URL of that area, else the service-areas hub page',
 		'area.list'            => 'Comma list of areas: the sub-areas of the current area, else the top-level areas',
-		'service.name'         => 'The service being viewed or rendered, the category on category pages, else the Business Info industry',
-		'service.category'     => 'Primary category of that service (the category on category pages)',
-		'service.category_url' => 'URL of that category page',
+		'service.name'         => 'The service being viewed or rendered (on an area service page: the service it is about)',
+		'service.url'          => 'URL of that service',
+		'service.summary'      => 'Summary of that service',
 	];
 
 	/** {{ns.key}} / {{ns.key|fallback}}: groups 1 ns, 2 key, 3 '|' when a fallback is given, 4 fallback. */
@@ -94,9 +88,6 @@ final class Tokens {
 
 	/** Percent-encoded form: groups 1 ns, 2 key, 3 '%7C' when a fallback is given, 4 encoded fallback. */
 	private const ENCODED = '%7B%7B(lb|site|page|entry|area|service|meta)\.([A-Za-z0-9_-]+)(?:(%7C)(.*?))?%7D%7D';
-
-	/** Marks an <a> tag whose social link is empty (removed with its content after the pass). */
-	private const RM = "\x01lb-rm\x01";
 
 	/** @var bool inside a non-block text filter (a token that reads a title must not resolve itself again). */
 	private static $busy = false;
@@ -114,7 +105,6 @@ final class Tokens {
 		// Priority 1: a core/post-template loop inside an entry template adds its own priority-1 filter later, so it
 		// still wins for its items.
 		add_filter( 'render_block_context', [ __CLASS__, 'block_context' ], 1 );
-		add_filter( 'pre_render_block', [ __CLASS__, 'pre_render' ], 10, 2 );
 		$seo = [ 'rank_math/frontend/title', 'rank_math/frontend/description', 'rank_math/opengraph/facebook/og_title', 'rank_math/opengraph/facebook/og_description', 'rank_math/opengraph/twitter/twitter_title', 'rank_math/opengraph/twitter/twitter_description', 'wpseo_title', 'wpseo_metadesc', 'wpseo_opengraph_title', 'wpseo_opengraph_desc', 'wpseo_twitter_title', 'wpseo_twitter_description' ];
 		foreach ( $seo as $hook ) {
 			add_filter( $hook, [ __CLASS__, 'seo' ], 20 );
@@ -163,7 +153,7 @@ final class Tokens {
 		return self::has( $s ) ? self::html_pass( $s, self::ctx() ) : $s;
 	}
 
-	/** render_block (via Company::filter_block): the tokens in one block's HTML, plus empty social-links removal. */
+	/** render_block (via Company::filter_block): the tokens in one block's HTML. */
 	public static function render_block( string $html, array $block = [] ): string {
 		if ( 'kadence/googlemaps' === ( $block['blockName'] ?? '' ) ) { // A map that follows Business Info (its location is a token) with no address yet prints nothing, not a map of nowhere.
 			$loc = $block['attrs']['location'] ?? null;
@@ -171,11 +161,7 @@ final class Tokens {
 				return '';
 			}
 		}
-		$out = self::replace( $html );
-		if ( 'core/social-links' === ( $block['blockName'] ?? '' ) && false === stripos( $out, '<li' ) && self::has_social_child( $block ) ) {
-			return ''; // Every profile it linked to is empty.
-		}
-		return $out;
+		return self::replace( $html );
 	}
 
 	/** One token as block HTML (the [lb field="..."] shortcode). Unknown keys give ''. */
@@ -280,20 +266,9 @@ final class Tokens {
 	public static function catalog( $obj = null ): array {
 		$ctx = null === $obj ? self::ctx() : self::ctx_for( self::object( $obj ) );
 		$rows = [];
-		$lb = [];
 		foreach ( Company::fields() as $k => $f ) {
-			$lb[ $k ] = self::row( 'lb', $k, $f[0] . ( '' !== $f[4] ? '. ' . $f[4] : '' ), $ctx );
+			$rows[] = self::row( 'lb', $k, $f[0] . ( '' !== $f[3] ? '. ' . $f[3] : '' ), $ctx );
 		}
-		foreach ( Company::computed() as $k => $label ) {
-			$lb[ $k ] = self::row( 'lb', $k, (string) $label, $ctx );
-		}
-		foreach ( Company::COMMON as $k ) { // The tokens people use most come first; the rest keep their order after them.
-			if ( isset( $lb[ $k ] ) ) {
-				$rows[] = $lb[ $k ];
-				unset( $lb[ $k ] );
-			}
-		}
-		$rows = array_merge( $rows, array_values( $lb ) );
 		foreach ( self::DESCRIPTIONS as $tok => $desc ) {
 			[ $ns, $k ] = explode( '.', $tok, 2 );
 			$rows[] = self::row( $ns, $k, $desc, $ctx );
@@ -365,23 +340,6 @@ final class Tokens {
 		return $context;
 	}
 
-	/** pre_render_block: a block whose url/link is an empty social profile token renders nothing. */
-	public static function pre_render( $pre, $parsed ) {
-		if ( null !== $pre || ! is_array( $parsed ) || empty( $parsed['attrs'] ) || ! is_array( $parsed['attrs'] ) ) {
-			return $pre;
-		}
-		foreach ( [ 'url', 'link' ] as $k ) {
-			$v = $parsed['attrs'][ $k ] ?? null;
-			if ( is_string( $v ) && '' !== $v && ( '#' === $v[0] || '{' === $v[0] ) ) {
-				$social = self::social_key( $v );
-				if ( null !== $social && '' === trim( (string) ( Company::values()[ $social ] ?? '' ) ) ) {
-					return '';
-				}
-			}
-		}
-		return $pre;
-	}
-
 	/** Rank Math / Yoast titles, descriptions and Open Graph: plain values for the page being viewed. */
 	public static function seo( $s ) {
 		if ( ! is_string( $s ) || ! self::has( $s ) ) {
@@ -395,7 +353,7 @@ final class Tokens {
 		return self::has( $s ) ? self::plain( $s, self::ctx_for( $p ) ) : $s;
 	}
 
-	/** A card's summary in a live list: its tokens resolve against that entry, not against the page the list is on. */
+	/** An entry's summary on a card: its tokens resolve against that entry, not against the page the card is on. */
 	public static function for_entry( string $s, \WP_Post $p ): string {
 		return self::has( $s ) ? self::plain( $s, self::ctx_for( $p ), array_merge( self::SUMMARY_NAMESPACES, [ 'entry', 'page' ] ) ) : $s;
 	}
@@ -507,7 +465,7 @@ final class Tokens {
 		if ( false !== stripos( $s, '%7B%7B' ) ) {
 			return true;
 		}
-		foreach ( [ '#lb-', '#entry-url', '#page-', '#area-url', '#service-category_url', '#site-url' ] as $prefix ) { // '#' is in almost every block (colours, '#' links): plain strpos only.
+		foreach ( [ '#lb-', '#entry-url', '#page-', '#area-url', '#service-url', '#site-url' ] as $prefix ) { // '#' is in almost every block (colours, '#' links): plain strpos only.
 			if ( false !== strpos( $s, $prefix ) ) {
 				return true;
 			}
@@ -517,33 +475,14 @@ final class Tokens {
 
 	/** [ns, key] for an allow-listed hash link ('#lb-cta_url', '#entry-url'...), else null. */
 	private static function hash( string $v ): ?array {
-		if ( ! preg_match( '/^#(?:lb-([a-z0-9_]+)|(entry|page|area|service|site)-(url|parent_url|category_url))$/', $v, $m ) ) {
+		if ( ! preg_match( '/^#(?:lb-([a-z0-9_]+)|(entry|page|area|service|site)-(url|parent_url))$/', $v, $m ) ) {
 			return null;
 		}
 		if ( '' !== $m[1] ) {
 			return Company::is_link_key( $m[1] ) ? [ 'lb', $m[1] ] : null;
 		}
 		$pair = $m[2] . '.' . $m[3];
-		return in_array( $pair, [ 'entry.url', 'page.url', 'page.parent_url', 'area.url', 'service.category_url', 'site.url' ], true ) ? [ $m[2], $m[3] ] : null;
-	}
-
-	/** The social field a link value points at ('#lb-facebook' or '{{lb.facebook}}'), else null. */
-	private static function social_key( string $v ): ?string {
-		if ( preg_match( '/^(?:#lb-([a-z]+)|\{\{\s*lb\.([a-z]+)\s*\}\})$/', $v, $m ) ) {
-			$k = '' !== $m[1] ? $m[1] : $m[2];
-			return in_array( $k, Company::SOCIALS, true ) ? $k : null;
-		}
-		return null;
-	}
-
-	private static function has_social_child( array $block ): bool {
-		foreach ( (array) ( $block['innerBlocks'] ?? [] ) as $b ) {
-			$u = $b['attrs']['url'] ?? null;
-			if ( 'core/social-link' === ( $b['blockName'] ?? '' ) && is_string( $u ) && null !== self::social_key( $u ) ) {
-				return true;
-			}
-		}
-		return false;
+		return in_array( $pair, [ 'entry.url', 'page.url', 'page.parent_url', 'area.url', 'service.url', 'site.url' ], true ) ? [ $m[2], $m[3] ] : null;
 	}
 
 	/** Block HTML: tags (attribute values, hash links) and text tokens in one pass, then percent-encoded tokens. */
@@ -560,12 +499,11 @@ final class Tokens {
 				$html = $json;
 			}
 		}
-		$remove = false;
 		$out = preg_replace_callback(
 			'/(<[a-zA-Z][^>]*>)|' . self::TOKEN . '/',
-			static function ( $m ) use ( $ctx, &$remove ) {
+			static function ( $m ) use ( $ctx ) {
 				if ( '' !== $m[1] ) {
-					return self::tag( $m[1], $ctx, $remove );
+					return self::tag( $m[1], $ctx );
 				}
 				return self::token( $m[2], $m[3], ( $m[4] ?? '' ) === '|' ? (string) ( $m[5] ?? '' ) : null, 'html', $ctx );
 			},
@@ -573,10 +511,6 @@ final class Tokens {
 		);
 		if ( null === $out ) {
 			return $html; // PCRE limit: leave the block as it was.
-		}
-		if ( $remove ) {
-			$out = (string) preg_replace( '#' . preg_quote( self::RM, '#' ) . '<a\b[^>]*>.*?</a>#is', '', $out );
-			$out = str_replace( self::RM, '', $out );
 		}
 		if ( false !== stripos( $out, '%7B%7B' ) ) {
 			$out = self::encoded( $out, $ctx );
@@ -600,14 +534,13 @@ final class Tokens {
 	}
 
 	/** Tokens and hash links inside one tag's quoted attribute values. */
-	private static function tag( string $tag, array $ctx, bool &$remove ): string {
+	private static function tag( string $tag, array $ctx ): string {
 		if ( false === strpos( $tag, '{{' ) && false === strpos( $tag, '#' ) ) {
 			return $tag;
 		}
-		$empty_social = false;
 		$new = preg_replace_callback(
 			'/(\s)([^\s"\'>\/=]+)(\s*=\s*)(?:"([^"]*)"|\'([^\']*)\')/',
-			static function ( $a ) use ( $ctx, &$empty_social ) {
+			static function ( $a ) use ( $ctx ) {
 				$q = substr( $a[0], -1 );
 				$val = '"' === $q ? $a[4] : ( $a[5] ?? '' );
 				$is_url = in_array( strtolower( $a[2] ), self::URL_ATTRS, true );
@@ -616,24 +549,15 @@ final class Tokens {
 					$h = self::hash( $val );
 					if ( $h ) {
 						$out = self::token( $h[0], $h[1], null, 'url', $ctx );
-						$empty_social = $empty_social || ( '' === $out && 'lb' === $h[0] && Company::hides_when_empty( $h[1] ) );
 					}
 				} elseif ( false !== strpos( $val, '{{' ) ) {
 					$out = self::attr_value( $val, $is_url, $ctx );
-					$empty_social = $empty_social || ( $is_url && '' === trim( $out ) && null !== self::social_key( trim( $val ) ) );
 				}
 				return $a[1] . $a[2] . $a[3] . $q . $out . $q;
 			},
 			$tag
 		);
-		if ( null === $new ) {
-			return $tag;
-		}
-		if ( $empty_social && preg_match( '/^<a\s/i', $tag ) ) {
-			$remove = true;
-			return self::RM . $new;
-		}
-		return $new;
+		return null === $new ? $tag : $new;
 	}
 
 	/**
@@ -833,6 +757,10 @@ final class Tokens {
 				$r = self::lookup_lb( $key, $ctx );
 				break;
 			case 'site':
+				if ( 'year' === $key ) {
+					$r = self::val( wp_date( 'Y' ), 'text', $ctx );
+					break;
+				}
 				$r = in_array( $key, self::NAMESPACES['site'], true ) ? self::val( 'url' === $key ? home_url( '/' ) : (string) get_bloginfo( 'name' === $key ? 'name' : 'description' ), 'url' === $key ? 'url' : 'text', $ctx ) : null;
 				break;
 			case 'page':
@@ -861,20 +789,10 @@ final class Tokens {
 
 	private static function lookup_lb( string $key, array $ctx ): ?array {
 		$fields = Company::fields();
-		if ( isset( $fields[ $key ] ) ) {
-			$type = $fields[ $key ][1];
-			$kind = in_array( $type, [ 'url', 'image' ], true ) ? 'url' : ( 'html' === $type ? 'html' : ( 'textarea' === $type ? 'multi' : 'text' ) );
-			return self::val( (string) ( Company::values()[ $key ] ?? '' ), $kind, $ctx );
+		if ( ! isset( $fields[ $key ] ) ) {
+			return null;
 		}
-		$lines = Company::lines( $key );
-		if ( null !== $lines ) {
-			return [ 'v' => implode( ', ', $lines ), 'kind' => 'lines', 'lines' => $lines ];
-		}
-		$c = Company::computed_value( $key );
-		if ( 'emergency_phone_link' === $key && null !== $c ) {
-			return self::val( $c, 'url', $ctx );
-		}
-		return null === $c ? null : [ 'v' => $c, 'kind' => 'text' ];
+		return self::val( Company::get( $key ), 'url' === $fields[ $key ][1] ? 'url' : 'text', $ctx );
 	}
 
 	private static function title( $o ): string {
@@ -886,21 +804,10 @@ final class Tokens {
 
 	private static function url( $o ): string {
 		if ( $o instanceof \WP_Term ) {
-			return self::term_url( $o );
+			$u = get_term_link( $o );
+			return is_wp_error( $u ) ? '' : (string) $u;
 		}
 		return $o instanceof \WP_Post ? (string) get_permalink( $o ) : '';
-	}
-
-	/** A term's URL: for service categories with a category page, that page. */
-	private static function term_url( \WP_Term $t ): string {
-		if ( Entries::CAT === $t->taxonomy ) {
-			$page = (int) get_term_meta( $t->term_id, '_lb_page', true );
-			if ( $page && 'publish' === get_post_status( $page ) ) {
-				return (string) get_permalink( $page );
-			}
-		}
-		$u = get_term_link( $t );
-		return is_wp_error( $u ) ? '' : (string) $u;
 	}
 
 	/** Parent object: parent post, or parent term. @return \WP_Post|\WP_Term|null */
@@ -916,26 +823,7 @@ final class Tokens {
 		return null;
 	}
 
-	/** The primary term of a post (Rank Math primary, Yoast primary, else the first by name). */
-	private static function primary_term( \WP_Post $p ): ?\WP_Term {
-		$tax = Entries::SERVICE === $p->post_type ? Entries::CAT : ( 'post' === $p->post_type ? 'category' : '' );
-		if ( '' === $tax || ! taxonomy_exists( $tax ) ) {
-			return null;
-		}
-		foreach ( [ 'rank_math_primary_' . $tax, '_yoast_wpseo_primary_' . $tax ] as $meta ) {
-			$id = (int) get_post_meta( $p->ID, $meta, true );
-			if ( $id && has_term( $id, $tax, $p ) ) {
-				$t = get_term( $id, $tax );
-				if ( $t instanceof \WP_Term ) {
-					return $t;
-				}
-			}
-		}
-		$terms = wp_get_object_terms( $p->ID, $tax, [ 'orderby' => 'name' ] );
-		return ( $terms && ! is_wp_error( $terms ) && $terms[0] instanceof \WP_Term ) ? $terms[0] : null;
-	}
-
-	/** Entry summary: the summary field / excerpt, else the first words of the text (as the live lists show it). */
+	/** Entry summary: the summary field / excerpt, else the first words of the text. */
 	private static function entry_summary( \WP_Post $p ): string {
 		$s = (string) get_post_meta( $p->ID, '_lb_summary', true );
 		if ( '' === $s ) {
@@ -963,21 +851,11 @@ final class Tokens {
 				if ( '' === $s && $o instanceof \WP_Post ) {
 					$s = trim( (string) get_post_meta( $o->ID, '_lb_summary', true ) );
 				}
-				return self::val( '' !== $s ? $s : (string) ( Company::values()['tagline'] ?? '' ), 'text', $ctx );
+				return self::val( '' !== $s ? $s : (string) get_bloginfo( 'description' ), 'text', $ctx );
 			case 'parent':
 				return self::val( self::title( self::parent( $o ) ), 'text', $ctx );
 			case 'parent_url':
 				return [ 'v' => self::url( self::parent( $o ) ), 'kind' => 'url' ];
-			case 'role':
-			case 'role_label':
-				if ( $o instanceof \WP_Term ) {
-					$role = Entries::CAT === $o->taxonomy ? 'category' : ( in_array( $o->taxonomy, [ 'category', 'post_tag' ], true ) ? 'blog' : 'other' );
-				} elseif ( Context::current() || ( empty( $ctx['explicit'] ) && did_action( 'wp' ) && ! is_admin() ) ) {
-					$role = Roles::current(); // The request's own role (simulated in previews).
-				} else {
-					$role = Roles::of( $o->ID );
-				}
-				return [ 'v' => 'role' === $key ? $role : ( '' === $role ? '' : Roles::label( $role ) ), 'kind' => 'text' ];
 		}
 		return null;
 	}
@@ -1002,10 +880,6 @@ final class Tokens {
 				return [ 'v' => (string) get_the_post_thumbnail_url( $p, 'large' ), 'kind' => 'url' ];
 			case 'icon':
 				return [ 'v' => (string) get_post_meta( $p->ID, '_lb_icon', true ), 'kind' => 'text' ];
-			case 'category':
-			case 'category_url':
-				$t = self::primary_term( $p );
-				return 'category' === $key ? [ 'v' => $t ? (string) $t->name : '', 'kind' => 'text' ] : [ 'v' => $t ? self::term_url( $t ) : '', 'kind' => 'url' ];
 			case 'parent':
 				return self::val( self::title( self::parent( $p ) ), 'text', $ctx );
 			case 'parent_url':
@@ -1027,14 +901,36 @@ final class Tokens {
 		return null;
 	}
 
+	/** The area in context: the area being viewed or rendered; on an area service page, its parent area. */
+	private static function current_area( array $ctx ): ?\WP_Post {
+		$a = self::current_of( Entries::AREA, $ctx );
+		if ( $a && Entries::is_area_service( $a ) ) {
+			$parent = get_post( $a->post_parent );
+			return $parent instanceof \WP_Post ? $parent : null;
+		}
+		return $a;
+	}
+
+	/** The service in context: the service being viewed or rendered; on an area service page, the service it is about. */
+	private static function current_service( array $ctx ): ?\WP_Post {
+		$s = self::current_of( Entries::SERVICE, $ctx );
+		if ( $s ) {
+			return $s;
+		}
+		$a = self::current_of( Entries::AREA, $ctx );
+		$sid = $a ? (int) get_post_meta( $a->ID, '_lb_service', true ) : 0;
+		$p = $sid ? get_post( $sid ) : null;
+		return $p instanceof \WP_Post ? $p : null;
+	}
+
 	private static function lookup_area( string $key, array $ctx ): ?array {
 		if ( ! in_array( $key, self::NAMESPACES['area'], true ) ) {
 			return null;
 		}
-		$a = self::current_of( Entries::AREA, $ctx );
+		$a = self::current_area( $ctx );
 		switch ( $key ) {
 			case 'name':
-				return $a ? self::val( self::title( $a ), 'text', $ctx ) : self::val( (string) ( Company::values()['city'] ?? '' ), 'text', $ctx );
+				return self::val( $a ? self::title( $a ) : '', 'text', $ctx );
 			case 'parent':
 				return self::val( $a ? self::title( self::parent( $a ) ) : '', 'text', $ctx );
 			case 'url':
@@ -1044,23 +940,9 @@ final class Tokens {
 				$hub = (int) ( Roles::hubs()['areas'] ?? 0 );
 				return [ 'v' => $hub && 'publish' === get_post_status( $hub ) ? (string) get_permalink( $hub ) : '', 'kind' => 'url' ];
 			case 'list':
-				$args = [ 'post_type' => Entries::AREA, 'post_status' => 'publish', 'numberposts' => 50, 'orderby' => [ 'menu_order' => 'ASC', 'title' => 'ASC' ], 'no_found_rows' => true ];
-				$kids = $a ? get_posts( $args + [ 'post_parent' => $a->ID ] ) : [];
-				$list = $kids ? $kids : get_posts( $args + [ 'post_parent' => 0 ] );
+				$list = $a ? Entries::query( 'area', [ 'parent' => (int) $a->ID, 'limit' => 50 ] ) : [];
+				$list = $list ? $list : Entries::query( 'area', [ 'parent' => 'top', 'limit' => 50 ] );
 				return [ 'v' => implode( ', ', array_map( static function ( $p ) { return wp_strip_all_tags( get_the_title( $p ) ); }, $list ) ), 'kind' => 'text' ];
-		}
-		return null;
-	}
-
-	/** The service category of a category page (term archive, or a page a term points at with _lb_page). */
-	private static function category_term( $o ): ?\WP_Term {
-		if ( $o instanceof \WP_Term ) {
-			return Entries::CAT === $o->taxonomy ? $o : null;
-		}
-		if ( $o instanceof \WP_Post && 'page' === $o->post_type ) {
-			$tid = (int) ( Roles::catmap()[ $o->ID ] ?? 0 );
-			$t = $tid ? get_term( $tid, Entries::CAT ) : null;
-			return $t instanceof \WP_Term ? $t : null;
 		}
 		return null;
 	}
@@ -1069,18 +951,14 @@ final class Tokens {
 		if ( ! in_array( $key, self::NAMESPACES['service'], true ) ) {
 			return null;
 		}
-		$s = self::current_of( Entries::SERVICE, $ctx );
-		$term = $s ? self::primary_term( $s ) : self::category_term( $ctx['page'] );
+		$s = self::current_service( $ctx );
 		switch ( $key ) {
 			case 'name':
-				if ( $s ) {
-					return self::val( self::title( $s ), 'text', $ctx );
-				}
-				return self::val( $term ? (string) $term->name : (string) ( Company::values()['industry'] ?? '' ), 'text', $ctx );
-			case 'category':
-				return [ 'v' => $term ? (string) $term->name : '', 'kind' => 'text' ];
-			case 'category_url':
-				return [ 'v' => $term ? self::term_url( $term ) : '', 'kind' => 'url' ];
+				return self::val( $s ? self::title( $s ) : '', 'text', $ctx );
+			case 'url':
+				return [ 'v' => $s ? self::url( $s ) : '', 'kind' => 'url' ];
+			case 'summary':
+				return self::val( $s ? self::entry_summary( $s ) : '', 'text', $ctx );
 		}
 		return null;
 	}
@@ -1230,7 +1108,6 @@ final class Tokens {
 			'kind'        => $kind,
 			'contexts'    => $contexts,
 			'link_token'  => $link,
-			'advanced'    => 'lb' === $ns && Company::is_advanced( $key ), // Rarely typed by hand; still works everywhere.
 			'available'   => null !== $r,
 			'value'       => null === $value ? null : mb_substr( $value, 0, 160 ),
 		];
@@ -1239,8 +1116,8 @@ final class Tokens {
 	/* ------------------------------------------------------------------ module hooks */
 
 	public static function define_tools(): void {
-		Abilities::add( 'get-tokens', 'List the dynamic text tokens', 'Every token patterns and text can use, with what it means, where it may be used (contexts: html = block text, attr = attribute, url = link target, text = SEO titles/descriptions, summary = inside summaries and Business Info text) and its current value. Syntax: {{ns.key}}, {{ns.key|fallback}}; link fields also as href="#lb-cta_url"; context links #entry-url, #page-url, #page-parent_url, #area-url, #service-category_url, #site-url. Namespaces: lb (Business Info), site, page (page being viewed), entry (each item of a live list, else the current post), area, service, meta (Meta Box fields). Business Info tokens come common ones first; each carries advanced: true when people rarely type it by hand (it still works everywhere), and common_only leaves those out. post_id resolves the values for that page or entry; ns filters.',
-			[ 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Resolve values for this post (page, service, area).' ], 'ns' => [ 'type' => 'string', 'enum' => array_keys( self::NAMESPACES ) ], 'common_only' => [ 'type' => 'boolean', 'description' => 'Leave out the advanced Business Info tokens (they still work); the common ones are listed first either way.' ] ] ], [ __CLASS__, 'tokens_tool' ], 'edit_pages', [ 'readonly' => true ] );
+		Abilities::add( 'get-tokens', 'List the dynamic text tokens', 'Every token text can use, with what it means, where it may be used (contexts: html = block text, attr = attribute, url = link target, text = SEO titles/descriptions, summary = inside summaries) and its current value. Syntax: {{ns.key}}, {{ns.key|fallback}}; Business Info links also as href="#lb-cta_url"; context links #entry-url, #page-url, #page-parent_url, #area-url, #service-url, #site-url. Namespaces: lb (Business Info), site, page (page being viewed), entry (each card of a query loop, else the current post), area, service, meta (Meta Box fields). post_id resolves the values for that page or entry; ns filters.',
+			[ 'properties' => [ 'post_id' => [ 'type' => 'integer', 'description' => 'Resolve values for this post (page, service, area).' ], 'ns' => [ 'type' => 'string', 'enum' => array_keys( self::NAMESPACES ) ] ] ], [ __CLASS__, 'tokens_tool' ], 'edit_pages', [ 'readonly' => true ] );
 	}
 
 	public static function tokens_tool( $input = [] ) {
@@ -1253,12 +1130,7 @@ final class Tokens {
 		if ( '' !== $ns ) {
 			$rows = array_values( array_filter( $rows, static function ( $r ) use ( $ns ) { return $ns === $r['ns']; } ) );
 		}
-		$advanced = count( array_filter( $rows, static function ( $r ) { return ! empty( $r['advanced'] ); } ) );
-		if ( ! empty( $input['common_only'] ) ) {
-			$rows = array_values( array_filter( $rows, static function ( $r ) { return empty( $r['advanced'] ); } ) );
-		}
 		return [
-			'advanced_count' => $advanced,
 			'syntax'     => '{{ns.key}} or {{ns.key|fallback}} in text and attributes; %7B%7Bns.key%7D%7D inside encoded URLs; href="#lb-key" for link fields; empty or unknown tokens print the fallback, else nothing (editors see a dashed marker).',
 			'hash_links' => self::HASH_LINKS,
 			'summary_namespaces' => self::SUMMARY_NAMESPACES,
@@ -1267,14 +1139,13 @@ final class Tokens {
 	}
 
 	public static function playbook( array &$pb ): void {
-		$pb['tokens'] = 'Dynamic text: {{lb.*}} Business Info (phone, name, address, hours, cta_label, review_count_line, review_line, service_count...), {{site.name}}, {{page.title}}/{{page.summary}}/{{page.parent}} (page being viewed), {{entry.title}}/{{entry.summary}}/{{entry.url}}/{{entry.image}}/{{entry.category}} (each item of a live list template, else the current post), {{area.name}} (current area, else the Business Info city), {{service.name}} (current service, the category on category pages, else the industry). Fallbacks: {{lb.years|10}}. Links: href="#lb-cta_url", "#lb-phone_link", "#entry-url", "#page-url". Summaries and Business Info text may only use lb, site, area and service tokens. Titles and descriptions in Rank Math/Yoast resolve tokens too. An empty social profile hides its icon. get-tokens lists every token with its current value. Where tokens work: block text, buttons and link fields, SEO titles and descriptions, and (resolved on the server for visitors and search engines) page titles, classic menu labels, #lb- menu links, legacy text widgets and image alt text. Case does not matter. A blank Business Info field prints nothing once the site is public (demo text shows only while search engines are asked to stay away). go-live fetches the home page and one page, service and area, and refuses while unresolved tokens or placeholders are printed. detokenize bakes post content, designs and SEO fields (including typed tokens) with their fallbacks; titles, excerpts, menus and widgets keep their tokens, so replace those by hand before removing the plugin.';
+		$pb['tokens'] = 'Dynamic text: {{lb.*}} Business Info (name, phone, phone_link, email, address, maps_url, cta_label, cta_url), {{site.name}}, {{page.title}}/{{page.summary}}/{{page.parent}} (page being viewed), {{entry.title}}/{{entry.summary}}/{{entry.url}}/{{entry.image}} (each card of a query loop, else the current post), {{area.name}} (the area; on an area service page its area), {{service.name}}/{{service.url}} (the service; on an area service page the service it is about). Fallbacks: {{lb.phone|Call us}}. Links: href="#lb-cta_url", "#lb-phone_link", "#lb-maps_url", "#entry-url", "#page-url", "#service-url". Summaries may only use lb, site, area and service tokens. Tokens resolve in blocks, titles, menus, widgets, image alt text and Rank Math/Yoast titles and descriptions. Demo values show only while the site is hidden from search engines. Before removing the plugin, detokenize writes every value into the content.';
 		$pb['tools_by_job']['Dynamic text'] = 'get-tokens, get-company, set-company';
 	}
 
 	public static function audit_checks(): array {
 		return [
 			'token_unresolved' => [ 'content', [ __CLASS__, 'audit_unresolved' ], true ],
-			'company_default'  => [ 'company', [ __CLASS__, 'audit_company' ] ],
 		];
 	}
 
@@ -1350,14 +1221,5 @@ final class Tokens {
 		return [ 'findings' => $findings, 'next_after_id' => count( (array) $rows ) === $limit ? $last : null ];
 	}
 
-	/** Contact essentials still showing their demo values. */
-	public static function audit_company( array $args = [] ): array {
-		unset( $args );
-		$res = Company::resolve();
-		$demo = array_values( array_filter( [ 'name', 'phone', 'email', 'address', 'hours', 'city' ], static function ( $k ) use ( $res ) { return 'default' === $res[ $k ]['from']; } ) );
-		if ( ! $demo ) {
-			return [];
-		}
-		return [ [ 'severity' => 'error', 'object_type' => 'option', 'id' => 0, 'url' => admin_url( 'admin.php?page=launch-builder-business' ), 'message' => Company::setup_mode() ? 'Business Info still shows demo values for: ' . implode( ', ', $demo ) . '.' : 'Business Info is blank for: ' . implode( ', ', $demo ) . ' (the site is public, so visitors see nothing there).', 'fix' => 'set-company with the real values (or a source option).' ] ];
-	}
+
 }

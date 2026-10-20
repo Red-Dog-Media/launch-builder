@@ -7,13 +7,13 @@ defined( 'ABSPATH' ) || exit;
  * Provision a site over SSH (no HTTP API needed). The global --user flag selects the administrator:
  *   wp plugin install launch-builder.zip --activate
  *   wp launch-builder token --user=admin --porcelain      # prints a fresh MCP token
- *   wp launch-builder blueprint blueprint.json --user=admin
  *   wp launch-builder migrate --user=admin                # pending data migrations (also run from wp-admin)
  *   wp launch-builder audit --user=admin --only-failures  # the site audit (exit code 1 on errors)
  *   wp launch-builder sync --user=admin [--apply]         # repair drift (dry run unless --apply)
  *   wp launch-builder inspect /contact/ --user=admin      # what one page prints for a visitor
  *   wp launch-builder modules [list|enable|disable] <slug> --user=admin
- *   wp launch-builder meta-box-sync --user=admin [--apply] # services, areas and categories into Meta Box
+ *   wp launch-builder meta-box-sync --user=admin [--apply] # services, areas, their fields and Business Info into Meta Box
+ *   wp launch-builder build brief.json --user=admin [--apply] # build-site from a brief (dry run unless --apply)
  */
 final class CLI {
 
@@ -40,32 +40,6 @@ final class CLI {
 		}
 		\WP_CLI::success( 'Token created for ' . $user->user_login . ' (valid 180 days). Copy it now; only its hash is stored: ' . $t );
 		\WP_CLI::line( 'Endpoint: ' . home_url( '/mcp' ) );
-	}
-
-	/**
-	 * Apply a site blueprint JSON file.
-	 *
-	 * <file>
-	 * : Path to the blueprint JSON.
-	 */
-	public function blueprint( $args, $assoc ) {
-		$this->admin_or_bail();
-		if ( ! is_readable( $args[0] ?? '' ) ) {
-			\WP_CLI::error( 'Cannot read the blueprint file.' );
-		}
-		$bp = json_decode( (string) file_get_contents( $args[0] ), true );
-		if ( ! is_array( $bp ) ) {
-			\WP_CLI::error( 'Blueprint is not valid JSON.' );
-		}
-		$r = Blueprint::build( [ 'blueprint' => $bp ] );
-		if ( is_wp_error( $r ) ) {
-			\WP_CLI::error( $r->get_error_message() );
-		}
-		foreach ( $r['warnings'] as $w ) {
-			\WP_CLI::warning( $w );
-		}
-		\WP_CLI::success( count( $r['pages'] ?? [] ) . ' pages built. Snapshot ' . $r['snapshot'] . ' (restore-snapshot undoes settings changes).' );
-		\WP_CLI::line( wp_json_encode( $r, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
 	}
 
 	/**
@@ -251,5 +225,26 @@ final class CLI {
 			\WP_CLI::line( sprintf( '%-18s %-12s %-9s %s', $key, $o['state'], $o['action'], $o['note'] ) );
 		}
 		\WP_CLI::success( ( $r['dry_run'] ? 'Dry run: nothing changed. ' : '' ) . (string) ( $r['message'] ?? '' ) );
+	}
+
+	/**
+	 * Build the site from a brief (a JSON file). Dry run unless --apply.
+	 *
+	 * <file>
+	 * : The brief, as JSON.
+	 *
+	 * [--apply]
+	 * : Build (without it, only check the brief and report the plan).
+	 */
+	public function build( $args, $assoc ) {
+		$this->admin_or_bail();
+		$file = (string) ( $args[0] ?? '' );
+		$brief = is_readable( $file ) ? json_decode( (string) file_get_contents( $file ), true ) : null; // phpcs:ignore WordPress.WP.AlternativeFunctions
+		if ( ! is_array( $brief ) ) {
+			\WP_CLI::error( 'Give a readable JSON brief file.' );
+		}
+		$r = Builder::build( $brief, ! isset( $assoc['apply'] ) );
+		\WP_CLI::line( (string) wp_json_encode( $r, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		$r['ok'] ? \WP_CLI::success( $r['dry_run'] ? 'Dry run: nothing changed.' : 'Built.' ) : \WP_CLI::error( 'The brief has errors.' );
 	}
 }

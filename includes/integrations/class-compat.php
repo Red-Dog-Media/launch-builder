@@ -14,9 +14,7 @@ defined( 'ABSPATH' ) || exit;
  * snapshotted first. Every key Launch Builder wrote is in the Ledger, so a value an admin changed later is reported as a
  * kept edit and left alone (unless forced).
  *
- * Business Info values (name, logo, email, phone, socials, structured address, hours, price range, geo, business type)
- * are also overlaid at read time (filter option_rank-math-options-titles, front end and REST only), so later Business
- * Info edits reach the knowledge graph without a re-sync; a key an admin changes in Rank Math stops being overlaid.
+ * Business Info (name, logo, email, phone, contact page) goes into Rank Math's knowledge graph with the same sync.
  *
  * SEO strings are cleaned with clean_seo() (tags and whitespace only), never sanitize_text_field(), which deletes any
  * %xx sequence and so destroys variables such as %category% or %date%.
@@ -54,17 +52,15 @@ final class Compat {
 
 	const RM_MODULES = 'rank_math_modules';
 
-	/** Sitemap keys: services and areas in, categories (301 to their page) and Kadence Elements out. */
+	/** Sitemap keys: services and areas in, Kadence Elements out. */
 	const RM_SITEMAP = [
 		'pt_lb_service_sitemap'      => 'on',
 		'pt_lb_area_sitemap'         => 'on',
-		'tax_lb_service_cat_sitemap' => 'off',
 		'pt_kadence_element_sitemap' => 'off',
 	];
 
 	/** Titles keys with fixed values. Title/description templates and Business Info keys come on top. */
 	const RM_TITLES = [
-		'pt_lb_service_primary_taxonomy'      => 'lb_service_cat',
 		'pt_lb_service_add_meta_box'          => 'on',
 		'pt_lb_area_add_meta_box'             => 'on',
 		'pt_lb_service_default_rich_snippet'  => 'service',
@@ -72,20 +68,16 @@ final class Compat {
 		'pt_lb_service_default_snippet_desc'  => '%seo_description%',
 		'pt_lb_area_default_rich_snippet'     => 'off',
 		'pt_page_default_rich_snippet'        => 'off',
-		'tax_lb_service_cat_add_meta_box'     => 'off',
 		'pt_kadence_element_add_meta_box'     => 'off',
 		'pt_kadence_element_link_suggestions' => 'off',
 		'knowledgegraph_type'                 => 'company',
 	];
 
-	/** Business Info keys overlaid in rank-math-options-titles (see identity()). */
-	const OVERLAY_KEYS = [ 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'organization_description', 'email', 'phone', 'social_url_facebook', 'social_additional_profiles', 'local_business_type', 'local_address', 'opening_hours', 'phone_numbers', 'price_range', 'geo', 'local_seo_contact_page' ];
+	/** Rank Math titles keys Business Info fills (see identity()). */
+	const OVERLAY_KEYS = [ 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'email', 'phone', 'phone_numbers', 'local_seo_contact_page' ];
 
-	/** Every Rank Math titles key Business Info fills: the overlay keys plus the site type (see business_map()). */
-	const BUSINESS_KEYS = [ 'knowledgegraph_type', 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'organization_description', 'email', 'phone', 'social_url_facebook', 'social_additional_profiles', 'local_business_type', 'local_address', 'opening_hours', 'phone_numbers', 'price_range', 'geo', 'local_seo_contact_page' ];
-
-	/** What the last "fill Rank Math from Business Info" wrote and what it replaced: { time, user, snapshot, before, ledger, owned, module }. */
-	const OPT_FILL = 'launch_builder_rm_fill';
+	/** Every Rank Math titles key Business Info decides: those plus the site type. */
+	const BUSINESS_KEYS = [ 'knowledgegraph_type', 'url', 'knowledgegraph_name', 'knowledgegraph_logo', 'knowledgegraph_logo_id', 'email', 'phone', 'phone_numbers', 'local_seo_contact_page' ];
 
 	/** A Meta Box field group that takes over the Card details fields (shown by get-playbook meta_box). */
 	const META_BOX_EXAMPLE = <<<'PHP'
@@ -95,14 +87,13 @@ final class Compat {
 				'post_types' => [ 'lb_service', 'lb_area' ],
 				'fields'     => [
 					[ 'id' => '_lb_icon', 'name' => 'Icon', 'type' => 'text' ],
-					[ 'id' => '_lb_summary', 'name' => 'Summary', 'type' => 'textarea' ],
 				],
 			];
 			$boxes[] = [
-				'title'      => 'Services offered',
+				'title'      => 'Area service page',
 				'post_types' => [ 'lb_area' ],
 				'fields'     => [
-					[ 'id' => '_lb_services', 'name' => 'Services offered', 'type' => 'post', 'post_type' => 'lb_service', 'field_type' => 'select_advanced', 'multiple' => true, 'clone' => false ],
+					[ 'id' => '_lb_service', 'name' => 'This page is about', 'type' => 'post', 'post_type' => 'lb_service', 'field_type' => 'select_advanced' ],
 				],
 			];
 			return $boxes;
@@ -169,7 +160,7 @@ final class Compat {
 	/** The only field types a {{meta.*}} token reads from a settings page: text-like values a visitor could read anyway. Lists, files, relations and groups never print from a settings page. */
 	const MB_TOKEN_TYPES = [ 'text', 'textarea', 'number', 'range', 'select', 'select_advanced', 'radio', 'button_group', 'url', 'email', 'tel', 'date', 'datetime', 'time', 'color', 'checkbox', 'switch', 'wysiwyg' ];
 
-	/** @var bool read Rank Math options without the Business Info overlay. */
+	/** @var bool reading Rank Math options as stored (raw_option()). */
 	private static $raw = false;
 
 	/** @var bool Launch Builder is writing Rank Math options (the save watcher ignores it). */
@@ -200,10 +191,7 @@ final class Compat {
 	/* ------------------------------------------------------------------ module hooks */
 
 	public static function boot(): void {
-		// Rank Math settings: Business Info overlay + watcher for admin edits; variables; migration step.
-		add_filter( 'option_' . self::RM_OPTIONS['titles'], [ __CLASS__, 'overlay_titles' ], 20 );
-		add_action( 'update_option_' . self::RM_OPTIONS['titles'], [ __CLASS__, 'titles_saved' ], 10, 2 );
-		add_action( 'init', [ __CLASS__, 'refresh_rm_settings' ], 1 );
+		// Rank Math settings: variables; migration step.
 		add_action( 'rank_math/vars/register_extra_replacements', [ __CLASS__, 'register_rm_vars' ] );
 		add_action( 'wpseo_register_extra_replacements', [ __CLASS__, 'register_yoast_vars' ] );
 		add_action( 'activated_plugin', [ __CLASS__, 'plugin_activated' ] );
@@ -225,7 +213,7 @@ final class Compat {
 		add_filter( 'rank_math/json_ld', [ __CLASS__, 'rm_json_ld' ], 20, 2 );
 		add_filter( 'rank_math/snippet/rich_snippet_service_entity', [ __CLASS__, 'rm_service_entity' ], 20 );
 
-		// Sitemaps: template types and redirected category archives out, thanks pages out.
+		// Sitemaps: template types and thank-you pages out.
 		add_filter( 'rank_math/sitemap/exclude_post_type', [ __CLASS__, 'exclude_post_type' ], 10, 2 );
 		add_filter( 'rank_math/sitemap/exclude_taxonomy', [ __CLASS__, 'exclude_taxonomy' ], 10, 2 );
 		add_filter( 'rank_math/sitemap/entry', [ __CLASS__, 'rm_sitemap_entry' ], 10, 3 );
@@ -241,7 +229,7 @@ final class Compat {
 		add_action( 'kadence_hero_header', [ __CLASS__, 'hero_close' ], PHP_INT_MAX );
 		add_filter( 'render_block', [ __CLASS__, 'hero_image' ], 30 );
 
-		// Editor: Rank Math content analysis sees the role chrome and token values.
+		// Editor: Rank Math content analysis sees the shared designs and token values.
 		add_action( 'rest_api_init', [ __CLASS__, 'routes' ] );
 		add_action( 'enqueue_block_editor_assets', [ __CLASS__, 'editor_assets' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'classic_assets' ] );
@@ -271,7 +259,7 @@ final class Compat {
 				'section' => [ 'type' => 'string', 'enum' => [ 'all', 'rank_math', 'kadence', 'meta_box', 'perfmatters' ], 'description' => 'Limit the report (default all).' ],
 			] ], [ __CLASS__, 'get_compat_tool' ], 'manage_options', [ 'readonly' => true ] );
 
-		Abilities::add( 'sync-seo', 'Sync SEO settings', 'Write the Rank Math settings Launch Builder owns (services and areas in the sitemap, categories and Kadence Elements out; Service schema for services; pages not Articles; knowledge graph and local business from Business Info; title/description templates for services and areas), Kadence local fonts, and the role SEO templates on pages (rank_math_title/description written from the role template; pages whose SEO an editor changed are kept and reported; thank-you pages noindex). Snapshot first. dry_run (default true) returns the plan. templates: {role: {title, description}} with Rank Math variables (%title%, %sep%, %sitename%, %lb_phone%, %lb_city%, %lb_entry_summary%...; see get-playbook seo); roles: home, page, legal, services_hub, areas_hub, category, service, area, conversion, thanks, search, notfound. local_seo: true enables Rank Math\'s Local SEO module (false disables it; omit to leave it). force: setting keys (e.g. "titles.knowledgegraph_name"), page ids, or "all" to overwrite kept edits.',
+		Abilities::add( 'sync-seo', 'Sync SEO settings', 'Write the Rank Math settings Launch Builder owns (services and areas in the sitemap, Kadence Elements out; Service schema for services; pages not Articles; knowledge graph from Business Info; title/description templates for services and areas), Kadence local fonts, and the role SEO templates on pages (rank_math_title/description written from the role template; pages whose SEO an editor changed are kept and reported; thank-you pages noindex). Snapshot first. dry_run (default true) returns the plan. templates: {role: {title, description}} with Rank Math variables (%title%, %sep%, %sitename%, %lb_phone%, %lb_city%, %lb_entry_summary%...; see get-playbook seo); roles: home, page, legal, services_hub, areas_hub, service, area, conversion, thanks, search, notfound. local_seo: true enables Rank Math\'s Local SEO module (false disables it; omit to leave it). force: setting keys (e.g. "titles.knowledgegraph_name"), page ids, or "all" to overwrite kept edits.',
 			[ 'properties' => [
 				'dry_run'   => [ 'type' => 'boolean', 'description' => 'Report the plan without writing (default true).' ],
 				'templates' => [ 'type' => 'object', 'description' => 'Role templates to store and apply: {role: {title, description}}. An empty string removes a field.', 'additionalProperties' => [ 'type' => 'object', 'properties' => [ 'title' => [ 'type' => 'string' ], 'description' => [ 'type' => 'string' ] ] ] ],
@@ -280,14 +268,6 @@ final class Compat {
 				'force'     => [ 'type' => 'array', 'items' => [ 'type' => [ 'string', 'integer' ] ], 'description' => 'Overwrite kept edits for these setting keys / page ids, or "all".' ],
 				'offset'    => [ 'type' => 'integer', 'description' => 'Pages to skip (pages are processed 300 per call; next_offset says where to continue).' ],
 			] ], [ __CLASS__, 'sync_seo_tool' ], 'manage_options' );
-
-		Abilities::add( 'fill-rank-math', 'Fill Rank Math from Business Info', 'Fill Rank Math\'s Local SEO and knowledge graph settings from Business Info: business name, description, logo, email, phone numbers, Facebook and other profiles, business type, address, opening hours, price range, map coordinates and contact page. dry_run (default true) lists every setting with what Rank Math holds now, what Business Info would put there and what would happen: fill (empty or Rank Math\'s own starting value), update (Launch Builder\'s earlier value), yours (set in Rank Math: kept unless forced), match, empty (Business Info has nothing yet). A real run takes a snapshot first and records what it wrote and what it replaced; a value changed in Rank Math afterwards is never overwritten. local_seo: true also turns on Rank Math\'s Local SEO module, which Rank Math needs before it prints the address, hours and phone numbers. force: row ids (name, phones, address...), setting keys (titles.knowledgegraph_name) or "all" to replace values set in Rank Math. undo: true puts back what the last fill replaced (settings changed in Rank Math since are left alone). The same preview, fill and undo are on the Business Info screen. cannot lists what Rank Math cannot take from Business Info.',
-			[ 'properties' => [
-				'dry_run'   => [ 'type' => 'boolean', 'description' => 'List what would change without writing (default true).' ],
-				'force'     => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Replace values set in Rank Math: row ids, titles.<key> names, or "all".' ],
-				'local_seo' => [ 'type' => 'boolean', 'description' => 'Turn Rank Math\'s Local SEO module on (true) or off (false).' ],
-				'undo'      => [ 'type' => 'boolean', 'description' => 'Put back what the last fill replaced. This runs at once: dry_run does not apply to it.' ],
-			] ], [ __CLASS__, 'fill_rank_math_tool' ], 'manage_options' );
 
 		Abilities::add( 'preview-seo', 'Preview SEO title and description', 'The SEO title, meta description and robots a post, page, service or area gets, with Rank Math variables and tokens resolved, and where each comes from (meta, role template, post type template). Give template_title / template_description to try a template on that object without saving it; unknown_vars lists variables nothing would replace.',
 			[ 'properties' => [
@@ -324,15 +304,15 @@ final class Compat {
 			'robots'     => 'Thank-you pages are noindex,follow and out of the sitemap; search and 404 are noindex.',
 			'check'      => 'preview-seo shows the resolved title/description for any page; get-compat lists every Rank Math key Launch Builder owns and its status.',
 			'indexing'   => 'IndexNow (Rank Math Instant Indexing) is suppressed while the site discourages search engines and during builds.',
-			'business'   => 'Business Info fills Rank Math\'s Local SEO and knowledge graph settings (name, description, logo, email, phones, profiles, business type, address, hours, price range, coordinates, contact page): fill-rank-math lists what it would do (dry_run, the default), writes it, and undoes the last write. It keeps anything set in Rank Math unless forced. Rank Math prints address, hours and phones only while its Local SEO module is on (local_seo: true). Never add a second LocalBusiness schema.',
+			'business'   => 'sync-seo also writes Business Info (name, email, phone, logo, contact page) into Rank Math\'s knowledge graph; the address, hours and business type are set in Rank Math\'s Local SEO screen. Never add a second LocalBusiness schema.',
 		];
-		$pb['tools_by_job']['SEO setup'] = [ 'sync-seo', 'fill-rank-math', 'preview-seo', 'get-compat' ];
+		$pb['tools_by_job']['SEO setup'] = [ 'sync-seo', 'preview-seo', 'get-compat' ];
 		$pb['meta_box'] = [
-			'ids'     => 'Card details and Meta Box: a Meta Box field with exactly these ids takes over from the Card details box and edits the same stored data. _lb_icon (services and areas): type Text, a Kadence icon name such as fe_mapPin (anything else is saved as empty). _lb_services (areas only): type Post, post type lb_service, Multiple on, Clone off (one stored row per service; a cloneable field is stored as one serialized row and read wrongly). _lb_summary (services and areas): type Textarea; it is the Excerpt, and line breaks are flattened. A field with another id (icon, service_icon) does not take over: both boxes show and only the _lb_ ids feed the cards.',
+			'ids'     => 'Card details and Meta Box: a Meta Box field with exactly these ids takes over from the Card details box and edits the same stored data. _lb_icon (services and areas): type Text, a Kadence icon name such as fe_mapPin (anything else is saved as empty). _lb_service (area service pages): type Post, post type lb_service, one value. _lb_summary (services and areas): type Textarea; it is the Excerpt, and line breaks are flattened. A field with another id (icon, service_icon) does not take over: both boxes show and only the _lb_ ids feed the cards. sync-meta-box creates these field groups in Meta Box.',
 			'example' => "A ready-to-paste field group (a small plugin or the theme's functions file; Meta Box Builder takes the same ids and settings):\n" . self::META_BOX_EXAMPLE,
 			'tokens'  => '{{meta.field_id}} and {{meta.field_id|fallback}} print a Meta Box field of the page or entry being shown (block text, links, image addresses, SEO titles); always give a fallback on text that matters. Works: text, number, select, radio, checkbox, URL, date and simple lists (comma-separated). A picture gives its full-size address (a gallery or file list gives the first file). Rich text, maps and embeds print as safe HTML. A Post field prints the titles of its published posts, a taxonomy field its term names. Not available: password fields, ids that look like secrets (pass, secret, token, api key, license key), groups, key-value fields and user fields (they print nothing), and there is no {{meta.group.sub}} syntax.',
-			'tools'   => 'add-service, add-area, list-entries and the brief read and write title, text, summary, order, icon and services only. They never touch other Meta Box fields (use rest-request, or Meta Box\'s own REST extension, for those).',
-			'off'     => 'With Meta Box deactivated nothing is lost: values stay in the database, Card details comes back with Icon and Services, and {{meta.*}} tokens print their fallback or nothing (the site check warns about the ones without a fallback).',
+			'tools'   => 'add-service, add-area, list-entries and the brief read and write title, text, summary, order, icon, parent and services only. They never touch other Meta Box fields (use rest-request, or Meta Box\'s own REST extension, for those).',
+			'off'     => 'With Meta Box deactivated nothing is lost: values stay in the database, Card details comes back with Icon and the area service page\'s service, and {{meta.*}} tokens print their fallback or nothing (the site check warns about the ones without a fallback).',
 		];
 	}
 
@@ -347,20 +327,14 @@ final class Compat {
 		'perfmatters_risk'        => [ 'performance', 'check_perfmatters' ],
 	];
 
-	/** build-site: IndexNow off for the whole build; the SEO sync once everything exists. */
-	public static function blueprint_steps(): array {
-		return [
-			[ 'id' => 'compat-start', 'at' => 'start', 'run' => [ __CLASS__, 'blueprint_start' ] ],
-			[ 'id' => 'seo', 'at' => 'done', 'run' => [ __CLASS__, 'blueprint_seo' ] ],
-		];
-	}
-
+	/** build-site start: IndexNow off for the whole build. */
 	public static function blueprint_start( array $bp, array $ctx ): array {
 		unset( $bp, $ctx );
 		self::suppress_indexing( true );
 		return [ 'indexnow_suppressed' => true ];
 	}
 
+	/** build-site end: the SEO sync once everything exists ($bp['seo']: templates, enable_local_seo). */
 	public static function blueprint_seo( array $bp, array $ctx ): array {
 		unset( $ctx );
 		$seo = (array) ( $bp['seo'] ?? [] );
@@ -586,8 +560,7 @@ final class Compat {
 					'settings'       => $st['rows'],
 					'to_sync'        => $st['to_sync'],
 					'kept_edits'     => $st['kept'],
-					'overlay_keys'   => array_values( (array) get_option( self::OPT_OWNED, [] ) ),
-					'last_fill'      => self::last_fill(),
+					'business_keys'  => array_values( (array) get_option( self::OPT_OWNED, [] ) ),
 					'templates'      => self::templates() + array_diff_key( self::DEFAULT_TEMPLATES, self::templates() ),
 					'indexnow'       => [ 'suppressed_now' => self::indexing_suppressed(), 'suppressed' => get_option( self::OPT_INDEXNOW, [ 'count' => 0 ] ) ],
 					'breadcrumbs_on' => current_theme_supports( 'rank-math-breadcrumbs' ) || 'on' === ( self::raw_option( self::RM_OPTIONS['general'] )['breadcrumbs'] ?? '' ),
@@ -642,32 +615,6 @@ final class Compat {
 			return new \WP_Error( 'lb_seo', $r['error'], [ 'status' => 400 ] );
 		}
 		return $r;
-	}
-
-	public static function fill_rank_math_tool( $input = [] ) {
-		$input = (array) $input;
-		if ( isset( $input['force'] ) && ! is_array( $input['force'] ) ) {
-			return new \WP_Error( 'lb_force', 'force must be a list.', [ 'status' => 400 ] );
-		}
-		$undo = ! empty( $input['undo'] );
-		$dry = ! $undo && ( ! array_key_exists( 'dry_run', $input ) || ! empty( $input['dry_run'] ) );
-		if ( ! $dry && ! Lock::acquire( 'sync', 120 ) ) {
-			return new \WP_Error( 'lb_locked', 'Another sync is running; try again in a minute.', [ 'status' => 409 ] );
-		}
-		try {
-			if ( $undo ) {
-				return self::undo_business_fill();
-			}
-			$args = [ 'dry_run' => $dry, 'force' => (array) ( $input['force'] ?? [] ) ];
-			if ( array_key_exists( 'local_seo', $input ) ) {
-				$args['local_seo'] = (bool) $input['local_seo'];
-			}
-			return self::business_sync( $args );
-		} finally {
-			if ( ! $dry ) {
-				Lock::release( 'sync' );
-			}
-		}
 	}
 
 	public static function preview_seo_tool( $input = [] ) {

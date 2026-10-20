@@ -4,21 +4,24 @@ namespace LaunchBuilder;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Meta Box sync: services, service areas and service categories as Meta Box post types and a taxonomy, and the Card
- * details fields as Meta Box field groups, so they are listed and edited under Meta Box like the site's other types.
+ * Meta Box sync: services and service areas as Meta Box post types, their fields as Meta Box field groups, and Business
+ * Info as a Meta Box settings page, so they are listed and edited under Meta Box like the site's other types and keep
+ * working when Launch Builder is removed.
  *
  *  lb_service, lb_area   a post of type mb-post-type (MB Custom Post Types; its settings are JSON in post_content)
- *  lb_service_cat        a post of type mb-taxonomy
  *  card-details          a Meta Box Builder field group (post type meta-box): _lb_icon on services and areas
- *  services-offered      a field group: _lb_services on areas (Post field, multiple, one stored row per service)
+ *  area-service          a field group: _lb_service on areas (the service an area service page is about)
+ *  business-info         a settings page (post type mb-settings-page, MB Settings Page) storing the option business_info
+ *  business-info-fields  a field group on that settings page: the eight Business Info fields
  *
  * Who registers: once a type is in Meta Box, Meta Box registers it (init 0) with its settings and Entries::register()
  * leaves it alone, keeping only what Launch Builder relies on (Entries::type_args()). A copy that is drafted, trashed or
  * not read (MB Custom Post Types off) simply hands the type back to Launch Builder. The field groups use the ids the cards
- * read, so Meta Box edits the same stored values and the Card details box steps aside (Entries::meta_box_owns()).
+ * read, so Meta Box edits the same stored values and the Card details box steps aside (Entries::meta_box_owns()); the
+ * settings page stores the option Company::OPT, which Business Info and the tokens read.
  *
- * Copies are built from Launch Builder's own definitions (Entries::definitions(), every label filled in) and the field
- * groups below, converted with Meta Box Builder's own parser and saved the way its Save button does. Each copy has a
+ * Copies are built from Launch Builder's own definitions (Entries::definitions(), every label filled in, Company::FIELDS)
+ * and the field groups below, converted with Meta Box Builder's own parser and saved the way its Save button does. Each copy has a
  * Ledger row (meta-box-sync:<key>), so a sync tells its own copies from ones changed in Meta Box:
  *  missing      not in Meta Box: the sync adds it
  *  synced       Launch Builder's copy, unchanged since: the sync updates it when Launch Builder's definition changes
@@ -29,15 +32,16 @@ defined( 'ABSPATH' ) || exit;
  *  unavailable  this site's Meta Box cannot hold it (note says why)
  * Writes are dry runs unless asked (sync-meta-box, the notice on Meta Box's screens, wp launch-builder meta-box-sync);
  * copies that are updated are snapshotted first; undo moves this sync's copies to the Trash. Saving, trashing or
- * restoring one of these types in Meta Box flushes the rewrite rules on the next request (Meta Box does not).
+ * restoring one of these types in Meta Box flushes the rewrite rules on the next request (Meta Box does not). Service
+ * categories of sites built before v2 are not synced: they became parent services.
  */
 final class Meta_Box_Sync {
 
 	const MODULE = [
 		'slug'        => 'meta-box-sync',
 		'label'       => 'Meta Box sync',
-		'description' => 'Lists Services, Service areas and Service categories under Meta Box > Post Types and Taxonomies, and the Card details fields under Meta Box > Custom Fields, so they are edited there. Launch Builder keeps the few settings its lists and URLs need.',
-		'note'        => 'Needs Meta Box with MB Custom Post Types (and MB Builder for the fields), as in Meta Box Lite or AIO. Nothing changes until you add them from a Meta Box screen.',
+		'description' => 'Lists Services and Service areas under Meta Box > Post Types, their fields under Meta Box > Custom Fields and Business Info under Meta Box > Settings Pages, so they are edited there and stay when Launch Builder is removed. Launch Builder keeps the few settings its lists and URLs need.',
+		'note'        => 'Needs Meta Box with MB Custom Post Types and MB Builder (MB Settings Page for Business Info), as in Meta Box AIO. Nothing changes until you add them from a Meta Box screen or run sync-meta-box.',
 		'toggle'      => true,
 		'default'     => true,
 	];
@@ -46,16 +50,19 @@ final class Meta_Box_Sync {
 	const LEDGER = 'meta-box-sync:';
 
 	/** Meta Box's own post types: where each kind of copy lives. */
-	const MB_TYPES = [ 'post_type' => 'mb-post-type', 'taxonomy' => 'mb-taxonomy', 'fields' => 'meta-box' ];
+	const MB_TYPES = [ 'post_type' => 'mb-post-type', 'settings_page' => 'mb-settings-page', 'fields' => 'meta-box' ];
 
 	/** Meta keys of a field group (Meta Box Builder): what a copy's hash covers. */
 	const FIELD_META = [ 'settings', 'fields' ];
 
+	/** Meta keys of a settings page (Meta Box Builder): what a copy's hash covers. */
+	const PAGE_META = [ 'settings' ];
+
+	/** The Business Info settings page (its key, id and post name). */
+	const PAGE = 'business-info';
+
 	/** Label keys Meta Box's post type editor shows (others are left to WordPress). */
 	const PT_LABELS = [ 'name', 'singular_name', 'add_new', 'add_new_item', 'edit_item', 'new_item', 'view_item', 'view_items', 'search_items', 'not_found', 'not_found_in_trash', 'parent_item_colon', 'all_items', 'archives', 'attributes', 'insert_into_item', 'uploaded_to_this_item', 'featured_image', 'set_featured_image', 'remove_featured_image', 'use_featured_image', 'menu_name', 'filter_items_list', 'filter_by_date', 'items_list_navigation', 'items_list', 'item_published', 'item_published_privately', 'item_reverted_to_draft', 'item_scheduled', 'item_updated' ];
-
-	/** Label keys Meta Box's taxonomy editor shows. */
-	const TAX_LABELS = [ 'name', 'singular_name', 'menu_name', 'search_items', 'popular_items', 'all_items', 'parent_item', 'parent_item_colon', 'edit_item', 'view_item', 'update_item', 'add_new_item', 'new_item_name', 'separate_items_with_commas', 'add_or_remove_items', 'choose_from_most_used', 'not_found', 'no_terms', 'filter_by_item', 'items_list_navigation', 'items_list', 'most_used', 'back_to_items' ];
 
 	const ACTION = 'lb_mb_sync';
 	const FLASH  = 'lb_mb_sync_flash_';
@@ -63,31 +70,32 @@ final class Meta_Box_Sync {
 	public static function boot(): void {
 		add_action( 'admin_notices', [ __CLASS__, 'notices' ] );
 		add_action( 'admin_post_' . self::ACTION, [ __CLASS__, 'handle' ] );
-		foreach ( [ 'mb-post-type', 'mb-taxonomy' ] as $type ) {
-			add_action( 'save_post_' . $type, [ __CLASS__, 'mb_saved' ], 10, 2 );
-		}
+		add_action( 'save_post_mb-post-type', [ __CLASS__, 'mb_saved' ], 10, 2 );
 		add_action( 'transition_post_status', [ __CLASS__, 'mb_status_changed' ], 10, 3 );
 		add_action( 'deleted_post', [ __CLASS__, 'mb_deleted' ], 10, 2 );
 	}
 
 	/* ------------------------------------------------------------------ what Meta Box can hold */
 
-	/** { post_types, fields } this site's Meta Box can hold, and why not. Meaningful after init (Meta Box registers at 0). */
+	/** { post_types, fields, settings_page } this site's Meta Box can hold, and why not. Meaningful after init (Meta Box registers at 0). */
 	public static function support(): array {
 		$mb = defined( 'RWMB_VER' );
-		$types = $mb && post_type_exists( self::MB_TYPES['post_type'] ) && post_type_exists( self::MB_TYPES['taxonomy'] );
-		$fields = $mb && post_type_exists( self::MB_TYPES['fields'] ) && class_exists( '\MBBParser\Unparsers\MetaBox' ) && class_exists( '\MBB\RestApi\Save' ) && method_exists( '\MBB\RestApi\Save', 'parse' );
+		$types = $mb && post_type_exists( self::MB_TYPES['post_type'] );
+		$fields = $mb && post_type_exists( self::MB_TYPES['fields'] ) && class_exists( '\MBBParser\Unparsers\MetaBox' ) && ( ( class_exists( '\MBB\RestApi\Save' ) && method_exists( '\MBB\RestApi\Save', 'parse' ) ) || ( class_exists( '\MBBParser\Parsers\MetaBox' ) && class_exists( '\MBBParser\Parsers\Base' ) ) );
+		$page = $fields && post_type_exists( self::MB_TYPES['settings_page'] ) && class_exists( '\MBB\SettingsPage\Parser' );
 		$why = '';
 		if ( ! $mb ) {
 			$why = __( 'Meta Box is not active.', 'launch-builder' );
 		} elseif ( ! $types && ! $fields ) {
 			$why = __( 'Meta Box is active without MB Custom Post Types or MB Builder (both come with Meta Box Lite and Meta Box AIO).', 'launch-builder' );
 		} elseif ( ! $types ) {
-			$why = __( 'MB Custom Post Types is not active, so post types and taxonomies cannot be listed in Meta Box.', 'launch-builder' );
+			$why = __( 'MB Custom Post Types is not active, so post types cannot be listed in Meta Box.', 'launch-builder' );
 		} elseif ( ! $fields ) {
 			$why = __( 'MB Builder is not active, so the fields cannot be listed under Meta Box > Custom Fields.', 'launch-builder' );
+		} elseif ( ! $page ) {
+			$why = __( 'MB Settings Page is not active, so Business Info cannot be a Meta Box settings page.', 'launch-builder' );
 		}
-		return [ 'meta_box' => $mb, 'post_types' => $types, 'fields' => $fields, 'note' => $why ];
+		return [ 'meta_box' => $mb, 'post_types' => $types, 'fields' => $fields, 'settings_page' => $page, 'note' => $why ];
 	}
 
 	/* ------------------------------------------------------------------ the objects */
@@ -97,8 +105,13 @@ final class Meta_Box_Sync {
 	 * ones the cards read; descriptions say what each value does.
 	 */
 	public static function field_groups(): array {
+		$biz = [];
+		foreach ( Company::FIELDS as $id => $f ) {
+			$type = 'email' === $id ? 'email' : ( 'maps_url' === $id ? 'url' : 'text' );
+			$biz[] = [ 'id' => $id, 'name' => (string) $f[0], 'type' => $type, 'desc' => (string) ( $f[3] ?? '' ) ];
+		}
 		return [
-			'card-details'     => [
+			'card-details'         => [
 				'id'         => 'launch-builder-card-details',
 				'title'      => 'Card details',
 				'post_types' => [ Entries::SERVICE, Entries::AREA ],
@@ -108,26 +121,54 @@ final class Meta_Box_Sync {
 					[ 'id' => '_lb_icon', 'name' => 'Icon', 'type' => 'text', 'desc' => 'The icon on cards and lists: a Kadence icon name such as fe_settings or fe_mapPin (letters, digits and _). The short summary on cards is the Excerpt; the order is the Order box, then the title.' ],
 				],
 			],
-			'services-offered' => [
-				'id'         => 'launch-builder-services-offered',
-				'title'      => 'Services offered here',
+			'area-service'         => [
+				'id'         => 'launch-builder-area-service',
+				'title'      => 'Area service page',
 				'post_types' => [ Entries::AREA ],
 				'context'    => 'side',
 				'priority'   => 'default',
 				'fields'     => [
-					[ 'id' => '_lb_services', 'name' => 'Services', 'type' => 'post', 'post_type' => [ Entries::SERVICE ], 'field_type' => 'select_advanced', 'multiple' => true, 'clone' => false, 'placeholder' => 'Every service', 'desc' => 'The services this area page and its lists show. None = every service.' ],
+					[ 'id' => '_lb_service', 'name' => 'This page is about', 'type' => 'post', 'post_type' => [ Entries::SERVICE ], 'field_type' => 'select_advanced', 'placeholder' => 'Not an area service page', 'desc' => 'For a page under a service area ("AC Installation in Rockledge, FL"): the service it is about. Leave empty on the area itself.' ],
 				],
+			],
+			'business-info-fields' => [
+				'id'             => 'launch-builder-business-info',
+				'title'          => 'Business Info',
+				'object_type'    => 'setting',
+				'post_types'     => [],
+				'settings_pages' => [ self::PAGE ],
+				'fields'         => $biz,
 			],
 		];
 	}
 
-	/** Every object the sync handles: key => { kind (post_type | taxonomy | fields), label }. */
+	/** The Business Info settings page in Meta Box Builder's own format (its editor's settings). */
+	public static function settings_page_settings(): array {
+		return [
+			'menu_title'     => 'Business Info',
+			'page_title'     => 'Business Info',
+			'id'             => self::PAGE,
+			'option_name'    => Company::OPT,
+			'menu_type'      => 'top',
+			'position'       => 59,
+			'icon_type'      => 'dashicons',
+			'icon_dashicons' => 'store',
+			'capability'     => 'manage_options',
+			'style'          => 'no-boxes',
+			'columns'        => 1,
+			'submit_button'  => 'Save Business Info',
+			'message'        => 'Business Info saved.',
+		];
+	}
+
+	/** Every object the sync handles: key => { kind (post_type | settings_page | fields), label }. */
 	public static function objects(): array {
 		$out = [];
 		foreach ( Entries::definitions() as $name => $def ) {
 			$labels = (array) ( $def['args']['labels'] ?? [] );
 			$out[ $name ] = [ 'kind' => $def['kind'], 'label' => (string) ( $labels['name'] ?? $name ) ];
 		}
+		$out[ self::PAGE ] = [ 'kind' => 'settings_page', 'label' => __( 'Business Info (settings page)', 'launch-builder' ) ];
 		foreach ( self::field_groups() as $key => $g ) {
 			$out[ $key ] = [ 'kind' => 'fields', 'label' => sprintf( '%s (%s)', $g['title'], __( 'fields', 'launch-builder' ) ) ];
 		}
@@ -165,7 +206,7 @@ final class Meta_Box_Sync {
 			'icon'                => $icon,
 			'capability_type'     => is_string( $pt->capability_type ) ? $pt->capability_type : 'post',
 			'supports'            => array_values( (array) ( Entries::definitions()[ $name ]['args']['supports'] ?? [] ) ),
-			'taxonomies'          => Entries::SERVICE === $name ? [ Entries::CAT ] : [],
+			'taxonomies'          => [],
 			'has_archive'         => false,
 			'archive_slug'        => '',
 			'rewrite'             => [ 'slug' => (string) ( $rewrite['slug'] ?? Entries::BASES[ $name ] ), 'with_front' => ! empty( $rewrite['with_front'] ) ],
@@ -183,52 +224,13 @@ final class Meta_Box_Sync {
 		return $settings;
 	}
 
-	/** Meta Box taxonomy settings for lb_service_cat, from Launch Builder's definition. */
-	public static function taxonomy_settings( string $name ): array {
-		$tx = Entries::definition_object( $name );
-		if ( ! $tx instanceof \WP_Taxonomy ) {
-			return [];
-		}
-		$rewrite = is_array( $tx->rewrite ) ? $tx->rewrite : [];
-		$cap = (array) $tx->cap;
-		return [
-			'slug'               => $name,
-			'types'              => array_values( (array) $tx->object_type ),
-			'function_name'      => 'launch_builder_register_' . $name,
-			'text_domain'        => 'launch-builder',
-			'labels'             => array_map( 'strval', array_intersect_key( (array) $tx->labels, array_flip( self::TAX_LABELS ) ) ),
-			'description'        => (string) $tx->description,
-			'public'             => (bool) $tx->public,
-			'publicly_queryable' => (bool) $tx->publicly_queryable,
-			'hierarchical'       => (bool) $tx->hierarchical,
-			'show_ui'            => (bool) $tx->show_ui,
-			'show_in_menu'       => (bool) $tx->show_in_menu,
-			'show_in_nav_menus'  => (bool) $tx->show_in_nav_menus,
-			'meta_box_cb'        => false === $tx->meta_box_cb ? false : ( $tx->hierarchical ? 'post_categories_meta_box' : 'post_tags_meta_box' ),
-			'show_in_rest'       => (bool) $tx->show_in_rest,
-			'rest_base'          => is_string( $tx->rest_base ) ? $tx->rest_base : '',
-			'show_tagcloud'      => (bool) $tx->show_tagcloud,
-			'show_in_quick_edit' => (bool) $tx->show_in_quick_edit,
-			'show_admin_column'  => (bool) $tx->show_admin_column,
-			'rewrite'            => [ 'slug' => (string) ( $rewrite['slug'] ?? Entries::BASES[ $name ] ), 'with_front' => ! empty( $rewrite['with_front'] ), 'hierarchical' => ! empty( $rewrite['hierarchical'] ) ],
-			'query_var'          => false !== $tx->query_var,
-			'sort'               => (bool) $tx->sort,
-			'capabilities'       => [
-				'manage_terms' => (string) ( $cap['manage_terms'] ?? 'manage_categories' ),
-				'edit_terms'   => (string) ( $cap['edit_terms'] ?? 'manage_categories' ),
-				'delete_terms' => (string) ( $cap['delete_terms'] ?? 'manage_categories' ),
-				'assign_terms' => (string) ( $cap['assign_terms'] ?? 'edit_posts' ),
-			],
-		];
-	}
-
 	/** What Launch Builder needs from a copy (shown on the copy's edit screen and returned by the tool). */
 	public static function kept( string $key ): array {
 		if ( in_array( $key, [ Entries::SERVICE, Entries::AREA ], true ) ) {
 			return [
 				__( 'Public, publicly queryable, shown in the admin and in the REST API (the block editor and the lists need it).', 'launch-builder' ),
 				__( 'No archive: the services and service areas hubs are pages.', 'launch-builder' ),
-				Entries::AREA === $key ? __( 'Hierarchical, so an area can sit under another.', 'launch-builder' ) : __( 'Not hierarchical.', 'launch-builder' ),
+				Entries::AREA === $key ? __( 'Hierarchical: an area\'s service pages (and areas inside it) are its children.', 'launch-builder' ) : __( 'Hierarchical: sub-services are children of their service.', 'launch-builder' ),
 				/* translators: %s: list of editor features */
 				sprintf( __( 'Supports %s (more can be added).', 'launch-builder' ), implode( ', ', Entries::KEEP_SUPPORTS ) ),
 				__( 'A URL base: the one set here, else the default.', 'launch-builder' ),
@@ -236,12 +238,11 @@ final class Meta_Box_Sync {
 				sprintf( __( 'Keep the slug %s: the lists, menus and URLs use this exact post type (renamed, it would be a new, empty one).', 'launch-builder' ), $key ),
 			];
 		}
-		if ( Entries::CAT === $key ) {
+		if ( self::PAGE === $key ) {
 			return [
-				__( 'Attached to Services, hierarchical, public and in the REST API.', 'launch-builder' ),
-				__( 'A URL base: the one set here, else the default.', 'launch-builder' ),
-				/* translators: %s: taxonomy slug */
-				sprintf( __( 'Keep the slug %s: category pages and lists use this exact taxonomy.', 'launch-builder' ), $key ),
+				/* translators: %s: option name */
+				sprintf( __( 'Keep the option name %s: Business Info and the tokens such as {{lb.phone}} read it.', 'launch-builder' ), Company::OPT ),
+				__( 'Its menu title, place and look are yours to change.', 'launch-builder' ),
 			];
 		}
 		$ids = wp_list_pluck( self::field_groups()[ $key ]['fields'] ?? [], 'id' );
@@ -261,7 +262,7 @@ final class Meta_Box_Sync {
 		$out = [];
 		foreach ( self::objects() as $key => $o ) {
 			$row = [ 'kind' => $o['kind'], 'label' => $o['label'], 'state' => 'missing', 'id' => 0, 'slug' => '', 'edit_url' => '', 'note' => '' ];
-			if ( ! ( 'fields' === $o['kind'] ? $support['fields'] : $support['post_types'] ) ) {
+			if ( ! $support[ 'fields' === $o['kind'] ? 'fields' : ( 'settings_page' === $o['kind'] ? 'settings_page' : 'post_types' ) ] ) {
 				$row['state'] = 'unavailable';
 				$row['note'] = (string) $support['note'];
 				$out[ $key ] = $row;
@@ -329,13 +330,19 @@ final class Meta_Box_Sync {
 			if ( self::slug_of( $p, $kind ) === $want ) {
 				return $p;
 			}
+			if ( 'settings_page' === $kind ) { // Any settings page storing Business Info's option is that page.
+				$st = get_post_meta( $p->ID, 'settings', true );
+				if ( is_array( $st ) && Company::OPT === ( $st['option_name'] ?? '' ) ) {
+					return $p;
+				}
+			}
 		}
 		return null;
 	}
 
-	/** The slug a Meta Box object registers: the post type or taxonomy name in its settings, or a field group's id. */
+	/** The slug a Meta Box object registers: the post type name in its settings, or a field group's or settings page's id. */
 	private static function slug_of( \WP_Post $p, string $kind ): string {
-		if ( 'fields' === $kind ) {
+		if ( 'fields' === $kind || 'settings_page' === $kind ) {
 			return (string) $p->post_name;
 		}
 		$s = json_decode( (string) $p->post_content, true );
@@ -345,6 +352,9 @@ final class Meta_Box_Sync {
 	/** Does Meta Box register every field of this group for every post type of it already (another group or code)? */
 	private static function fields_owned( string $key ): bool {
 		$g = self::field_groups()[ $key ];
+		if ( ! empty( $g['settings_pages'] ) ) {
+			return false; // Settings page fields: the field group itself is what is missing.
+		}
 		foreach ( $g['post_types'] as $pt ) {
 			foreach ( $g['fields'] as $f ) {
 				if ( ! Entries::meta_box_owns( $f['id'], $pt ) ) {
@@ -357,7 +367,10 @@ final class Meta_Box_Sync {
 
 	/** Hash of a copy as stored (what the Ledger compares). */
 	private static function hash( int $id, string $kind ): string {
-		return 'fields' === $kind ? Ledger::hash_post( $id, self::FIELD_META ) : Ledger::hash_post( $id );
+		if ( 'fields' === $kind || 'settings_page' === $kind ) {
+			return Ledger::hash_post( $id, 'fields' === $kind ? self::FIELD_META : self::PAGE_META );
+		}
+		return Ledger::hash_post( $id );
 	}
 
 	/* ------------------------------------------------------------------ sync */
@@ -419,12 +432,19 @@ final class Meta_Box_Sync {
 			if ( $updates ) {
 				$posts = [];
 				foreach ( $updates as $key => $r ) {
-					$posts[] = [ 'id' => (int) $r['id'], 'meta' => 'fields' === $r['kind'] ? array_merge( self::FIELD_META, [ 'meta_box' ] ) : [], 'ledger' => self::LEDGER . $key ];
+					$meta = 'fields' === $r['kind'] ? array_merge( self::FIELD_META, [ 'meta_box' ] ) : ( 'settings_page' === $r['kind'] ? [ 'settings', 'settings_page' ] : [] );
+					$posts[] = [ 'id' => (int) $r['id'], 'meta' => $meta, 'ledger' => self::LEDGER . $key ];
 				}
 				$out['snapshot'] = Abilities::snapshot( 'sync-meta-box', [], [], $posts );
 			}
 			foreach ( $todo as $key => $r ) {
-				$id = 'fields' === $r['kind'] ? self::write_fields( $key, (int) $r['id'] ) : self::write_type( $key, $r['kind'], (int) $r['id'] );
+				if ( 'fields' === $r['kind'] ) {
+					$id = self::write_fields( $key, (int) $r['id'] );
+				} elseif ( 'settings_page' === $r['kind'] ) {
+					$id = self::write_settings_page( (int) $r['id'] );
+				} else {
+					$id = self::write_type( $key, (int) $r['id'] );
+				}
 				if ( is_wp_error( $id ) ) {
 					$out['objects'][ $key ]['action'] = 'failed';
 					$out['objects'][ $key ]['note'] = $id->get_error_message();
@@ -451,6 +471,11 @@ final class Meta_Box_Sync {
 			$mb = get_post_meta( (int) $row['id'], 'meta_box', true );
 			return is_array( $mb ) && Ledger::hash_value( self::comparable_group( $mb ) ) === Ledger::hash_value( self::comparable_group( self::field_groups()[ $key ] ) );
 		}
+		if ( 'settings_page' === $row['kind'] ) {
+			$st = get_post_meta( (int) $row['id'], 'settings', true );
+			$want = self::settings_page_settings();
+			return is_array( $st ) && Ledger::hash_value( array_intersect_key( $st, $want ) ) === Ledger::hash_value( array_intersect_key( self::page_parser( $want, false ), $want ) );
+		}
 		$now = json_decode( (string) get_post_field( 'post_content', (int) $row['id'], 'raw' ), true );
 		return is_array( $now ) && Ledger::hash_value( $now ) === Ledger::hash_value( self::settings( $key, $row['kind'] ) );
 	}
@@ -463,23 +488,24 @@ final class Meta_Box_Sync {
 			$f = array_intersect_key( $f, array_flip( [ 'id', 'name', 'type', 'desc', 'post_type', 'field_type', 'multiple', 'clone', 'placeholder' ] ) );
 			$fields[] = array_filter( $f, static function ( $v ) { return false !== $v && '' !== $v && null !== $v; } ); // Meta Box leaves out values that are its defaults.
 		}
-		return [ 'id' => (string) ( $g['id'] ?? '' ), 'title' => (string) ( $g['title'] ?? '' ), 'post_types' => array_values( (array) ( $g['post_types'] ?? [] ) ), 'fields' => $fields ];
+		return [ 'id' => (string) ( $g['id'] ?? '' ), 'title' => (string) ( $g['title'] ?? '' ), 'post_types' => array_values( array_filter( (array) ( $g['post_types'] ?? [] ) ) ), 'settings_pages' => array_values( (array) ( $g['settings_pages'] ?? [] ) ), 'fields' => $fields ];
 	}
 
 	private static function settings( string $key, string $kind ): array {
-		return 'taxonomy' === $kind ? self::taxonomy_settings( $key ) : self::post_type_settings( $key );
+		unset( $kind );
+		return self::post_type_settings( $key );
 	}
 
-	/** Write (create or update) the Meta Box copy of a post type or taxonomy. @return int|\WP_Error post id */
-	private static function write_type( string $key, string $kind, int $id ) {
-		$settings = self::settings( $key, $kind );
+	/** Write (create or update) the Meta Box copy of a post type. @return int|\WP_Error post id */
+	private static function write_type( string $key, int $id ) {
+		$settings = self::post_type_settings( $key );
 		if ( ! $settings ) {
 			return new \WP_Error( 'lb_mb_sync', 'Unknown type ' . $key . '.' );
 		}
 		$post = [
-			'post_type'    => self::MB_TYPES[ $kind ],
+			'post_type'    => self::MB_TYPES['post_type'],
 			'post_status'  => 'publish',
-			'post_title'   => 'taxonomy' === $kind ? (string) $settings['labels']['name'] : (string) $settings['label'],
+			'post_title'   => (string) $settings['label'],
 			'post_name'    => $key,
 			'post_content' => wp_slash( (string) wp_json_encode( $settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ),
 		];
@@ -487,6 +513,35 @@ final class Meta_Box_Sync {
 			$post['ID'] = $id;
 		}
 		return $id ? wp_update_post( $post, true ) : wp_insert_post( $post, true );
+	}
+
+	/**
+	 * Settings page settings as Meta Box Builder's editor stores them ($full false: the 'settings' meta) or registers them
+	 * ($full true: the 'settings_page' meta), through its own parser.
+	 */
+	private static function page_parser( array $settings, bool $full ): array {
+		$parser = new \MBB\SettingsPage\Parser( $settings );
+		$parser->parse_boolean_values()->parse_numeric_values();
+		if ( $full ) {
+			$parser->parse();
+		}
+		return (array) $parser->get_settings();
+	}
+
+	/** Write the Business Info settings page the way Meta Box Builder's Save button does. @return int|\WP_Error post id */
+	private static function write_settings_page( int $id ) {
+		$settings = self::settings_page_settings();
+		$post = [ 'post_type' => self::MB_TYPES['settings_page'], 'post_status' => 'publish', 'post_title' => $settings['menu_title'], 'post_name' => self::PAGE, 'post_content' => '' ];
+		if ( $id ) {
+			$post['ID'] = $id;
+		}
+		$id = $id ? wp_update_post( $post, true ) : wp_insert_post( $post, true );
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		update_post_meta( $id, 'settings', self::page_parser( $settings, false ) );
+		update_post_meta( $id, 'settings_page', self::page_parser( $settings, true ) );
+		return (int) $id;
 	}
 
 	/**
@@ -511,8 +566,20 @@ final class Meta_Box_Sync {
 		if ( is_wp_error( $id ) ) {
 			return $id;
 		}
-		$parser = \MBB\RestApi\Save::parse( get_post( $id ), (array) ( $data['fields'] ?? [] ), (array) ( $data['settings'] ?? [] ), $def['title'], $def['id'] );
-		do_action( 'mbb_after_save', $parser, $id, [ 'fields' => $data['fields'] ?? [], 'settings' => $data['settings'] ?? [], 'post_title' => $def['title'], 'post_name' => $def['id'] ] );
+		$submitted = [ 'fields' => (array) ( $data['fields'] ?? [] ), 'settings' => (array) ( $data['settings'] ?? [] ), 'post_title' => $def['title'], 'post_name' => $def['id'] ];
+		if ( class_exists( '\MBB\RestApi\Save' ) && method_exists( '\MBB\RestApi\Save', 'parse' ) ) { // Meta Box Builder from the plugin directory.
+			$parser = \MBB\RestApi\Save::parse( get_post( $id ), $submitted['fields'], $submitted['settings'], $def['title'], $def['id'] );
+		} else { // Meta Box Builder 4.x (Meta Box AIO): what MBB\Edit::save() stores.
+			$base = new \MBBParser\Parsers\Base();
+			foreach ( [ 'settings' => $submitted['settings'], 'fields' => $submitted['fields'], 'data' => (array) ( $data['data'] ?? [] ) ] as $meta => $value ) {
+				$base->set_settings( $value )->parse_boolean_values()->parse_numeric_values();
+				update_post_meta( $id, $meta, $base->get_settings() );
+			}
+			$parser = new \MBBParser\Parsers\MetaBox( $submitted );
+			$parser->parse();
+			update_post_meta( $id, 'meta_box', $parser->get_settings() );
+		}
+		do_action( 'mbb_after_save', $parser, $id, $submitted );
 		if ( class_exists( '\MBB\JsonService' ) && method_exists( '\MBB\JsonService', 'clear_cache' ) ) {
 			\MBB\JsonService::clear_cache();
 		}
@@ -588,7 +655,7 @@ final class Meta_Box_Sync {
 
 	/* ------------------------------------------------------------------ Meta Box editing our types */
 
-	/** save_post_mb-post-type / save_post_mb-taxonomy: one of ours (by slug, now or before) changed. */
+	/** save_post_mb-post-type: one of ours (by slug, now or before) changed. */
 	public static function mb_saved( $post_id, $post ): void {
 		if ( $post instanceof \WP_Post && self::is_entry_copy( $post ) ) {
 			delete_option( Entries::FLUSHED );
@@ -596,23 +663,23 @@ final class Meta_Box_Sync {
 	}
 
 	public static function mb_status_changed( $new, $old, $post ): void {
-		if ( $new !== $old && $post instanceof \WP_Post && in_array( $post->post_type, [ 'mb-post-type', 'mb-taxonomy' ], true ) && self::is_entry_copy( $post ) ) {
+		if ( $new !== $old && $post instanceof \WP_Post && 'mb-post-type' === $post->post_type && self::is_entry_copy( $post ) ) {
 			delete_option( Entries::FLUSHED );
 		}
 	}
 
 	public static function mb_deleted( $post_id, $post = null ): void {
-		if ( $post instanceof \WP_Post && in_array( $post->post_type, [ 'mb-post-type', 'mb-taxonomy' ], true ) && self::is_entry_copy( $post ) ) {
+		if ( $post instanceof \WP_Post && 'mb-post-type' === $post->post_type && self::is_entry_copy( $post ) ) {
 			delete_option( Entries::FLUSHED );
 		}
 	}
 
-	/** Is this Meta Box post type or taxonomy one of the three (by its slug, or because this sync made it)? */
+	/** Is this Meta Box post type one of the two (by its slug, or because this sync made it)? */
 	private static function is_entry_copy( \WP_Post $p ): bool {
-		if ( in_array( self::slug_of( $p, 'post_type' ), [ Entries::SERVICE, Entries::AREA, Entries::CAT ], true ) ) {
+		if ( in_array( self::slug_of( $p, 'post_type' ), [ Entries::SERVICE, Entries::AREA ], true ) ) {
 			return true;
 		}
-		foreach ( [ Entries::SERVICE, Entries::AREA, Entries::CAT ] as $key ) {
+		foreach ( [ Entries::SERVICE, Entries::AREA ] as $key ) {
 			$row = Ledger::get( self::LEDGER . $key );
 			if ( $row && (int) $row['id'] === (int) $p->ID ) {
 				return true;
@@ -624,7 +691,7 @@ final class Meta_Box_Sync {
 	/* ------------------------------------------------------------------ admin */
 
 	/**
-	 * On Meta Box's lists (Post Types, Taxonomies, Custom Fields): what is not there yet, with a button that adds it. On
+	 * On Meta Box's lists (Post Types, Settings Pages, Custom Fields): what is not there yet, with a button that adds it. On
 	 * the edit screen of one of the copies: what Launch Builder keeps. After a sync: the result.
 	 */
 	public static function notices(): void {
@@ -632,7 +699,7 @@ final class Meta_Box_Sync {
 		if ( ! $screen || ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
-		$kinds = [ 'edit-mb-post-type' => 'post_type', 'edit-mb-taxonomy' => 'taxonomy', 'edit-meta-box' => 'fields' ];
+		$kinds = [ 'edit-mb-post-type' => 'post_type', 'edit-mb-settings-page' => 'settings_page', 'edit-meta-box' => 'fields' ];
 		if ( ! isset( $kinds[ $screen->id ] ) && ! in_array( $screen->post_type, self::MB_TYPES, true ) ) {
 			return; // Only Meta Box's own screens.
 		}
@@ -659,10 +726,10 @@ final class Meta_Box_Sync {
 		echo '<div class="notice notice-info"><p><strong>' . esc_html__( 'Launch Builder', 'launch-builder' ) . ':</strong> ';
 		if ( 'fields' === $kind ) {
 			/* translators: %s: list of field group names */
-			echo esc_html( sprintf( __( '%s are not listed here yet. Add them to edit the card fields of services and service areas with Meta Box; the values already stored stay as they are.', 'launch-builder' ), implode( ', ', wp_list_pluck( $here, 'label' ) ) ) );
-		} elseif ( 'taxonomy' === $kind ) {
-			/* translators: %s: taxonomy name */
-			echo esc_html( sprintf( __( '%s are registered by Launch Builder, so they are not listed here yet. Add them to edit their labels and URL base in Meta Box; your categories stay as they are.', 'launch-builder' ), implode( ', ', wp_list_pluck( $here, 'label' ) ) ) );
+			echo esc_html( sprintf( __( '%s are not listed here yet. Add them to edit the fields of services, service areas and Business Info with Meta Box; the values already stored stay as they are.', 'launch-builder' ), implode( ', ', wp_list_pluck( $here, 'label' ) ) ) );
+		} elseif ( 'settings_page' === $kind ) {
+			/* translators: %s: settings page name */
+			echo esc_html( sprintf( __( '%s is kept by Launch Builder, so it is not listed here yet. Add it to edit Business Info as a Meta Box settings page; the values already stored stay as they are.', 'launch-builder' ), implode( ', ', wp_list_pluck( $here, 'label' ) ) ) );
 		} else {
 			/* translators: %s: list of post type names */
 			echo esc_html( sprintf( __( '%s are registered by Launch Builder, so they are not listed here yet. Add them to edit their labels, menu, icon and URL base in Meta Box; your services and areas stay as they are.', 'launch-builder' ), implode( ', ', wp_list_pluck( $here, 'label' ) ) ) );
@@ -730,7 +797,7 @@ final class Meta_Box_Sync {
 	/* ------------------------------------------------------------------ module hooks */
 
 	public static function define_tools(): void {
-		Abilities::add( 'sync-meta-box', 'Edit services and areas in Meta Box', 'List Services, Service areas and Service categories under Meta Box > Post Types and Taxonomies, and the Card details fields (icon; services offered per area) under Meta Box > Custom Fields, so they are edited in Meta Box. Needs MB Custom Post Types for the types and MB Builder for the fields (both in Meta Box Lite and AIO). Each object comes back with its state: missing, synced (Launch Builder\'s copy, unchanged), edited (changed in Meta Box: kept), off (a draft or in the Trash: Launch Builder registers it), renamed (its slug changed: Launch Builder registers the type again), yours (made in Meta Box: never touched), unavailable. Once a type is in Meta Box, Meta Box registers it with its settings; Launch Builder keeps only what its lists and URLs need (kept lists it). Content and stored values never move. dry_run (default true) returns the plan; force (true or keys) overwrites edited, off and renamed copies (snapshot first); only limits the keys; undo moves this sync\'s copies to the Trash, after which Launch Builder registers the types itself again.',
+		Abilities::add( 'sync-meta-box', 'Edit services and areas in Meta Box', 'List Services and Service areas under Meta Box > Post Types, their fields (icon; the service an area service page is about) under Meta Box > Custom Fields, and Business Info as a settings page under Meta Box > Settings Pages, so they are edited in Meta Box and stay when Launch Builder is removed. Needs MB Custom Post Types for the types, MB Builder for the fields and MB Settings Page for Business Info (all in Meta Box AIO). Each object comes back with its state: missing, synced (Launch Builder\'s copy, unchanged), edited (changed in Meta Box: kept), off (a draft or in the Trash: Launch Builder registers it), renamed (its slug changed: Launch Builder registers the type again), yours (made in Meta Box: never touched), unavailable. Once a type is in Meta Box, Meta Box registers it with its settings; Launch Builder keeps only what its lists and URLs need (kept lists it). Content and stored values never move. dry_run (default true) returns the plan; force (true or keys) overwrites edited, off and renamed copies (snapshot first); only limits the keys; undo moves this sync\'s copies to the Trash, after which Launch Builder registers the types itself again.',
 			[ 'properties' => [
 				'dry_run' => [ 'type' => 'boolean', 'description' => 'Report the plan without writing (default true).' ],
 				'only'    => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'enum' => array_keys( self::objects() ) ], 'description' => 'Limit to these objects.' ],
@@ -761,7 +828,7 @@ final class Meta_Box_Sync {
 	/** get-playbook: how services and areas meet Meta Box. */
 	public static function playbook( array &$pb ): void {
 		$pb['meta_box'] = (array) ( $pb['meta_box'] ?? [] );
-		$pb['meta_box']['sync'] = 'sync-meta-box lists services, areas and service categories in Meta Box (Post Types, Taxonomies) and the Card details fields as field groups, so the client edits them there. Meta Box then registers them; Launch Builder keeps the slug, public/REST, no archive, areas hierarchical, the editor supports it needs and a URL base. Run it dry first; it never touches what was changed or made in Meta Box unless forced; undo removes its copies. Prefer it to pasting the example field group.';
+		$pb['meta_box']['sync'] = 'sync-meta-box lists services and areas in Meta Box (Post Types), their fields as field groups and Business Info as a settings page, so the client edits them there and they stay when Launch Builder is removed. Meta Box then registers them; Launch Builder keeps the slug, public/REST, no archive, hierarchical, the editor supports it needs and a URL base. Run it dry first; it never touches what was changed or made in Meta Box unless forced; undo removes its copies. build-site runs it.';
 	}
 
 	/** Audit: a type whose Meta Box copy was renamed (its lists and URLs then use an empty type of the old name). */

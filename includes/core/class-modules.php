@@ -34,7 +34,7 @@ final class Modules {
 	const OPT = 'launch_builder_disabled_modules';
 
 	/** Never toggleable: the rest of the plugin is built on them. */
-	const CORE = [ 'roles', 'chrome', 'breadcrumbs', 'tokens', 'company', 'style', 'entries', 'nav', 'patterns', 'audit', 'mcp' ];
+	const CORE = [ 'roles', 'design-hub', 'query-lists', 'tokens', 'company', 'entries', 'nav', 'patterns', 'audit', 'mcp' ];
 
 	/** Labels and descriptions for the built-in classes that declare no MODULE constant (Modules screen, get-modules). */
 	const BUILTIN = [
@@ -42,20 +42,16 @@ final class Modules {
 		'mcp'         => [ 'Connection', 'The /mcp endpoint, connection tokens and the activity log.' ],
 		'patterns'    => [ 'Patterns', 'The pattern library, editable slots and the build pipeline every page writer uses.' ],
 		'nav'         => [ 'Menus and header', 'Navigation menus and the block header, with live service and area items.' ],
-		'globals'     => [ 'Global areas (legacy)', 'Synced patterns placed above the footer or as the footer on sites built before the chrome map.' ],
-		'blueprint'   => [ 'Site builder', 'build-site, synced patterns and Kadence Elements placement.' ],
-		'company'     => [ 'Business Info', 'Business facts (name, phone, hours, links) that every page reads through tokens.' ],
-		'rating'      => [ 'Rating widget', 'The rating widget block.' ],
-		'design'      => [ 'Design tools', 'Brand palette and fonts, buttons, menu style, page style, sidebar, block defaults.' ],
-		'content'     => [ 'Content tools', 'Markdown pages, page layouts, page recipes and the playbook.' ],
-		'brief'       => [ 'Briefs', 'Client brief in, site blueprint out.' ],
-		'entries'     => [ 'Services and areas', 'The service and service area post types and every live list of them.' ],
+		'company'     => [ 'Business Info', 'Company name, phone, email, address, maps link and call to action, read by every page through tokens.' ],
+		'design'      => [ 'Brand tools', 'Palette and fonts, buttons, menu style, page style, block defaults (all Kadence settings).' ],
+		'design-hub'  => [ 'Design hub', 'Header, heroes, breadcrumb bar, lists, call to action, footer and sidebar in three looks, placed as Kadence objects.' ],
+		'query-lists' => [ 'Lists', '"Children of this page" and "top level" for Kadence Query Loops (sub-services, service areas, area services).' ],
+		'content'     => [ 'Content tools', 'Markdown pages, page layouts and the playbook.' ],
+		'builder'     => [ 'Site builder', 'build-site: a short brief in, a site out.' ],
+		'entries'     => [ 'Services and areas', 'The service and service area post types, sub-services and area service pages.' ],
 		'admin'       => [ 'Admin screens', 'The Launch Builder screens in wp-admin and the pattern preview.' ],
-		'roles'       => [ 'Page roles', 'What each page is (home, service, area, conversion...), which decides its shared designs.' ],
-		'breadcrumbs' => [ 'Breadcrumbs', 'The breadcrumb trail and its one BreadcrumbList.' ],
-		'chrome'      => [ 'Shared designs', 'Headers, heroes, breadcrumb bars, templates and footers per page role.' ],
+		'roles'       => [ 'Page roles', 'What each page is (home, service, area, contact...), which decides its designs and layout.' ],
 		'tokens'      => [ 'Dynamic text', 'Tokens such as {{lb.phone}} resolved everywhere at render time.' ],
-		'style'       => [ 'Style DNA', 'Radius, shadows, spacing and section styles as CSS variables.' ],
 		'cache'       => [ 'Cache purge', 'One page-cache purge per request after changes.' ],
 		'migrate'     => [ 'Data migrations', 'Versioned, resumable data updates after a plugin update.' ],
 		'audit'       => [ 'Site health', 'The site audit, page inspection, preview links and sync.' ],

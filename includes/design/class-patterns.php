@@ -5,43 +5,21 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Patterns as data: the registry of built-in and per-site custom patterns, their editable slots (text, links, images,
- * numbers) and the build pipeline every writer uses (fill slots, materialize forms, live-list overrides, markdown).
+ * numbers) and the build pipeline every writer uses (fill slots, materialize forms, markdown).
  *
  * Slot ids are "path:field" (path = block indexes from the root, e.g. 0.1.2:text). build_pattern() is the one place a
- * pattern becomes markup: apply-pattern, synced patterns, elements, blueprints and set-header all go through it.
- * Pseudo-slots (directives): '@entries' = launch/entries attribute overrides; '@no_hero' = drop top-level blocks that
- * carry the page title (shared hero placement); '@testimonials' = [{name, place, text, rating, source, service}] written
- * into the cards of a testimonial carousel or grid; '@offers' = [{title, amount, text, expires, button, url}] written
- * into the columns of the offers pattern (an offer past its end date is left out, and a card with an end date hides itself).
+ * pattern becomes markup: apply-pattern, the Design hub and the builder all go through it.
  */
 final class Patterns {
-
-	public static function boot(): void {
-		add_filter( 'render_block', [ __CLASS__, 'expire_block' ], 10, 2 );
-	}
-
-	/** A column with an end date (class lb-until-YYYYMMDD, set by the @offers feed) is not printed after that day. */
-	public static function expire_block( $html, $block ) {
-		if ( 'kadence/column' !== ( $block['blockName'] ?? '' ) ) {
-			return $html;
-		}
-		$cls = (string) ( $block['attrs']['className'] ?? '' );
-		if ( false === strpos( $cls, 'lb-until-' ) || ! preg_match( '/lb-until-(\d{8})/', $cls, $m ) ) {
-			return $html;
-		}
-		return $m[1] < wp_date( 'Ymd' ) ? '' : $html;
-	}
 
 	public static function define_tools(): void {
 		$ro = [ 'readonly' => true ];
 
-		Abilities::add( 'list-patterns', 'List patterns', 'List Launch Builder patterns as compact rows (slug, title, category, description, and roles/slot/variant_of/style when set), 100 per page. Filter by category (heroes, services, areas, maps, cta, footers, proof, faq, process, offers, trust, templates, ...), role (a page role: the designs made for it), slot (a chrome slot: header, hero, crumbs, template, footer, ...), style (preset) or variant_of (a pattern and its variations). with_slots adds each pattern\'s editable slot count (slower). Page with offset/next_offset.',
+		Abilities::add( 'list-patterns', 'List patterns', 'List Launch Builder patterns as compact rows (slug, title, category, description, and piece/look for design pieces), 100 per page. Filter by category (headers, heroes, lists, cta, footers, sidebars, sections), piece (a Design hub piece: header, hero-home, hero-service, ...) or look (auto-shop, home-services, landscaping). with_slots adds each pattern\'s editable slot count (slower). Page with offset/next_offset.',
 			[ 'properties' => [
 				'category'   => [ 'type' => 'string' ],
-				'role'       => [ 'type' => 'string', 'description' => 'A page role (see get-roles): home, page, legal, services_hub, areas_hub, category, service, area, conversion, thanks, post, blog, search, notfound.' ],
-				'slot'       => [ 'type' => 'string', 'description' => 'A chrome slot: header, notice, hero, crumbs, template, notfound_body, before_footer, footer, sticky_bar, conversion.' ],
-				'style'      => [ 'type' => 'string', 'description' => 'A style preset: clean, bold, sharp, soft.' ],
-				'variant_of' => [ 'type' => 'string', 'description' => 'A pattern slug: returns it and the patterns that are its variations.' ],
+				'piece'      => [ 'type' => 'string', 'description' => 'A Design hub piece (get-designs lists them).' ],
+				'look'       => [ 'type' => 'string', 'description' => 'A look: auto-shop, home-services, landscaping.' ],
 				'with_slots' => [ 'type' => 'boolean' ],
 				'limit'      => [ 'type' => 'integer', 'description' => 'Rows per page, 1-200 (default 100).' ],
 				'offset'     => [ 'type' => 'integer' ],
@@ -63,8 +41,8 @@ final class Patterns {
 				'full_width' => [ 'type' => 'boolean', 'description' => 'Set the Kadence page layout to full width, unboxed, no title (default true on new pages).' ],
 			], 'required' => [ 'slug' ] ], [ __CLASS__, 'apply_pattern' ], 'edit_pages' );
 
-		Abilities::add( 'save-pattern', 'Save a custom pattern for this site', 'Store block markup as a reusable per-site pattern (then use it in apply-pattern, synced patterns and blueprints). Give content (block markup) or from_post_id to capture a page\'s content. Markup is validated: only registered blocks, no scripts.',
-			[ 'properties' => [ 'slug' => [ 'type' => 'string' ], 'title' => [ 'type' => 'string' ], 'description' => [ 'type' => 'string' ], 'category' => [ 'type' => 'string', 'description' => 'heroes, services, areas, maps, cta, footers, proof or custom' ], 'content' => [ 'type' => 'string' ], 'from_post_id' => [ 'type' => 'integer' ] ], 'required' => [ 'slug', 'title' ] ], [ __CLASS__, 'save_pattern' ], 'edit_pages' );
+		Abilities::add( 'save-pattern', 'Save a custom pattern for this site', 'Store block markup as a reusable per-site pattern (then use it in apply-pattern). Give content (block markup) or from_post_id to capture a page\'s content. Markup is validated: only registered blocks, no scripts.',
+			[ 'properties' => [ 'slug' => [ 'type' => 'string' ], 'title' => [ 'type' => 'string' ], 'description' => [ 'type' => 'string' ], 'category' => [ 'type' => 'string', 'description' => 'sections, heroes, lists, cta, footers or custom' ], 'content' => [ 'type' => 'string' ], 'from_post_id' => [ 'type' => 'integer' ] ], 'required' => [ 'slug', 'title' ] ], [ __CLASS__, 'save_pattern' ], 'edit_pages' );
 
 		Abilities::add( 'delete-pattern', 'Delete a custom pattern', 'Remove a per-site custom pattern (built-in patterns cannot be deleted).',
 			[ 'properties' => [ 'slug' => [ 'type' => 'string' ] ], 'required' => [ 'slug' ] ], [ __CLASS__, 'delete_pattern' ], 'edit_pages' );
@@ -81,8 +59,8 @@ final class Patterns {
 	/**
 	 * Every usable pattern by slug WITHOUT reading pattern files: the built-in launch-builder/* patterns whose required
 	 * plugins are active (Plugin::pattern_index(), from the header cache) plus this site's custom ones. Rows: slug, name,
-	 * title, description, categories[], keywords[], inserter, roles[], slot, variant_of, style, transparent, requires,
-	 * custom (+ post_id and content for custom patterns). Use content( $slug ) for the markup.
+	 * title, description, categories[], keywords[], inserter, piece, look, requires, custom (+ post_id and content for
+	 * custom patterns). Use content( $slug ) for the markup.
 	 */
 	public static function index(): array {
 		if ( null !== self::$icache ) {
@@ -109,11 +87,8 @@ final class Patterns {
 				'categories'  => [ 'launch-builder-' . $cat ],
 				'keywords'    => [ 'custom' ],
 				'inserter'    => true,
-				'roles'       => [],
-				'slot'        => '',
-				'variant_of'  => '',
-				'style'       => '',
-				'transparent' => false,
+				'piece'       => '',
+				'look'        => '',
 				'requires'    => '',
 				'custom'      => true,
 				'post_id'     => $post->ID,
@@ -160,27 +135,20 @@ final class Patterns {
 		return array_values( array_filter( array_map( static function ( $c ) { return preg_replace( '/^launch-builder-?/', '', (string) $c ); }, (array) ( $p['categories'] ?? [] ) ) ) );
 	}
 
-	/** The role the admin preview renders a pattern as: a valid $override, else the first of its Roles: header, else ''. */
+	/** The role the admin preview renders a pattern as: a valid $override, else the role of its piece, else ''. */
 	public static function preview_role( string $slug, string $override = '' ): string {
 		if ( '' !== $override && isset( Roles::ROLES[ $override ] ) ) {
 			return $override;
 		}
-		$roles = (array) ( self::index()[ $slug ]['roles'] ?? [] );
-		return (string) ( $roles[0] ?? '' );
+		return Design_Hub::piece_role( (string) ( self::index()[ $slug ]['piece'] ?? '' ) );
 	}
 
 	/** @return array|\WP_Error */
 	public static function list_patterns( $input = [] ) {
 		$input = (array) $input;
 		$want = [];
-		foreach ( [ 'category', 'role', 'slot', 'style', 'variant_of' ] as $k ) {
+		foreach ( [ 'category', 'piece', 'look' ] as $k ) {
 			$want[ $k ] = isset( $input[ $k ] ) && is_scalar( $input[ $k ] ) ? sanitize_key( (string) $input[ $k ] ) : '';
-		}
-		if ( '' !== $want['role'] && ! isset( Roles::ROLES[ $want['role'] ] ) ) {
-			return new \WP_Error( 'lb_bad_role', 'Unknown role. Roles: ' . implode( ', ', array_keys( Roles::ROLES ) ) . '.', [ 'status' => 400 ] );
-		}
-		if ( '' !== $want['slot'] && ! isset( Chrome::SLOTS[ $want['slot'] ] ) && 'conversion' !== $want['slot'] ) {
-			return new \WP_Error( 'lb_bad_slot', 'Unknown slot. Slots: ' . implode( ', ', array_keys( Chrome::SLOTS ) ) . ', conversion.', [ 'status' => 400 ] );
 		}
 		$limit = isset( $input['limit'] ) ? max( 1, min( 200, (int) $input['limit'] ) ) : 100;
 		$offset = isset( $input['offset'] ) ? max( 0, (int) $input['offset'] ) : 0;
@@ -189,10 +157,8 @@ final class Patterns {
 		foreach ( $index as $slug => $p ) {
 			$cats = self::short_categories( $p );
 			if ( ( '' !== $want['category'] && ! in_array( $want['category'], $cats, true ) )
-				|| ( '' !== $want['role'] && ! in_array( $want['role'], (array) $p['roles'], true ) )
-				|| ( '' !== $want['slot'] && $want['slot'] !== $p['slot'] )
-				|| ( '' !== $want['style'] && $want['style'] !== $p['style'] )
-				|| ( '' !== $want['variant_of'] && $want['variant_of'] !== $p['variant_of'] && $want['variant_of'] !== $slug ) ) {
+				|| ( '' !== $want['piece'] && $want['piece'] !== $p['piece'] )
+				|| ( '' !== $want['look'] && $want['look'] !== $p['look'] ) ) {
 				continue;
 			}
 			$match[] = $slug;
@@ -201,13 +167,10 @@ final class Patterns {
 		foreach ( array_slice( $match, $offset, $limit ) as $slug ) {
 			$p = $index[ $slug ];
 			$row = [ 'slug' => $slug, 'title' => $p['title'], 'category' => self::short_categories( $p )[0] ?? '', 'description' => $p['description'] ];
-			foreach ( [ 'roles', 'slot', 'variant_of', 'style' ] as $k ) {
+			foreach ( [ 'piece', 'look' ] as $k ) {
 				if ( ! empty( $p[ $k ] ) ) {
 					$row[ $k ] = $p[ $k ];
 				}
-			}
-			if ( ! empty( $p['transparent'] ) ) {
-				$row['transparent'] = true;
 			}
 			if ( empty( $p['inserter'] ) ) {
 				$row['inserter'] = false;
@@ -241,11 +204,8 @@ final class Patterns {
 			'title'       => $p['title'],
 			'description' => $p['description'] ?? '',
 			'category'    => self::short_categories( $p )[0] ?? '',
-			'roles'       => (array) $p['roles'],
-			'slot'        => $p['slot'],
-			'variant_of'  => $p['variant_of'],
-			'style'       => $p['style'],
-			'transparent' => ! empty( $p['transparent'] ),
+			'piece'       => $p['piece'],
+			'look'        => $p['look'],
 			'slots'       => self::slots( parse_blocks( $content ) ),
 		];
 		if ( ! empty( $input['include_content'] ) ) {
@@ -471,221 +431,6 @@ final class Patterns {
 		return [ $applied, $warnings ];
 	}
 
-	/** innerContent for a block that holds only inner blocks: a line break, a slot per child, line breaks between. */
-	private static function inner_slots( int $n ): array {
-		$out = [ "\n" ];
-		for ( $i = 0; $i < $n; $i++ ) {
-			$out[] = null;
-			$out[] = $i < $n - 1 ? "\n\n" : "\n";
-		}
-		return $out;
-	}
-
-	/** A Kadence block id for a copied block: the pattern's prefix, then a hash of what makes this copy different. */
-	private static function feed_id( string $seed, string $salt ): string {
-		$prefix = false !== strpos( $seed, '_' ) ? strstr( $seed, '_', true ) : '0';
-		return $prefix . '_' . substr( md5( $seed . '|' . $salt ), 0, 6 ) . '-' . substr( md5( $salt . $seed ), 0, 2 );
-	}
-
-	/**
-	 * Write real testimonials into the cards of a testimonial carousel or grid: the first card is the model for every card.
-	 *
-	 * @param array[] $items { name, place, text, rating, source, service }
-	 * @return string[] warnings
-	 */
-	private static function feed_testimonials( array &$blocks, array $items ): array {
-		$items = array_values( array_filter( $items, 'is_array' ) );
-		if ( ! $items ) {
-			return [];
-		}
-		$done = false;
-		$walk = static function ( array &$list ) use ( &$walk, &$done, $items ): void {
-			foreach ( $list as &$b ) {
-				if ( 'kadence/testimonials' === ( $b['blockName'] ?? '' ) ) {
-					$proto = null;
-					foreach ( (array) $b['innerBlocks'] as $in ) {
-						if ( 'kadence/testimonial' === ( $in['blockName'] ?? '' ) ) {
-							$proto = $in;
-							break;
-						}
-					}
-					if ( ! $proto ) {
-						continue;
-					}
-					$seed = (string) ( $b['attrs']['uniqueID'] ?? 'lb' );
-					$kids = [];
-					foreach ( $items as $i => $it ) {
-						$c = $proto;
-						$c['attrs']['uniqueID'] = self::feed_id( $seed, 't' . $i . wp_json_encode( $it ) );
-						$c['attrs']['content'] = wp_kses_post( (string) ( $it['text'] ?? '' ) );
-						$c['attrs']['name'] = sanitize_text_field( (string) ( $it['name'] ?? '' ) );
-						$c['attrs']['occupation'] = sanitize_text_field( implode( ' · ', array_filter( [ (string) ( $it['place'] ?? '' ), (string) ( $it['service'] ?? '' ), (string) ( $it['source'] ?? '' ) ] ) ) );
-						'' === $c['attrs']['name'] ? $c['attrs']['displayName'] = false : null; // A quote without a name leaves no empty name line.
-						'' === $c['attrs']['occupation'] ? $c['attrs']['displayOccupation'] = false : null;
-						if ( isset( $it['rating'] ) && is_numeric( $it['rating'] ) ) {
-							$c['attrs']['rating'] = max( 1, min( 5, (float) $it['rating'] ) );
-						}
-						$kids[] = $c;
-					}
-					$b['innerBlocks'] = $kids;
-					$b['innerContent'] = self::inner_slots( count( $kids ) );
-					$done = true;
-				} elseif ( ! empty( $b['innerBlocks'] ) ) {
-					$walk( $b['innerBlocks'] );
-				}
-			}
-		};
-		$walk( $blocks );
-		return $done ? [] : [ 'testimonials: this pattern has no testimonial cards to fill.' ];
-	}
-
-	/**
-	 * Write real offers into the cards of the offers pattern: one column each, the amount (big), the title, the conditions
-	 * and the button. Surplus columns are removed; offers past their end date are left out; a card with an end date hides
-	 * itself after it.
-	 *
-	 * @param array[] $items { title, amount, text, expires, button, url }
-	 * @return string[] warnings
-	 */
-	private static function feed_offers( array &$blocks, array $items ): array {
-		$today = wp_date( 'Y-m-d' );
-		$items = array_values( array_filter( $items, static function ( $it ) use ( $today ) {
-			return is_array( $it ) && ( empty( $it['expires'] ) || (string) $it['expires'] >= $today );
-		} ) );
-		$warn = [];
-		$done = false;
-		$walk = static function ( array &$list ) use ( &$walk, &$done, &$warn, $items ): bool {
-			foreach ( $list as &$b ) {
-				if ( 'kadence/rowlayout' === ( $b['blockName'] ?? '' ) ) {
-					$cols = (array) $b['innerBlocks'];
-					$offer_row = count( $cols ) >= 2;
-					foreach ( $cols as $c ) {
-						$offer_row = $offer_row && 'kadence/column' === ( $c['blockName'] ?? '' ) && self::has_block( $c, 'kadence/advancedbtn' );
-					}
-					if ( $offer_row ) {
-						$keep = self::offer_columns( $cols, $items, $warn );
-						$b['innerBlocks'] = $keep;
-						$b['innerContent'] = self::inner_slots( count( $keep ) );
-						$b['attrs']['columns'] = max( 1, count( $keep ) );
-						$done = true;
-						return true;
-					}
-				}
-				if ( ! empty( $b['innerBlocks'] ) && $walk( $b['innerBlocks'] ) ) {
-					return true;
-				}
-			}
-			return false;
-		};
-		$walk( $blocks );
-		return $done ? $warn : [ 'offers: this pattern has no offer cards to fill.' ];
-	}
-
-	/** Does a parsed block hold a block of this name anywhere inside it? */
-	private static function has_block( array $b, string $name ): bool {
-		foreach ( (array) ( $b['innerBlocks'] ?? [] ) as $in ) {
-			if ( $name === ( $in['blockName'] ?? '' ) || self::has_block( (array) $in, $name ) ) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * The offer columns written from $items (first column = first offer). More offers than columns: the first ones show.
-	 *
-	 * @return array[] the columns to keep
-	 */
-	private static function offer_columns( array $cols, array $items, array &$warn ): array {
-		if ( count( $items ) > count( $cols ) ) {
-			$warn[] = 'offers: this pattern shows ' . count( $cols ) . ' offers; ' . ( count( $items ) - count( $cols ) ) . ' more were left out.';
-		}
-		if ( ! $items ) {
-			$warn[] = 'offers: every offer has ended, so the cards were left out.';
-			return [];
-		}
-		$keep = [];
-		foreach ( array_slice( $cols, 0, count( $items ) ) as $ci => $col ) {
-			$it = $items[ $ci ];
-			$seen = [];
-			self::offer_text( $col, $it, $seen );
-			if ( ! empty( $it['expires'] ) && preg_match( '/^(\d{4})-(\d{2})-(\d{2})/', (string) $it['expires'], $dm ) ) {
-				$cls = 'lb-until-' . $dm[1] . $dm[2] . $dm[3];
-				$col['attrs']['className'] = trim( (string) ( $col['attrs']['className'] ?? '' ) . ' ' . $cls );
-				$col['innerContent'] = array_map( static function ( $c ) use ( $cls ) {
-					return is_string( $c ) ? (string) preg_replace( '/(class="wp-block-kadence-column [^"]*?)"/', '$1 ' . $cls . '"', $c, 1 ) : $c;
-				}, (array) $col['innerContent'] );
-			}
-			$keep[] = $col;
-		}
-		return $keep;
-	}
-
-	/**
-	 * Write one offer into a block's inner blocks: the level 3 heading is the amount, level 4 the title, the plain one the text.
-	 * A part the offer leaves out is removed, so no empty heading is left in the card.
-	 */
-	private static function offer_text( array &$holder, array $it, array &$seen ): void {
-		$drop = [];
-		foreach ( $holder['innerBlocks'] as $i => &$k ) {
-			$name = (string) ( $k['blockName'] ?? '' );
-			if ( 'kadence/advancedheading' === $name ) {
-				$lv = (int) ( $k['attrs']['level'] ?? 2 );
-				$which = 3 === $lv ? 'amount' : ( 4 === $lv ? 'title' : 'text' );
-				if ( empty( $seen[ $which ] ) ) {
-					$seen[ $which ] = true;
-					$val = trim( (string) ( $it[ $which ] ?? '' ) );
-					if ( '' === $val ) {
-						$drop[] = $i;
-						continue;
-					}
-					self::set_text( $k, esc_html( $val ) );
-				}
-			} elseif ( 'kadence/advancedbtn' === $name && ( ! empty( $it['button'] ) || ! empty( $it['url'] ) ) && ! empty( $k['innerBlocks'][0] ) ) {
-				$btn = $k['innerBlocks'][0];
-				if ( ! empty( $it['button'] ) ) {
-					self::set_text( $btn, esc_html( (string) $it['button'] ) );
-				}
-				$m = self::field_map( (string) $btn['blockName'] );
-				if ( ! empty( $it['url'] ) && isset( $m['link'] ) ) {
-					self::write_field( $btn, 'link', $m['link'][0], $m['link'][1], (string) $it['url'] );
-				}
-				$k['innerBlocks'][0] = $btn;
-			}
-			if ( ! empty( $k['innerBlocks'] ) ) {
-				self::offer_text( $k, $it, $seen );
-			}
-		}
-		unset( $k );
-		foreach ( array_reverse( $drop ) as $i ) {
-			self::drop_child( $holder, (int) $i );
-		}
-	}
-
-	/** Remove the inner block at $index of a block, together with the blank line next to it. */
-	private static function drop_child( array &$holder, int $index ): void {
-		$n = -1;
-		$content = array_values( (array) ( $holder['innerContent'] ?? [] ) );
-		$blank = static function ( $c ): bool {
-			return is_string( $c ) && '' === trim( $c );
-		};
-		foreach ( $content as $pos => $chunk ) {
-			if ( null !== $chunk || ++$n !== $index ) {
-				continue;
-			}
-			if ( isset( $content[ $pos + 1 ] ) && $blank( $content[ $pos + 1 ] ) ) {
-				unset( $content[ $pos + 1 ] );
-			} elseif ( isset( $content[ $pos - 1 ] ) && $blank( $content[ $pos - 1 ] ) ) {
-				unset( $content[ $pos - 1 ] );
-			}
-			unset( $content[ $pos ] );
-			break;
-		}
-		$holder['innerContent'] = array_values( $content );
-		unset( $holder['innerBlocks'][ $index ] );
-		$holder['innerBlocks'] = array_values( $holder['innerBlocks'] );
-	}
-
 	/**
 	 * Kadence's advanced form keeps its fields in a kadence_form post and the page only references it by id.
 	 * Patterns carry the form inline (so they stay portable); applying one creates the form post and swaps in the reference.
@@ -710,11 +455,7 @@ final class Patterns {
 
 	/**
 	 * Build markup from a pattern with slots filled. The one build pipeline: fill slots (by id, by default text, then the
-	 * legacy $vars placeholders), materialize inline forms, apply '@entries' overrides, strip the hero for '@no_hero',
-	 * inject markdown into the pattern's text area.
-	 *
-	 * $opts['no_hero'] (default true): treat '@no_hero' as the strip-hero directive. apply-pattern passes false, so for it
-	 * '@no_hero' stays an ordinary (unknown) slot id exactly as it always has.
+	 * $vars placeholders), materialize inline forms, inject markdown into the pattern's text area.
 	 *
 	 * @return array|\WP_Error {content, applied, warnings}
 	 */
@@ -723,41 +464,12 @@ final class Patterns {
 		if ( ! isset( $all[ $slug ] ) ) {
 			return new \WP_Error( 'lb_no_pattern', 'Unknown pattern: ' . $slug . '. Use list-patterns.', [ 'status' => 404 ] );
 		}
-		if ( in_array( 'launch-builder-headers', (array) ( $all[ $slug ]['categories'] ?? [] ), true ) ) {
-			return new \WP_Error( 'lb_is_header', $slug . ' is a header pattern. Use set-header (or the blueprint header section).', [ 'status' => 400 ] );
-		}
 		if ( empty( $all[ $slug ]['custom'] ) && ! Plugin::kadence_blocks_active() ) {
 			return new \WP_Error( 'lb_no_kadence', 'Kadence Blocks is not active; these patterns need it.', [ 'status' => 412 ] );
 		}
 		$blocks = parse_blocks( (string) self::content( $slug ) );
-		$ent = isset( $slots['@entries'] ) ? (array) $slots['@entries'] : []; // Attribute overrides for the live lists (launch/entries) in the pattern.
-		$hero_directive = ! isset( $opts['no_hero'] ) || $opts['no_hero'];
-		$no_hero = $hero_directive && ! empty( $slots['@no_hero'] ); // Elements mode: the shared hero element is the page hero, so patterns drop their own.
-		unset( $slots['@entries'] );
-		if ( $hero_directive ) {
-			unset( $slots['@no_hero'] );
-		}
-		$feeds = [];
-		foreach ( [ '@testimonials', '@offers' ] as $d ) { // Lists of real content for the cards of a pattern.
-			if ( isset( $slots[ $d ] ) ) {
-				$feeds[ $d ] = (array) $slots[ $d ];
-				unset( $slots[ $d ] );
-			}
-		}
 		[ $applied, $warnings ] = self::fill( $blocks, $slots, $replace, $vars );
-		if ( isset( $feeds['@testimonials'] ) ) {
-			$warnings = array_merge( $warnings, self::feed_testimonials( $blocks, $feeds['@testimonials'] ) );
-		}
-		if ( isset( $feeds['@offers'] ) ) {
-			$warnings = array_merge( $warnings, self::feed_offers( $blocks, $feeds['@offers'] ) );
-		}
 		self::materialize_forms( $blocks );
-		if ( $ent ) {
-			Entries::apply_attrs( $blocks, $ent );
-		}
-		if ( $no_hero ) {
-			Content::strip_hero( $blocks );
-		}
 		if ( '' !== trim( $markdown ) && ! Content::inject_markdown( $blocks, $markdown ) ) {
 			$warnings[] = 'This pattern has no text area for markdown (use service-body, or add-text on the page).';
 		}
@@ -776,7 +488,7 @@ final class Patterns {
 			return new \WP_Error( 'lb_no_pattern', 'Unknown pattern: ' . $slug, [ 'status' => 404 ] );
 		}
 		if ( in_array( 'launch-builder-headers', (array) ( $all[ $slug ]['categories'] ?? [] ), true ) ) {
-			return new \WP_Error( 'lb_is_header', 'That is a header pattern. Use set-header.', [ 'status' => 400 ] );
+			return new \WP_Error( 'lb_is_header', 'That is a header pattern. Choose headers in the Design hub (set-design).', [ 'status' => 400 ] );
 		}
 		if ( empty( $all[ $slug ]['custom'] ) && ! Plugin::kadence_blocks_active() ) {
 			return new \WP_Error( 'lb_no_kadence', 'Kadence Blocks is not active; these patterns need it.', [ 'status' => 412 ] );
@@ -788,8 +500,7 @@ final class Patterns {
 		if ( in_array( $status, [ 'publish', 'private' ], true ) && ! current_user_can( 'publish_pages' ) ) {
 			return new \WP_Error( 'lb_forbidden', 'You cannot publish pages.', [ 'status' => 403 ] );
 		}
-		// The shared pipeline. apply-pattern has never taken $vars or the '@no_hero' directive, and still does not.
-		$built = self::build_pattern( $slug, (array) ( $input['slots'] ?? [] ), (array) ( $input['replace'] ?? [] ), [], (string) ( $input['markdown'] ?? '' ), [ 'no_hero' => false ] );
+		$built = self::build_pattern( $slug, (array) ( $input['slots'] ?? [] ), (array) ( $input['replace'] ?? [] ), [], (string) ( $input['markdown'] ?? '' ) );
 		if ( is_wp_error( $built ) ) {
 			return $built;
 		}

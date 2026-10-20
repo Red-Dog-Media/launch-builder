@@ -1,7 +1,0 @@
-/* Menu links: the footer-links list look (see blocks/entries/style.css), plus a row of links for legal lines. */
-.lb-entries.lb-menu-links{list-style:none;margin:0;padding:0}
-.lb-entries.lb-menu-links li{margin:0 0 8px;padding:0}
-.lb-menu-links a{color:inherit;text-decoration:none}
-.lb-menu-links a:hover,.lb-menu-links a:focus-visible{text-decoration:underline}
-.lb-menu-links.lb-inline{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 20px}
-.lb-entries.lb-menu-links.lb-inline li{margin:0}

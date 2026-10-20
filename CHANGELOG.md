@@ -7,14 +7,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+Version 2 of the approach: **Launch Builder sets the site up; Kadence and Meta Box run it.** Everything it creates is now a
+native Kadence or Meta Box object, so a site keeps working if the plugin is removed, and there are far fewer moving parts.
+See docs/V2-PLAN.md and docs/ARCHITECTURE.md.
+
 ### Added
-- Meta Box sync: Services, Service areas and Service categories can be listed under Meta Box > Post Types and Taxonomies, and the Card details fields (the icon, and the services offered in each area) under Meta Box > Custom Fields, so they are edited there like the site's other types. A notice on those Meta Box screens adds them in one click; the sync-meta-box tool and `wp launch-builder meta-box-sync` do the same, with a dry run first. Your services, areas, categories and their values stay as they are. Launch Builder keeps only the few settings its lists and URLs need, never overwrites a type or field group changed or made in Meta Box unless asked, and an undo moves its copies to the Trash. Needs MB Custom Post Types and MB Builder (both in Meta Box Lite and Meta Box AIO).
-- The site audit warns when one of these types was renamed in Meta Box (its lists would then use a new, empty type).
-- docs/ARCHITECTURE.md: how the plugin fits together, what must not change and how to check a refactor (tools/surface-snapshot.php and tools/surface-diff.php).
+- Design hub, rebuilt as one screen: twelve design pieces (header, home hero, service hero, service area hero, standard page hero, breadcrumb bar, sub-service list, service area list, area services list, before-footer call to action with testimonials, footer, sidebar), each in three looks: Auto shop, Home services and Landscaping. Choosing one writes a Kadence block header, a Kadence Element with display rules, or a sidebar widget; choosing a whole look also sets its colours and buttons (Kadence palette, button settings and a Kadence Style Library set) and the standard layouts. Pieces you change in Kadence are kept unless you choose to replace them. Tools get-designs and set-design.
+- Lists of sub-services, service areas and an area's services are Kadence Query Loops (Adv). Launch Builder adds "children of this page" to them, so a service lists its sub-services and an area lists its service pages; a list can sit above, in the middle of or below the page text.
+- Sub-services: services are hierarchical (Air Conditioning > Installation and Replacement) and live at the root of the site (/air-conditioning/installation-and-replacement/), with 301s from the old URLs.
+- Area service pages: an area lists the services offered there as its own pages (/service-areas/rockledge-fl/ac-installation/, "AC Installation in Rockledge, FL"), created, republished or drafted from the area's service list.
+- Business Info is a Meta Box settings page (Meta Box > Settings Pages > Business Info) with eight values: company name, phone, phone link, email, address, maps link, call-to-action label and link. The Meta Box sync also lists the services' and areas' fields there.
+- build-site: a six-section brief (business, look, colours, services with sub-services, areas with their services, pages). Dry run first; running the same brief again changes nothing, and text edited since the builder wrote it is kept. `wp launch-builder build brief.json [--apply]`.
+- prepare-removal: hands a site over before the plugin is removed (Meta Box sync, tokens baked into the content, the redirects for the root service URLs, and a small snippet that keeps the lists working).
+- Token {{site.year}} for copyright lines.
+- Meta Box sync: Services and Service areas are listed under Meta Box > Post Types and their fields under Meta Box > Custom Fields, so they are edited there. Works with the Meta Box Builder in Meta Box AIO (4.x) as well as the plugin-directory one.
+- docs/ARCHITECTURE.md: how the plugin fits together and how to check a change (tools/surface-snapshot.php and tools/surface-diff.php).
 
 ### Changed
-- Services, service areas and service categories that something else registers first (Meta Box, for example) keep that registration instead of being overwritten by Launch Builder, apart from the settings Launch Builder relies on. Saving one of them in Meta Box refreshes the site's URLs on the next page load.
-- The code is organised in folders by part of the plugin (core, AI tools, Business Info, content, design, briefs, launch, URLs, integrations, admin, client experience), one class per file. Nothing changes on a site: hooks, tools, settings and stored data are the same.
+- Service categories become parent services: each category turns into a service and its services move under it (migration `entries-categories`). Menus that listed a category now list that service's sub-services.
+- Menus: a live menu item can list the children of any service or area, and show sub-services as a second dropdown level (depth 2).
+- Page roles are simpler: home, page, contact (conversion), legal, thank-you, the two hubs, service and area. The per-page hero switch is gone (the hero is a Kadence Element now).
+- Breadcrumbs come from Rank Math (or the Kadence theme), with the hub page after Home on services and areas.
+- Rank Math: Launch Builder writes the business name, email, phone, logo and contact page into the knowledge graph with sync-seo; address, hours and business type are set in Rank Math's Local SEO screen.
+- The code is organised in folders by part of the plugin, one class per file.
+
+### Removed
+- The rating widget block and its designs.
+- The per-role page chrome system, Style DNA (its CSS and presets), the global areas and the Launch list blocks (entries, menu links, post body, breadcrumbs): Kadence Elements, the Style Library and Query Loops do these now.
+- The old brief builder (build-from-brief, blueprints, export) and the generated legal texts.
+- Business Info fields beyond the eight above (hours, socials, licences, review figures...): their stored values are left in the database.
+- The Kadence Conversions integration.
 
 ## [0.12.0] - 2026-10-19
 

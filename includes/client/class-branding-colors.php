@@ -93,7 +93,7 @@ final class Branding_Colors {
 		$s = null === $settings ? (array) Branding::section( 'admin_colors' ) : $settings;
 		$out = [];
 		foreach ( self::KEYS as $k ) {
-			$h = isset( $s[ $k ] ) && is_string( $s[ $k ] ) ? Style::hex( $s[ $k ] ) : null;
+			$h = isset( $s[ $k ] ) && is_string( $s[ $k ] ) ? Color::hex( $s[ $k ] ) : null;
 			$out[ $k ] = $h ? $h : '';
 		}
 		return $out;
@@ -128,9 +128,9 @@ final class Branding_Colors {
 
 	/** The brand colours: the sidebar and top bar in the strongest text colour, the active item and accent in the first accent. */
 	public static function brand(): array {
-		$pal = Style::palette();
+		$pal = Color::palette();
 		$h = static function ( string $slug, string $fallback ) use ( $pal ): string {
-			return (string) ( Style::hex( $pal[ $slug ] ?? $fallback ) ?: $fallback );
+			return (string) ( Color::hex( $pal[ $slug ] ?? $fallback ) ?: $fallback );
 		};
 		$base = $h( 'palette3', '#1A202C' );
 		$hl = $h( 'palette1', '#2B6CB0' );
@@ -174,8 +174,8 @@ final class Branding_Colors {
 
 	/** WCAG contrast ratio, not rounded (a ratio is never rounded up to pass). */
 	public static function ratio( string $a, string $b ): float {
-		$la = Style::luminance( $a );
-		$lb = Style::luminance( $b );
+		$la = Color::luminance( $a );
+		$lb = Color::luminance( $b );
 		return ( max( $la, $lb ) + 0.05 ) / ( min( $la, $lb ) + 0.05 );
 	}
 
@@ -191,7 +191,7 @@ final class Branding_Colors {
 		}
 		$target = self::ratio( '#FFFFFF', $bg ) >= self::ratio( '#000000', $bg ) ? '#FFFFFF' : '#000000';
 		for ( $i = 1; $i <= 20; $i++ ) {
-			$c = Style::blend( $target, $fg, $i / 20 );
+			$c = Color::blend( $target, $fg, $i / 20 );
 			if ( self::ratio( $c, $bg ) >= $min ) {
 				return $c;
 			}
@@ -211,12 +211,12 @@ final class Branding_Colors {
 
 	/** Mixed with black: a hover or pressed state. */
 	public static function darken( string $hex, float $amount ): string {
-		return Style::blend( '#000000', $hex, $amount );
+		return Color::blend( '#000000', $hex, $amount );
 	}
 
 	/** A background a step away from $hex: darker, and half as much when it is already light. */
 	public static function deepen( string $hex, float $amount ): string {
-		return self::darken( $hex, Style::luminance( $hex ) < 0.35 ? $amount : $amount / 2 );
+		return self::darken( $hex, Color::luminance( $hex ) < 0.35 ? $amount : $amount / 2 );
 	}
 
 	private static function rgb( string $hex ): string {
@@ -255,7 +255,7 @@ final class Branding_Colors {
 			$notes[] = sprintf( __( 'Sidebar text %1$s has only %2$s:1 contrast on the sidebar (4.5:1 needed), so %3$s is used.', 'launch-builder' ), $c['sidebar_text'], self::shown( self::ratio( $c['sidebar_text'], $sb ) ), $st );
 		}
 		$sub = self::deepen( $sb, 0.22 );
-		$sub_text = self::readable( Style::blend( $st, $sub, 0.78 ), $sub );
+		$sub_text = self::readable( Color::blend( $st, $sub, 0.78 ), $sub );
 		$sub_hover = self::readable( $st, $sub );
 
 		$hl = $c['highlight'];
@@ -273,7 +273,7 @@ final class Branding_Colors {
 		$ratios['bar_text'] = self::ratio( $tb_text, $tb );
 		$tb_hover = self::deepen( $tb, 0.25 );
 		$tb_hover_text = self::on( $tb_hover );
-		$tb_sub_text = self::readable( Style::blend( $tb_hover_text, $tb_hover, 0.78 ), $tb_hover );
+		$tb_sub_text = self::readable( Color::blend( $tb_hover_text, $tb_hover, 0.78 ), $tb_hover );
 
 		$acc = $c['accent'];
 		$acc_text = self::on( $acc );

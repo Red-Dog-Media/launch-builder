@@ -187,10 +187,10 @@ final class Dashboard {
 	 */
 	public static function stations(): array {
 		$res = Company::resolve();
-		$essentials = Company::essentials();
-		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return isset( $res[ $k ]['from'] ) && 'default' !== $res[ $k ]['from']; } ) );
+		$essentials = Company::ESSENTIALS;
+		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return in_array( $res[ $k ]['from'] ?? '', [ 'saved', 'derived', 'wordpress' ], true ); } ) );
 		$tok = get_option( 'launch_builder_mcp_token' );
-		$designed = Chrome::applied( 'hero' ) || Chrome::applied( 'footer' ) || (bool) get_theme_mod( 'blocks_header' );
+		$designed = (bool) Design_Hub::placements() || (bool) get_theme_mod( 'blocks_header' );
 		$pages = (int) ( wp_count_posts( 'page' )->publish ?? 0 );
 		$services = (int) ( wp_count_posts( Entries::SERVICE )->publish ?? 0 );
 		$areas = (int) ( wp_count_posts( Entries::AREA )->publish ?? 0 );
@@ -213,7 +213,7 @@ final class Dashboard {
 		return [
 			[ 'id' => 'business', 'icon' => 'business', 'name' => __( 'Business info', 'launch-builder' ), 'detail' => sprintf( /* translators: 1: how many essentials are set, 2: how many there are */ __( '%1$d of %2$d essentials set', 'launch-builder' ), $set, count( $essentials ) ), 'state' => count( $essentials ) === $set ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-business' ), 'cta' => __( 'Add business details', 'launch-builder' ) ],
 			[ 'id' => 'connect', 'icon' => 'connect', 'name' => __( 'AI assistant', 'launch-builder' ), 'detail' => is_array( $tok ) ? sprintf( /* translators: %s: last four characters of the token */ __( 'Token ending %s', 'launch-builder' ), (string) ( $tok['last4'] ?? '' ) ) : __( 'Not connected yet', 'launch-builder' ), 'state' => is_array( $tok ) ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-connect' ), 'cta' => __( 'Connect an assistant', 'launch-builder' ) ],
-			[ 'id' => 'design', 'icon' => 'layout', 'name' => __( 'Design', 'launch-builder' ), 'detail' => $designed ? __( 'Shared designs in place', 'launch-builder' ) : __( 'Nothing applied yet', 'launch-builder' ), 'state' => $designed ? 'ok' : 'todo', 'url' => Admin::url( 'launch-builder-patterns' ), 'cta' => __( 'Preview the designs', 'launch-builder' ) ],
+			[ 'id' => 'design', 'icon' => 'layout', 'name' => __( 'Design', 'launch-builder' ), 'detail' => $designed ? __( 'Designs in place', 'launch-builder' ) : __( 'Nothing chosen yet', 'launch-builder' ), 'state' => $designed ? 'ok' : 'todo', 'url' => Admin::url( Design_Hub_Admin::PAGE ), 'cta' => __( 'Open the Design hub', 'launch-builder' ) ],
 			[ 'id' => 'content', 'icon' => 'content', 'name' => __( 'Content', 'launch-builder' ), 'detail' => sprintf( /* translators: 1: pages, 2: services, 3: areas */ __( '%1$d pages, %2$d services, %3$d areas', 'launch-builder' ), $pages, $services, $areas ), 'state' => $built ? 'ok' : 'todo', 'url' => admin_url( 'edit.php?post_type=page' ), 'cta' => __( 'Open the pages', 'launch-builder' ) ],
 			[ 'id' => 'check', 'icon' => 'shield', 'name' => __( 'Site check', 'launch-builder' ), 'detail' => $check[1], 'state' => $check[0], 'url' => Admin::url( 'launch-builder-health' ), 'cta' => $audit ? __( 'Review the check', 'launch-builder' ) : __( 'Run the check', 'launch-builder' ) ],
 			[ 'id' => 'live', 'icon' => 'globe', 'name' => __( 'Live', 'launch-builder' ), 'detail' => $public ? __( 'Visible to search engines', 'launch-builder' ) : __( 'Hidden from search engines', 'launch-builder' ), 'state' => $public ? 'ok' : 'todo', 'url' => admin_url( 'options-reading.php' ), 'cta' => __( 'Open reading settings', 'launch-builder' ) ],
@@ -370,21 +370,13 @@ final class Dashboard {
 		$out = '<section class="lb-panel" id="lb-compat"><div class="lb-panel__head"><h2>' . esc_html__( 'Compatibility', 'launch-builder' ) . '</h2></div>';
 
 		if ( Compat::rm_active() ) {
-			$h = md5( (string) wp_json_encode( [ get_option( Company::OPT ), get_option( 'rank-math-options-titles' ), get_option( 'rank-math-options-general' ) ] ) );
-			$cached = get_transient( 'lb_compat_card' ); // The dry run reads many options: keep its answer while neither side changed.
-			if ( is_array( $cached ) && ( $cached['h'] ?? '' ) === $h && is_array( $cached['c'] ?? null ) ) {
-				$c = $cached['c'];
-			} else {
-				$c = Compat::business_sync( [ 'dry_run' => true ] )['counts'];
-				set_transient( 'lb_compat_card', [ 'h' => $h, 'c' => $c ], 10 * MINUTE_IN_SECONDS );
-			}
-			$todo = (int) ( $c['fill'] ?? 0 ) + (int) ( $c['update'] ?? 0 );
+			$todo = (int) Compat::rm_status()['to_sync'];
 			$line = $todo
 				/* translators: 1: Rank Math version, 2: number of settings */
-				? sprintf( _n( 'Version %1$s. %2$d Local SEO setting can be filled from Business Info.', 'Version %1$s. %2$d Local SEO settings can be filled from Business Info.', $todo, 'launch-builder' ), Compat::rm_version(), $todo )
+				? sprintf( _n( 'Version %1$s. %2$d setting Launch Builder owns is not in step (sync-seo).', 'Version %1$s. %2$d settings Launch Builder owns are not in step (sync-seo).', $todo, 'launch-builder' ), Compat::rm_version(), $todo )
 				/* translators: %s: Rank Math version */
-				: sprintf( __( 'Version %s. Local SEO already matches Business Info.', 'launch-builder' ), Compat::rm_version() );
-			$out .= '<div class="lb-kv">' . self::icon( 'search' ) . '<div><b>' . esc_html__( 'Rank Math', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . ' <a href="' . esc_url( Admin::url( 'launch-builder-business' ) . '#lb-rm' ) . '">' . esc_html__( 'Review', 'launch-builder' ) . '</a></span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
+				: sprintf( __( 'Version %s. The settings Launch Builder owns are in step.', 'launch-builder' ), Compat::rm_version() );
+			$out .= '<div class="lb-kv">' . self::icon( 'search' ) . '<div><b>' . esc_html__( 'Rank Math', 'launch-builder' ) . '</b><span>' . esc_html( $line ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput -- icon markup.
 		} else {
 			$out .= '<div class="lb-kv">' . self::icon( 'search' ) . '<div><b>' . esc_html__( 'Rank Math', 'launch-builder' ) . '</b><span>' . esc_html__( 'Not active. Without it this site prints no business structured data.', 'launch-builder' ) . '</span></div></div>'; // phpcs:ignore WordPress.Security.EscapeOutput
 		}
@@ -393,7 +385,7 @@ final class Dashboard {
 		if ( $mb['active'] ) {
 			$n = static function ( string $pt ) use ( $mb ): int { return count( (array) ( $mb['fields'][ $pt ] ?? [] ) ); };
 			$taken = [];
-			foreach ( [ '_lb_icon' => __( 'Icon', 'launch-builder' ), '_lb_summary' => __( 'Summary', 'launch-builder' ), '_lb_services' => __( 'Services offered', 'launch-builder' ) ] as $id => $label ) {
+			foreach ( [ '_lb_icon' => __( 'Icon', 'launch-builder' ), '_lb_summary' => __( 'Summary', 'launch-builder' ), '_lb_service' => __( 'Area service page', 'launch-builder' ) ] as $id => $label ) {
 				if ( ! empty( $mb['owns_card_fields'][ $id ] ) ) {
 					$taken[] = $label;
 				}
@@ -423,7 +415,7 @@ final class Dashboard {
 	private static function links_card(): string {
 		$rows = [
 			[ 'business', __( 'Business info', 'launch-builder' ), Admin::url( 'launch-builder-business' ) ],
-			[ 'layout', __( 'Design hub', 'launch-builder' ), Admin::url( 'launch-builder-patterns' ) ],
+			[ 'layout', __( 'Design hub', 'launch-builder' ), Admin::url( Design_Hub_Admin::PAGE ) ],
 			[ 'sliders', __( 'All modules', 'launch-builder' ), Admin::url( 'launch-builder-modules' ) ],
 			[ 'activity', __( 'Activity and safety', 'launch-builder' ), Admin::url( 'launch-builder-activity' ) ],
 		];
@@ -449,18 +441,12 @@ final class Dashboard {
 	}
 
 	private static function design_card(): string {
-		$mode = Chrome::mode();
-		$preset = Style::get()['preset'];
-		$slots = 0;
-		foreach ( [ 'header', 'hero', 'crumbs', 'template', 'before_footer', 'footer', 'sticky_bar' ] as $s ) {
-			if ( Chrome::applied( $s ) ) {
-				$slots++;
-			}
-		}
-		$out = '<section class="lb-panel"><div class="lb-panel__head"><h2>' . esc_html__( 'Design', 'launch-builder' ) . '</h2><a class="lb-link" href="' . esc_url( Admin::url( 'launch-builder-patterns' ) ) . '">' . esc_html__( 'Preview', 'launch-builder' ) . '</a></div><div class="lb-health" style="grid-template-columns:repeat(2,1fr)">';
-		$out .= '<div><b>' . (int) $slots . '</b><span>' . esc_html__( 'Shared designs placed', 'launch-builder' ) . '</span></div>';
-		$out .= '<div><b style="font-size:16px;line-height:1.7">' . esc_html( '' !== $preset ? ucfirst( $preset ) : __( 'Default', 'launch-builder' ) ) . '</b><span>' . esc_html__( 'Style preset', 'launch-builder' ) . '</span></div></div>';
-		$out .= '<p class="lb-note" style="margin:0">' . esc_html( 'elements' === $mode ? __( 'Placed with Kadence Elements, so one edit reaches every page.', 'launch-builder' ) : __( 'Placed by Launch Builder, so one edit reaches every page.', 'launch-builder' ) ) . '</p></section>';
+		$placed = count( Design_Hub::placements() );
+		$look = Design_Hub::current_look();
+		$out = '<section class="lb-panel"><div class="lb-panel__head"><h2>' . esc_html__( 'Design', 'launch-builder' ) . '</h2><a class="lb-link" href="' . esc_url( Admin::url( Design_Hub_Admin::PAGE ) ) . '">' . esc_html__( 'Design hub', 'launch-builder' ) . '</a></div><div class="lb-health" style="grid-template-columns:repeat(2,1fr)">';
+		$out .= '<div><b>' . (int) $placed . '</b><span>' . esc_html__( 'Design pieces placed', 'launch-builder' ) . '</span></div>';
+		$out .= '<div><b style="font-size:16px;line-height:1.7">' . esc_html( '' !== $look ? Design_Hub::LOOKS[ $look ] : __( 'Mixed', 'launch-builder' ) ) . '</b><span>' . esc_html__( 'Look', 'launch-builder' ) . '</span></div></div>';
+		$out .= '<p class="lb-note" style="margin:0">' . esc_html__( 'Placed as Kadence headers and Elements, so one edit in Kadence reaches every page.', 'launch-builder' ) . '</p></section>';
 		return $out;
 	}
 
@@ -473,7 +459,7 @@ final class Dashboard {
 		$mods = self::optional();
 		$on = count( array_filter( $mods, static function ( $m ) { return $m['enabled']; } ) );
 		echo '<div class="wrap lb-wrap">'; // phpcs:ignore
-		echo self::header( 'Launch Builder', esc_html( sprintf( /* translators: 1: site name, 2: plugin version */ __( '%1$s · version %2$s', 'launch-builder' ), get_bloginfo( 'name' ), LB_VERSION ) ), self::button( __( 'Business info', 'launch-builder' ), Admin::url( 'launch-builder-business' ), '', 'business' ) . self::button( __( 'Preview designs', 'launch-builder' ), Admin::url( 'launch-builder-patterns' ), 'primary', 'layout' ) ); // phpcs:ignore
+		echo self::header( 'Launch Builder', esc_html( sprintf( /* translators: 1: site name, 2: plugin version */ __( '%1$s · version %2$s', 'launch-builder' ), get_bloginfo( 'name' ), LB_VERSION ) ), self::button( __( 'Business info', 'launch-builder' ), Admin::url( 'launch-builder-business' ), '', 'business' ) . self::button( __( 'Design hub', 'launch-builder' ), Admin::url( Design_Hub_Admin::PAGE ), 'primary', 'layout' ) ); // phpcs:ignore
 		echo self::runway(); // phpcs:ignore
 		echo '<div class="lb-grid"><div><section class="lb-panel"><div class="lb-panel__head"><h2>' . esc_html__( 'Modules', 'launch-builder' ) . '</h2><span class="lb-note" style="margin:0"><span data-lb-on-count>' . (int) $on . '</span> ' . esc_html__( 'of', 'launch-builder' ) . ' <span data-lb-total-count>' . (int) count( $mods ) . '</span> ' . esc_html__( 'on', 'launch-builder' ) . ' · <a href="' . esc_url( Admin::url( 'launch-builder-modules' ) ) . '">' . esc_html__( 'Manage all', 'launch-builder' ) . '</a></span></div>'; // phpcs:ignore
 		echo self::board( false ) . '</section>'; // phpcs:ignore

@@ -19,8 +19,7 @@ defined( 'ABSPATH' ) || exit;
  * (launch_builder_snapshots_index), capped at 30 snapshots and 2 MB. A snapshot holds theme mods, options and,
  * optionally, posts: [{id, type, status, revision_id, ledger_hash, meta, ledger_key/ledger_row}] (the content itself
  * lives in a revision; types without revisions keep it inline). restore-snapshot puts mods, options, post contents,
- * statuses and listed meta back, then lets Chrome re-apply itself (Chrome::after_restore( $snapshot ) when it exists,
- * then the action launch_builder_snapshot_restored). Snapshots written before v2 (all in launch_builder_snapshots) are
+ * statuses and listed meta back, then fires the action launch_builder_snapshot_restored. Snapshots written before v2 (all in launch_builder_snapshots) are
  * moved by the migration step snapshots-v2 and stay restorable before it runs.
  */
 final class Abilities {
@@ -581,7 +580,7 @@ final class Abilities {
 
 	/**
 	 * restore-snapshot: list (no id) or restore one. Restoring takes an undo snapshot of what it is about to overwrite,
-	 * then restores mods, options and posts, then lets Chrome re-apply (Chrome::after_restore, if implemented).
+	 * then restores mods, options and posts, then fires launch_builder_snapshot_restored.
 	 */
 	public static function restore_snapshot( $input = [] ) {
 		$id = trim( (string) ( ( (array) $input )['id'] ?? '' ) );
@@ -619,10 +618,6 @@ final class Abilities {
 		}
 		if ( null !== $modules_before ) { // Module switches came back: run their activate()/deactivate() as set-modules does.
 			$out['modules'] = Modules::after_change( $modules_before );
-		}
-		if ( method_exists( Chrome::class, 'after_restore' ) ) {
-			$chrome = call_user_func( [ Chrome::class, 'after_restore' ], $s );
-			$out['chrome'] = is_wp_error( $chrome ) ? [ 'error' => $chrome->get_error_message() ] : $chrome;
 		}
 		do_action( 'launch_builder_snapshot_restored', $s, $out );
 		Cache::purge_later();

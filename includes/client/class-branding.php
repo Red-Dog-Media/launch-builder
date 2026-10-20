@@ -458,7 +458,7 @@ final class Branding {
 				if ( preg_match( '/^palette(10|[1-9])$/i', $s ) ) {
 					return [ true, strtolower( $s ) ];
 				}
-				$hex = Style::hex( $s );
+				$hex = Color::hex( $s );
 				if ( ! $hex || ! preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $s ) ) {
 					return $bad( 'must be a #hex colour or a palette slug such as palette1.' );
 				}
@@ -472,7 +472,7 @@ final class Branding {
 				if ( ! preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $s ) ) {
 					return $bad( 'must be a #RRGGBB colour (for example #1E1E1E), or empty for the WordPress default.' );
 				}
-				return [ true, (string) Style::hex( $s ) ];
+				return [ true, (string) Color::hex( $s ) ];
 
 			case 'int':
 				if ( is_float( $v ) && floor( $v ) === $v ) {
@@ -837,18 +837,18 @@ final class Branding {
 		return str_replace( [ '"', "'", '(', ')', '\\', "\n", "\r", '<', '>' ], [ '%22', '%27', '%28', '%29', '%5C', '', '', '%3C', '%3E' ], $url );
 	}
 
-	/** The client's business name and where it comes from (business_info: typed there or read from another settings page; site_title). @return array{0:string,1:string} */
+	/** The client's business name and where it comes from (business_info: typed in Business Info; site_title). @return array{0:string,1:string} */
 	public static function business_name(): array {
 		$res = Company::resolve();
-		if ( isset( $res['name'] ) && '' !== $res['name']['value'] && 'default' !== $res['name']['from'] ) {
-			return [ $res['name']['value'], 'site' === $res['name']['from'] ? 'site_title' : 'business_info' ];
+		if ( isset( $res['name'] ) && '' !== $res['name']['value'] && 'saved' === $res['name']['from'] ) {
+			return [ $res['name']['value'], 'business_info' ];
 		}
 		return [ wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ), 'site_title' ];
 	}
 
 	/**
-	 * Save the image for the logo above the admin menu without switching anything on (Business Info's old logo for dark
-	 * backgrounds is moved here by the company-tidy step). Works whether or not this module is on.
+	 * Save the image for the logo above the admin menu without switching anything on. Works whether or not this module is
+	 * on.
 	 */
 	public static function store_menu_logo_image( int $id ): bool {
 		$id = self::usable_attachment( $id );

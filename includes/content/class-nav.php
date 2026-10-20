@@ -10,9 +10,9 @@ defined( 'ABSPATH' ) || exit;
  * Live menus: a parent link (kadence/navigation-link) carries marker classes (see markers()) saying what its children
  * are; Nav writes those children as kadence/navigation-link blocks of kind 'post-type' (type + id, so Kadence prints the
  * entry's current permalink) with a deterministic uniqueID and the class lb-auto-child. Only lb-auto-child children are
- * ever rewritten (other children stay where they are) and links with isMegaMenu are left alone (a mega menu panel holds
- * a launch/entries list, live by construction). Entries marks Nav dirty when something a menu shows changes (title,
- * slug, status, order, parent, category, or where a "View all" child points); flush() then rebuilds every marked menu
+ * ever rewritten (other children stay where they are) and links with isMegaMenu are left alone (a mega menu panel is
+ * the administrator's design). Entries marks Nav dirty when something a menu shows changes (title, slug, status, order,
+ * parent, or where a "View all" child points); flush() then rebuilds every marked menu
  * and writes only those whose children differ. LB tools that change entries call flush() before they answer (result
  * menus_updated); otherwise it runs after the REST callback, before the response or redirect of the request, with
  * shutdown as the last fallback.
@@ -25,7 +25,7 @@ final class Nav {
 	/** @var bool the shutdown fallback is registered. */
 	private static $hooked = false;
 
-	/** @var array<string,array<string,string>> marker renames waiting for flush(): kind (category|parent) => old => new. */
+	/** @var array<string,array<string,string>> marker renames waiting for flush(): kind (parent) => old path => new path. */
 	private static $renames = [];
 
 	public static function boot(): void {
@@ -37,10 +37,10 @@ final class Nav {
 	}
 
 	public static function define_tools(): void {
-		Abilities::add( 'set-navigation', 'Create or update a navigation menu', 'Kadence navigation menu from items [{label, url, children:[...]}]. key identifies it so re-running updates it. Live items: an item with auto "services" (optionally category: a service category slug) or "areas" (optionally parent: an area slug or path; default the top-level areas) gets its children from the entries and keeps them up to date when services or areas are added, renamed, reordered or removed. limit = how many (default 12, 0 = all; a "View all" link to the hub, category page or parent area follows when there are more). Children you list yourself stay. Returns the navigation post id (use in set-header, or leave to set-header).',
+		Abilities::add( 'set-navigation', 'Create or update a navigation menu', 'Kadence navigation menu from items [{label, url, children:[...]}]. key identifies it so re-running updates it (main-menu is the one the header shows). Live items: an item with auto "services" or "areas" gets its children from the entries and keeps them up to date when services or areas are added, renamed, reordered or removed: the top-level ones, or with parent (a service or area slug or path) that one\'s children. depth 2 adds each child\'s own children as a second level (sub-services under their service). limit = how many (default 12, 0 = all; a "View all" link to the hub or the parent follows when there are more). Children you list yourself stay. Returns the navigation post id.',
 			[ 'properties' => [ 'key' => [ 'type' => 'string' ], 'items' => [ 'type' => 'array', 'items' => [ 'type' => 'object' ] ] ], 'required' => [ 'items' ] ], [ __CLASS__, 'set_navigation' ], 'edit_theme_options' );
 
-		Abilities::add( 'set-header', 'Set the site header from a header pattern', 'Applies a header pattern (see list-patterns category headers): fills slots, builds the menu from nav items, publishes it as the Kadence block header and switches the site to it.',
+		Abilities::add( 'set-header', 'Set the site header from a header pattern', 'Applies a header pattern (list-patterns piece header; the Design hub does this when you choose a header): fills slots, builds the menu from nav items (or keeps the main menu), publishes it as the Kadence block header and switches the site to it.',
 			[ 'properties' => [
 				'pattern' => [ 'type' => 'string' ],
 				'nav'     => [ 'type' => 'array', 'items' => [ 'type' => 'object' ], 'description' => 'Menu items [{label,url,children}]' ],
@@ -59,10 +59,10 @@ final class Nav {
 	 */
 	public static function markers(): array {
 		return [
-			'lb-auto-services'          => 'Children are every published service (menu_order, then title).',
-			'lb-auto-category-{slug}'   => 'Children are the services in that service category.',
+			'lb-auto-services'          => 'Children are the top-level services (menu_order, then title).',
 			'lb-auto-areas'             => 'Children are the top-level service areas.',
-			'lb-auto-parent-{path}'     => 'Children are the child areas of that area.',
+			'lb-auto-parent-{path}'     => 'Children are the children of that service or area instead.',
+			'lb-auto-depth-2'           => 'Each child also lists its own children (a second dropdown level).',
 			'lb-auto-limit-{n}'         => 'At most n children (plus a "View all" link to the hub).',
 			'lb-auto-child'             => 'A generated child item; only these are replaced on rebuild.',
 			'lb-auto-viewall'           => 'The generated "View all" child (with lb-auto-child).',
@@ -78,9 +78,9 @@ final class Nav {
 		}
 	}
 
-	/** A category slug or area path changed: markers naming the old one follow it (kind category|parent). */
+	/** A service or area path changed: markers naming the old one follow it (kind parent). */
 	public static function rename( string $kind, string $old, string $new ): void {
-		if ( '' !== $old && $old !== $new && in_array( $kind, [ 'category', 'parent' ], true ) ) {
+		if ( '' !== $old && $old !== $new && 'parent' === $kind ) {
 			self::$renames[ $kind ][ $old ] = $new;
 			self::mark_dirty();
 		}
@@ -198,35 +198,42 @@ final class Nav {
 		return 'kadence/navigation-link' === ( $b['blockName'] ?? '' ) && in_array( 'lb-auto-child', self::classes( (string) ( $b['attrs']['className'] ?? '' ) ), true );
 	}
 
-	/** What a parent's markers ask for: {type service|area, category, parent (path), limit} or null. */
+	/**
+	 * What a parent's markers ask for: {type service|area, parent (path), depth 1|2, limit} or null. A menu from before v2
+	 * may say lb-auto-category-{slug}: its category became a parent service with that slug.
+	 */
 	public static function spec( string $class_name ): ?array {
-		$s = [ 'type' => '', 'category' => '', 'parent' => '', 'limit' => 0 ];
+		$s = [ 'type' => '', 'parent' => '', 'depth' => 1, 'limit' => 0 ];
 		foreach ( self::classes( $class_name ) as $c ) {
 			if ( 'lb-auto-services' === $c && '' === $s['type'] ) {
 				$s['type'] = 'service';
 			} elseif ( 'lb-auto-areas' === $c && '' === $s['type'] ) {
 				$s['type'] = 'area';
 			} elseif ( preg_match( '/^lb-auto-category-(.+)$/', $c, $m ) ) {
-				$s['category'] = $m[1];
+				$s['parent'] = $m[1];
 				$s['type'] = 'service';
 			} elseif ( preg_match( '/^lb-auto-parent-(.+)$/', $c, $m ) ) {
 				$s['parent'] = str_replace( '--', '/', $m[1] );
-				$s['type'] = 'area';
+			} elseif ( 'lb-auto-depth-2' === $c ) {
+				$s['depth'] = 2;
 			} elseif ( preg_match( '/^lb-auto-limit-(\d+)$/', $c, $m ) ) {
 				$s['limit'] = (int) $m[1];
 			}
+		}
+		if ( '' === $s['type'] && '' !== $s['parent'] ) {
+			$s['type'] = 'area'; // Menus from before v2: a parent marker alone meant an area.
 		}
 		return '' === $s['type'] ? null : $s;
 	}
 
 	/** The marker classes for an auto item ($limit 0 = all). */
-	public static function marker_class( string $auto, string $category = '', string $parent_path = '', int $limit = 0 ): string {
+	public static function marker_class( string $auto, string $parent_path = '', int $limit = 0, int $depth = 1 ): string {
 		$c = 'areas' === $auto || 'area' === $auto ? [ 'lb-auto-areas' ] : [ 'lb-auto-services' ];
-		if ( 'lb-auto-services' === $c[0] && '' !== $category ) {
-			$c[] = 'lb-auto-category-' . sanitize_title( $category );
-		}
-		if ( 'lb-auto-areas' === $c[0] && '' !== trim( $parent_path, '/' ) ) {
+		if ( '' !== trim( $parent_path, '/' ) ) {
 			$c[] = 'lb-auto-parent-' . implode( '--', array_map( 'sanitize_title', explode( '/', trim( $parent_path, '/' ) ) ) );
+		}
+		if ( $depth > 1 ) {
+			$c[] = 'lb-auto-depth-2';
 		}
 		if ( $limit > 0 ) {
 			$c[] = 'lb-auto-limit-' . $limit;
@@ -234,7 +241,7 @@ final class Nav {
 		return implode( ' ', $c );
 	}
 
-	/** Rewrite category / parent markers that name a renamed category slug or moved area path. */
+	/** Rewrite parent markers that name a moved service or area path. */
 	private static function apply_renames( array &$b ): bool {
 		if ( ! self::$renames ) {
 			return false;
@@ -242,9 +249,7 @@ final class Nav {
 		$classes = self::classes( (string) ( $b['attrs']['className'] ?? '' ) );
 		$out = [];
 		foreach ( $classes as $c ) {
-			if ( preg_match( '/^lb-auto-category-(.+)$/', $c, $m ) && isset( self::$renames['category'][ $m[1] ] ) ) {
-				$c = 'lb-auto-category-' . self::$renames['category'][ $m[1] ];
-			} elseif ( preg_match( '/^lb-auto-parent-(.+)$/', $c, $m ) ) {
+			if ( preg_match( '/^lb-auto-parent-(.+)$/', $c, $m ) ) {
 				$path = str_replace( '--', '/', $m[1] );
 				foreach ( (array) ( self::$renames['parent'] ?? [] ) as $old => $new ) {
 					if ( $path === $old || 0 === strpos( $path, $old . '/' ) ) {
@@ -270,9 +275,10 @@ final class Nav {
 	/**
 	 * A generated child: kind post-type + type + id (Kadence prints the current permalink); an existing child for the same
 	 * entry keeps its uniqueID and styling. A child pointing where an enclosing link points is written as a custom link
-	 * (url only): Kadence would refuse to render a link whose id is already being rendered above it.
+	 * (url only): Kadence would refuse to render a link whose id is already being rendered above it. $kids: its own
+	 * generated children (depth 2).
 	 */
-	private static function child( \WP_Post $p, string $key, ?array $old, array $ancestors = [] ): array {
+	private static function child( \WP_Post $p, string $key, ?array $old, array $ancestors = [], array $kids = [] ): array {
 		$attrs = $old ? (array) ( $old['attrs'] ?? [] ) : [ 'uniqueID' => 'lb' . substr( md5( $key . '|' . $p->ID ), 0, 8 ) ];
 		$classes = array_diff( self::classes( (string) ( $attrs['className'] ?? '' ) ), [ 'lb-auto-child', 'lb-auto-viewall' ] );
 		$attrs = array_merge( $attrs, [ 'label' => self::label( $p->post_title ), 'url' => (string) get_permalink( $p ), 'kind' => 'post-type', 'type' => $p->post_type, 'id' => (int) $p->ID, 'className' => trim( 'lb-auto-child ' . implode( ' ', $classes ) ) ] );
@@ -280,18 +286,21 @@ final class Nav {
 			$attrs['kind'] = 'custom';
 			unset( $attrs['type'], $attrs['id'] );
 		}
-		return [ 'blockName' => 'kadence/navigation-link', 'attrs' => $attrs, 'innerBlocks' => [], 'innerHTML' => '', 'innerContent' => [] ];
+		$inner = self::inner_content( [], count( $kids ) );
+		return [ 'blockName' => 'kadence/navigation-link', 'attrs' => $attrs, 'innerBlocks' => $kids, 'innerHTML' => implode( '', array_filter( $inner, 'is_string' ) ), 'innerContent' => $inner ];
 	}
 
-	/** Where "View all" goes for a spec: the category page, the parent area, else the hub. ?\WP_Post */
-	private static function view_all_target( array $spec ): ?\WP_Post {
-		$id = 0;
-		if ( 'service' === $spec['type'] && '' !== $spec['category'] ) {
-			$t = get_term_by( 'slug', $spec['category'], Entries::CAT );
-			$id = $t ? (int) get_term_meta( $t->term_id, '_lb_page', true ) : 0;
-		} elseif ( 'area' === $spec['type'] && '' !== $spec['parent'] ) {
-			$id = Entries::area_id( $spec['parent'] );
+	/** The post a spec's parent path names (a service or an area), 0 when none. */
+	private static function parent_id( array $spec ): int {
+		if ( '' === $spec['parent'] ) {
+			return 0;
 		}
+		return 'service' === $spec['type'] ? Entries::service_id( $spec['parent'] ) : Entries::area_id( $spec['parent'] );
+	}
+
+	/** Where "View all" goes for a spec: the parent service or area, else the hub. ?\WP_Post */
+	private static function view_all_target( array $spec ): ?\WP_Post {
+		$id = self::parent_id( $spec );
 		if ( ! $id || 'publish' !== get_post_status( $id ) ) {
 			$id = Roles::hubs()[ 'service' === $spec['type'] ? 'services' : 'areas' ];
 		}
@@ -299,30 +308,29 @@ final class Nav {
 		return $p && 'publish' === $p->post_status ? $p : null;
 	}
 
-	/** The comparable shape of a generated child (what it shows and where it points). */
+	/** The comparable shape of a generated child (what it shows and where it points, with its own children). */
 	private static function sig( array $b ): string {
 		$a = (array) ( $b['attrs'] ?? [] );
-		return wp_json_encode( [ (int) ( $a['id'] ?? 0 ), (string) ( $a['label'] ?? '' ), (string) ( $a['url'] ?? '' ), (string) ( $a['kind'] ?? '' ), (string) ( $a['type'] ?? '' ), in_array( 'lb-auto-viewall', self::classes( (string) ( $a['className'] ?? '' ) ), true ) ] );
+		return wp_json_encode( [ (int) ( $a['id'] ?? 0 ), (string) ( $a['label'] ?? '' ), (string) ( $a['url'] ?? '' ), (string) ( $a['kind'] ?? '' ), (string) ( $a['type'] ?? '' ), in_array( 'lb-auto-viewall', self::classes( (string) ( $a['className'] ?? '' ) ), true ), array_map( [ __CLASS__, 'sig' ], (array) ( $b['innerBlocks'] ?? [] ) ) ] );
 	}
 
 	/** Replace a marked link's generated children. @return bool changed */
 	private static function fill( array &$b, array $spec, string $seed, array $ancestors = [] ): bool {
 		$limit = (int) $spec['limit'];
 		$q = [ 'limit' => $limit > 0 ? $limit + 1 : 0 ];
-		if ( 'service' === $spec['type'] && '' !== $spec['category'] ) {
-			$q['category'] = $spec['category'];
+		if ( '' !== $spec['parent'] ) {
+			$pid = self::parent_id( $spec );
+			$posts = $pid ? Entries::query( $spec['type'], $q + [ 'parent' => $pid ] ) : [];
+		} else {
+			$posts = Entries::query( $spec['type'], $q + [ 'parent' => 'top' ] );
 		}
-		if ( 'area' === $spec['type'] ) {
-			$q['parent'] = '' !== $spec['parent'] ? $spec['parent'] : 'top';
-		}
-		$posts = Entries::query( $spec['type'], $q );
 		$more = $limit > 0 && count( $posts ) > $limit;
 		if ( $more ) {
 			$posts = array_slice( $posts, 0, $limit );
 		}
 		// uniqueIDs of new children: the menu, the parent link (its uniqueID, so two auto links never share child IDs), the post.
 		$puid = (string) ( $b['attrs']['uniqueID'] ?? '' );
-		$key = $seed . '|' . ( '' !== $puid ? $puid : $spec['type'] . '|' . $spec['category'] . '|' . $spec['parent'] );
+		$key = $seed . '|' . ( '' !== $puid ? $puid : $spec['type'] . '|' . $spec['parent'] );
 		$kids = (array) ( $b['innerBlocks'] ?? [] );
 		$old = [];
 		$manual = [];
@@ -344,7 +352,17 @@ final class Nav {
 		}
 		$want = [];
 		foreach ( $posts as $p ) {
-			$want[] = self::child( $p, $key, $by_id[ (int) $p->ID ] ?? null, $ancestors );
+			$kids = [];
+			if ( $spec['depth'] > 1 ) { // Second level: the entry's own children, in full.
+				$old_kids = [];
+				foreach ( (array) ( ( $by_id[ (int) $p->ID ] ?? [] )['innerBlocks'] ?? [] ) as $k ) {
+					$old_kids[ (int) ( $k['attrs']['id'] ?? 0 ) ] = $k;
+				}
+				foreach ( Entries::query( $spec['type'], [ 'parent' => (int) $p->ID ] ) as $c ) {
+					$kids[] = self::child( $c, $key . '|' . $p->ID, $old_kids[ (int) $c->ID ] ?? null, array_merge( $ancestors, [ (int) $p->ID ] ) );
+				}
+			}
+			$want[] = self::child( $p, $key, $by_id[ (int) $p->ID ] ?? null, $ancestors, $kids );
 		}
 		$target = $more ? self::view_all_target( $spec ) : null;
 		if ( $target ) {
@@ -388,7 +406,7 @@ final class Nav {
 	/* ------------------------------------------------------------------ navigation + header */
 
 	/**
-	 * Navigation-link blocks for items [{label, url, children, auto, category, parent, limit, post_id}]. uniqueIDs are
+	 * Navigation-link blocks for items [{label, url, children, auto, parent, depth, limit, post_id}]. uniqueIDs are
 	 * derived from the menu key and the item's place, so re-running set-navigation does not churn Kadence's CSS.
 	 */
 	private static function nav_blocks( array $items, string $key = '', string $path = '', array &$warnings = [] ): array {
@@ -405,23 +423,13 @@ final class Nav {
 			$target = ! empty( $it['post_id'] ) ? get_post( (int) $it['post_id'] ) : null;
 			$auto = in_array( $it['auto'] ?? '', [ 'services', 'areas' ], true ) ? (string) $it['auto'] : '';
 			if ( $auto ) {
-				$category = '';
 				$parent_path = '';
-				if ( 'services' === $auto && ! empty( $it['category'] ) && is_scalar( $it['category'] ) ) {
-					$t = get_term_by( 'slug', sanitize_title( (string) $it['category'] ), Entries::CAT ) ?: get_term_by( 'name', sanitize_text_field( (string) $it['category'] ), Entries::CAT );
-					$category = $t ? $t->slug : sanitize_title( (string) $it['category'] );
-					if ( ! $t ) {
-						$warnings[] = $label . ': no service category "' . sanitize_text_field( (string) $it['category'] ) . '" yet (its services appear once it exists).';
-					} elseif ( ! $target && empty( $it['url'] ) ) {
-						$page = (int) get_term_meta( $t->term_id, '_lb_page', true );
-						$target = $page ? get_post( $page ) : null;
-					}
-				}
-				if ( 'areas' === $auto && ! empty( $it['parent'] ) && is_scalar( $it['parent'] ) ) {
-					$pid = Entries::area_id( $it['parent'] );
-					$parent_path = $pid ? (string) get_page_uri( $pid ) : trim( (string) $it['parent'], '/' );
+				$parent = $it['parent'] ?? ( 'services' === $auto ? ( $it['category'] ?? '' ) : '' ); // category: briefs from before v2.
+				if ( '' !== $parent && is_scalar( $parent ) ) {
+					$pid = 'services' === $auto ? Entries::service_id( $parent ) : Entries::area_id( $parent );
+					$parent_path = $pid ? (string) get_page_uri( $pid ) : trim( (string) $parent, '/' );
 					if ( ! $pid ) {
-						$warnings[] = $label . ': no service area "' . sanitize_text_field( (string) $it['parent'] ) . '" (the item stays empty until it exists).';
+						$warnings[] = $label . ': no ' . ( 'services' === $auto ? 'service' : 'service area' ) . ' "' . sanitize_text_field( (string) $parent ) . '" yet (the item stays empty until it exists).';
 					} elseif ( ! $target && empty( $it['url'] ) ) {
 						$target = get_post( $pid );
 					}
@@ -434,7 +442,8 @@ final class Nav {
 					}
 				}
 				$limit = isset( $it['limit'] ) && is_numeric( $it['limit'] ) ? max( 0, (int) $it['limit'] ) : 12;
-				$attrs['className'] = self::marker_class( $auto, $category, $parent_path, $limit );
+				$depth = isset( $it['depth'] ) && 2 === (int) $it['depth'] ? 2 : 1;
+				$attrs['className'] = self::marker_class( $auto, $parent_path, $limit, $depth );
 			}
 			if ( $target instanceof \WP_Post && 'publish' === $target->post_status ) {
 				$attrs = array_merge( $attrs, [ 'url' => (string) get_permalink( $target ), 'kind' => 'post-type', 'type' => $target->post_type, 'id' => (int) $target->ID ] );
@@ -487,17 +496,23 @@ final class Nav {
 		}
 	}
 
+	/** The main menu (set-navigation key main-menu), 0 when there is none yet. */
+	public static function main_menu_id(): int {
+		$f = post_type_exists( 'kadence_navigation' ) ? get_posts( [ 'post_type' => 'kadence_navigation', 'post_status' => 'publish', 'meta_key' => '_lb_key', 'meta_value' => 'nav-main-menu', 'numberposts' => 1, 'fields' => 'ids', 'suppress_filters' => true ] ) : [];
+		return $f ? (int) $f[0] : 0;
+	}
+
 	public static function set_header( $input ) {
-		$all = Patterns::all();
+		$index = Patterns::index();
 		$slug = sanitize_key( $input['pattern'] ?? '' );
-		if ( ! isset( $all[ $slug ] ) || ! in_array( 'launch-builder-headers', (array) ( $all[ $slug ]['categories'] ?? [] ), true ) ) {
-			return new \WP_Error( 'lb_no_header', 'Unknown header pattern. Use list-patterns with category headers.', [ 'status' => 404 ] );
+		if ( ! isset( $index[ $slug ] ) || 'header' !== ( $index[ $slug ]['piece'] ?? '' ) ) {
+			return new \WP_Error( 'lb_no_header', 'Unknown header pattern. Use list-patterns with piece header.', [ 'status' => 404 ] );
 		}
 		if ( ! Plugin::kadence_theme_active() || ! post_type_exists( 'kadence_header' ) ) {
 			return new \WP_Error( 'lb_no_kadence', 'The block header needs the Kadence theme and Kadence Blocks (Header Adv) to be active.', [ 'status' => 412 ] );
 		}
-		$snap = Abilities::snapshot( 'set-header', [ 'blocks_header', 'blocks_header_id' ] );
-		$blocks = parse_blocks( $all[ $slug ]['content'] );
+		$snap = ! empty( $input['no_snapshot'] ) ? null : Abilities::snapshot( 'set-header', [ 'blocks_header', 'blocks_header_id' ] );
+		$blocks = parse_blocks( (string) Patterns::content( $slug ) );
 		[ $applied, $warnings ] = Patterns::fill( $blocks, (array) ( $input['slots'] ?? [] ), (array) ( $input['replace'] ?? [] ), (array) ( $input['vars'] ?? [] ) );
 		$nav_id = 0;
 		if ( ! empty( $input['nav'] ) ) {
@@ -510,6 +525,7 @@ final class Nav {
 				$warnings[] = 'nav: ' . $w;
 			}
 		}
+		$nav_id = $nav_id ?: self::main_menu_id(); // No items given: the header shows the main menu.
 		if ( $nav_id ) {
 			self::set_nav_id( $blocks, $nav_id );
 		}
@@ -520,16 +536,10 @@ final class Nav {
 		foreach ( (array) ( Plugin::pattern_extra( $slug )['header_meta'] ?? [] ) as $k => $v ) {
 			update_post_meta( $id, $k, $v );
 		}
+		update_post_meta( $id, '_lb_pattern', $slug );
 		set_theme_mod( 'blocks_header', true );
 		set_theme_mod( 'blocks_header_id', $id );
-		$hn = (array) ( Plugin::pattern_extra( $slug )['header_nav'] ?? [] ); // A header may need particular menu colours (a dark bar needs light links).
-		if ( $hn && $nav_id ) {
-			Design::set_nav_style( [ 'key' => 'main-menu' ] + $hn );
-		} elseif ( $nav_id ) { // No special menu colours: clear any a previous header (such as the dark one) left on the shared menu.
-			foreach ( [ '_kad_navigation_linkColor', '_kad_navigation_linkColorHover', '_kad_navigation_linkColorActive' ] as $mk ) {
-				delete_post_meta( $nav_id, $mk );
-			}
-		}
+		Cache::purge_later();
 		return [ 'header_id' => $id, 'navigation_id' => $nav_id, 'applied' => $applied, 'warnings' => $warnings, 'snapshot' => $snap, 'edit_url' => get_edit_post_link( $id, 'raw' ) ];
 	}
 
@@ -537,7 +547,7 @@ final class Nav {
 
 	/** Module hook: how menus stay live. */
 	public static function playbook( array &$pb ): void {
-		$pb['live_menus'] = 'Menus never list services or areas by hand: give a set-navigation / set-header nav item auto "services" (category: slug for one category) or auto "areas" (parent: slug or path for one area\'s children) and limit (default 12, 0 = all). Its children follow the entries (added, renamed, reordered, removed) and link by post id; children you add yourself stay. For a mega menu, put a launch/entries list (layout menu or columns-links) in a link with the mega menu option on.';
+		$pb['live_menus'] = 'Menus never list services or areas by hand: give a set-navigation item auto "services" or auto "areas" (parent: a slug or path for that entry\'s children; depth 2 for a second level of sub-services) and limit (default 12, 0 = all). Its children follow the entries (added, renamed, reordered, removed) and link by post id; children you add yourself stay.';
 	}
 
 	/** Module hook: audit checks this module owns. */
@@ -590,7 +600,7 @@ final class Nav {
 		}
 		foreach ( $menus as $mid => $n ) {
 			$term = get_term( $mid, 'nav_menu' );
-			$out[] = [ 'severity' => 'warning', 'code' => 'menu_static_entry_url', 'object_type' => 'nav_menu', 'id' => $mid, 'url' => '', 'message' => sprintf( 'Classic menu "%s" lists %d service/area links by hand; new, renamed or removed entries are not kept in step.', $term instanceof \WP_Term ? $term->name : (string) $mid, $n ), 'fix' => 'Use the Kadence block header with set-navigation auto items, or a launch/entries list.' ];
+			$out[] = [ 'severity' => 'warning', 'code' => 'menu_static_entry_url', 'object_type' => 'nav_menu', 'id' => $mid, 'url' => '', 'message' => sprintf( 'Classic menu "%s" lists %d service/area links by hand; new, renamed or removed entries are not kept in step.', $term instanceof \WP_Term ? $term->name : (string) $mid, $n ), 'fix' => 'Use the Kadence block header with set-navigation auto items.' ];
 		}
 		return $out;
 	}

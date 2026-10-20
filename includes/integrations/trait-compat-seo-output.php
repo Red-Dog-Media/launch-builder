@@ -417,9 +417,9 @@ trait Compat_Seo_Output {
 		if ( empty( $entity['serviceType'] ) ) {
 			$entity['serviceType'] = self::plain_title( $p );
 		}
-		$cat = self::primary_category( $p->ID );
-		if ( $cat && empty( $entity['category'] ) ) {
-			$entity['category'] = $cat->name;
+		$parent = $p->post_parent ? get_post( $p->post_parent ) : null; // A sub-service: its service is the category.
+		if ( $parent && Entries::SERVICE === $parent->post_type && empty( $entity['category'] ) ) {
+			$entity['category'] = self::plain_title( $parent );
 		}
 		if ( empty( $entity['provider'] ) ) {
 			$entity['provider'] = [ '@id' => self::publisher_id() ];
@@ -439,59 +439,31 @@ trait Compat_Seo_Output {
 		return html_entity_decode( self::clean_seo( get_the_title( $post ) ), ENT_QUOTES, 'UTF-8' );
 	}
 
-	/** Primary service category: Rank Math's / Yoast's primary term, else the first by name. */
-	private static function primary_category( int $id ): ?\WP_Term {
-		foreach ( [ 'rank_math_primary_' . Entries::CAT, '_yoast_wpseo_primary_' . Entries::CAT ] as $k ) {
-			$t = (int) get_post_meta( $id, $k, true );
-			if ( $t ) {
-				$term = get_term( $t, Entries::CAT );
-				if ( $term instanceof \WP_Term ) {
-					return $term;
-				}
-			}
-		}
-		$terms = wp_get_object_terms( $id, Entries::CAT, [ 'orderby' => 'name' ] );
-		return $terms && ! is_wp_error( $terms ) ? $terms[0] : null;
-	}
-
 	/**
-	 * areaServed as Place nodes: the published areas offering a service (an area without _lb_services offers all), for
-	 * the publisher (0) every published area; else Business Info areas_served; else the Business Info city.
+	 * areaServed as Place nodes: the published areas with a page for a service (an area service page about it, or about
+	 * one of its sub-services); for the publisher (0) and for a service no area has a page for, every top-level area.
 	 */
 	public static function areas_served( int $service_id ): array {
 		if ( isset( self::$areas[ $service_id ] ) ) {
 			return self::$areas[ $service_id ];
 		}
+		$areas = [];
+		if ( $service_id ) {
+			$ids = array_merge( [ $service_id ], array_map( 'intval', get_children( [ 'post_parent' => $service_id, 'post_type' => Entries::SERVICE, 'post_status' => 'publish', 'fields' => 'ids' ] ) ) );
+			$pages = get_posts( [ 'post_type' => Entries::AREA, 'post_status' => 'publish', 'numberposts' => 200, 'meta_query' => [ [ 'key' => '_lb_service', 'value' => $ids, 'compare' => 'IN' ] ], 'suppress_filters' => false ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
+			foreach ( $pages as $pg ) {
+				$a = $pg->post_parent ? get_post( $pg->post_parent ) : null;
+				if ( $a && 'publish' === $a->post_status ) {
+					$areas[ $a->ID ] = $a;
+				}
+			}
+		}
+		if ( ! $areas ) {
+			$areas = Entries::query( 'area', [ 'parent' => 'top', 'limit' => 100 ] );
+		}
 		$out = [];
-		$areas = get_posts( [ 'post_type' => Entries::AREA, 'post_status' => 'publish', 'numberposts' => 100, 'orderby' => [ 'menu_order' => 'ASC', 'title' => 'ASC' ], 'suppress_filters' => false ] );
 		foreach ( $areas as $a ) {
-			if ( $service_id ) {
-				$ids = [];
-				foreach ( (array) get_post_meta( $a->ID, '_lb_services', false ) as $row ) {
-					foreach ( is_array( $row ) ? $row : explode( ',', (string) $row ) as $x ) {
-						$ids[] = (int) $x;
-					}
-				}
-				$ids = array_filter( $ids );
-				if ( $ids && ! in_array( $service_id, $ids, true ) ) {
-					continue;
-				}
-			}
 			$out[] = [ '@type' => 'Place', 'name' => self::plain_title( $a ), 'url' => get_permalink( $a ) ];
-		}
-		if ( ! $out ) {
-			foreach ( self::biz_list( 'areas_served' ) as $name ) {
-				$name = self::clean_seo( is_array( $name ) ? ( $name['name'] ?? '' ) : $name );
-				if ( '' !== $name ) {
-					$out[] = [ '@type' => 'Place', 'name' => $name ];
-				}
-			}
-		}
-		if ( ! $out ) {
-			$city = self::biz( Company::resolve(), 'city' );
-			if ( '' !== $city ) {
-				$out[] = [ '@type' => 'Place', 'name' => $city ];
-			}
 		}
 		return self::$areas[ $service_id ] = array_slice( $out, 0, 50 );
 	}
@@ -524,13 +496,9 @@ trait Compat_Seo_Output {
 		return self::clean_seo( html_entity_decode( $s, ENT_QUOTES, 'UTF-8' ) );
 	}
 
-	/** Is there FAQ markup already on this page (a faqSchema accordion or an SEO plugin FAQ block, in the content or the role template)? */
+	/** Is there FAQ markup already on this page (a faqSchema accordion or an SEO plugin FAQ block, in the content or the designs placed on it)? */
 	public static function has_faq_markup( \WP_Post $p ): bool {
-		$sources = [ (string) $p->post_content ];
-		$role = Roles::of( $p->ID );
-		if ( in_array( $role, [ 'service', 'area' ], true ) ) {
-			$sources[] = self::design_markup( Chrome::design( 'template', $role ) );
-		}
+		$sources = [ (string) $p->post_content, Design_Hub::role_markup( Roles::of( $p->ID ) ) ];
 		foreach ( $sources as $c ) {
 			if ( false !== strpos( $c, '"faqSchema":true' ) || false !== strpos( $c, '<!-- wp:rank-math/faq-block' ) || false !== strpos( $c, '<!-- wp:yoast/faq-block' ) ) {
 				return true;
@@ -561,10 +529,10 @@ trait Compat_Seo_Output {
 		return in_array( (string) $type, self::NON_SEO_TYPES, true ) ? true : $exclude;
 	}
 
-	/** Service categories stay out while any category has its own page (the archive 301s to it). */
+	/** The service categories of sites built before v2 stay out of sitemaps. */
 	public static function exclude_taxonomy( $exclude, $taxonomy ) {
-		if ( Entries::CAT === (string) $taxonomy && Roles::catmap() ) {
-			return true;
+		if ( Entries::LEGACY_CAT === (string) $taxonomy ) {
+			return true; // Service categories of sites built before v2 (now parent services).
 		}
 		return $exclude;
 	}
@@ -641,8 +609,8 @@ trait Compat_Seo_Output {
 	}
 
 	/**
-	 * What Rank Math's content analysis should also see for a post: token values (ns.key => text) and the role chrome
-	 * that renders around the content (hero, and the entry template for services/areas) with tokens resolved, as HTML.
+	 * What Rank Math's content analysis should also see for a post: token values (ns.key => text) and the designs the
+	 * Design hub places around the content (hero, lists) with tokens resolved, as HTML.
 	 */
 	public static function seo_context( \WP_Post $post ): array {
 		$tokens = [];
@@ -653,14 +621,8 @@ trait Compat_Seo_Output {
 			}
 		}
 		$role = Roles::of( $post->ID );
-		$html = '';
-		$slots = in_array( $role, [ 'service', 'area' ], true ) ? [ 'hero', 'template' ] : [ 'hero' ];
-		foreach ( $slots as $slot ) {
-			$markup = '' !== $role ? self::design_markup( Chrome::design( $slot, $role ) ) : '';
-			if ( '' !== $markup ) {
-				$html .= self::render_for( $markup, $role, $post ) . "\n";
-			}
-		}
+		$markup = '' !== $role ? Design_Hub::role_markup( $role, [ 'hero', 'list' ] ) : '';
+		$html = '' !== $markup ? self::render_for( $markup, $role, $post ) : '';
 		$html = trim( wp_kses_post( (string) preg_replace( '#<(script|style|svg)\b[^>]*>.*?</\1>#is', '', $html ) ) );
 		return [ 'id' => $post->ID, 'role' => $role, 'tokens' => $tokens, 'chrome_html' => mb_substr( $html, 0, 30000 ) ];
 	}
@@ -683,38 +645,6 @@ trait Compat_Seo_Output {
 			$prev instanceof \WP_Post ? setup_postdata( $prev ) : wp_reset_postdata();
 		}
 		return (string) $html;
-	}
-
-	/** Block markup of a chrome DESIGN: "slug" | {pattern} | {sections} | {synced: key} | {adopt: element id}. */
-	public static function design_markup( $d ): string {
-		if ( is_string( $d ) ) {
-			return ( '' === $d || 'theme' === $d ) ? '' : self::pattern_markup( $d );
-		}
-		if ( ! is_array( $d ) ) {
-			return '';
-		}
-		if ( isset( $d['pattern'] ) ) {
-			return self::pattern_markup( (string) $d['pattern'] );
-		}
-		if ( isset( $d['sections'] ) ) {
-			return implode( "\n", array_map( [ __CLASS__, 'design_markup' ], (array) $d['sections'] ) );
-		}
-		if ( isset( $d['synced'] ) ) {
-			$key = (string) $d['synced'];
-			$ids = get_posts( [ 'post_type' => 'wp_block', 'post_status' => 'publish', 'numberposts' => 1, 'fields' => 'ids', 'meta_query' => [ [ 'key' => '_lb_key', 'value' => [ $key, 'synced-' . $key ], 'compare' => 'IN' ] ] ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
-			return $ids ? (string) get_post_field( 'post_content', (int) $ids[0] ) : '';
-		}
-		if ( isset( $d['adopt'] ) ) {
-			$p = get_post( (int) $d['adopt'] );
-			return $p && 'publish' === $p->post_status ? (string) $p->post_content : '';
-		}
-		return '';
-	}
-
-	private static function pattern_markup( string $slug ): string {
-		Plugin::register_patterns();
-		$p = \WP_Block_Patterns_Registry::get_instance()->get_registered( 'launch-builder/' . sanitize_title( $slug ) );
-		return is_array( $p ) ? (string) ( $p['content'] ?? '' ) : '';
 	}
 
 	/** Block editor: the Rank Math analysis filter (only with Rank Math, only for editable posts). */

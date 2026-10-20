@@ -30,7 +30,7 @@ final class Admin {
 		add_submenu_page( self::SLUG, __( 'Dashboard', 'launch-builder' ), __( 'Dashboard', 'launch-builder' ), 'manage_options', self::SLUG, [ Dashboard::class, 'page_dashboard' ] );
 		add_submenu_page( self::SLUG, __( 'Modules', 'launch-builder' ), __( 'Modules', 'launch-builder' ), 'manage_options', 'launch-builder-modules', [ Dashboard::class, 'page_modules' ] );
 		add_submenu_page( self::SLUG, __( 'Business Info', 'launch-builder' ), __( 'Business Info', 'launch-builder' ), 'manage_options', 'launch-builder-business', [ Company::class, 'page' ] );
-		add_submenu_page( self::SLUG, __( 'Design hub', 'launch-builder' ), __( 'Design hub', 'launch-builder' ), 'manage_options', Design_Hub::PAGE, [ Design_Hub::class, 'page' ] );
+		add_submenu_page( self::SLUG, __( 'Design hub', 'launch-builder' ), __( 'Design hub', 'launch-builder' ), 'manage_options', Design_Hub_Admin::PAGE, [ Design_Hub_Admin::class, 'page' ] );
 		add_submenu_page( self::SLUG, __( 'Site health', 'launch-builder' ), __( 'Site health', 'launch-builder' ), 'manage_options', 'launch-builder-health', [ __CLASS__, 'page_health' ] );
 		add_submenu_page( self::SLUG, __( 'Connect', 'launch-builder' ), __( 'Connect', 'launch-builder' ), 'manage_options', 'launch-builder-connect', [ __CLASS__, 'page_start' ] );
 		add_submenu_page( self::SLUG, __( 'Activity and safety', 'launch-builder' ), __( 'Activity and safety', 'launch-builder' ), 'manage_options', 'launch-builder-activity', [ __CLASS__, 'page_activity' ] );
@@ -66,22 +66,22 @@ final class Admin {
 		$kb = Plugin::kadence_blocks_active();
 		$rows[] = [ $kb ? 'ok' : 'bad', 'Kadence Blocks is active', $kb ? 'The patterns are built from Kadence blocks.' : 'The patterns need it.', $kb ? '' : '<a href="' . esc_url( admin_url( 'plugin-install.php?s=kadence+blocks&tab=search&type=term' ) ) . '">Install Kadence Blocks</a>' ];
 		$th = Plugin::kadence_theme_active();
-		$rows[] = [ $th ? 'ok' : 'warn', 'Kadence theme is active', $th ? 'Header, global areas, buttons and page layout controls work.' : 'Without it the block header, global areas and the design tools have no effect.', $th ? '' : '<a href="' . esc_url( admin_url( 'themes.php' ) ) . '">Themes</a>' ];
+		$rows[] = [ $th ? 'ok' : 'warn', 'Kadence theme is active', $th ? 'Header, designs, buttons and page layout controls work.' : 'Without it the block header, the Design hub and the design tools have no effect.', $th ? '' : '<a href="' . esc_url( admin_url( 'themes.php' ) ) . '">Themes</a>' ];
 		$pretty = '' !== (string) get_option( 'permalink_structure' );
 		$rows[] = [ $pretty ? 'ok' : 'warn', 'Pretty permalinks', $pretty ? 'The short address ' . esc_html( home_url( '/mcp' ) ) . ' works.' : 'Turn on a non-plain permalink structure so /mcp works (the REST address works either way).', $pretty ? '' : '<a href="' . esc_url( admin_url( 'options-permalink.php' ) ) . '">Permalinks</a>' ];
 		$ssl = is_ssl() || self::local_site();
 		$rows[] = [ $ssl ? 'ok' : 'warn', 'Secure connection', $ssl ? ( is_ssl() ? 'HTTPS: the token travels encrypted.' : 'Local site: fine for testing.' ) : 'This site is on http. Use HTTPS before connecting an AI assistant, or the token can be read on the way.', '' ];
 		$res = Company::resolve();
-		$essentials = Company::essentials();
-		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return 'default' !== $res[ $k ]['from']; } ) );
-		$rows[] = [ count( $essentials ) === $set ? 'ok' : 'warn', 'Business Info', $set . ' of ' . count( $essentials ) . ' essentials set (business name, phone, email, address, hours, button text). Until set, patterns show demo values.', '<a href="' . esc_url( self::url( 'launch-builder-business' ) ) . '">Open Business Info</a>' ];
+		$essentials = Company::ESSENTIALS;
+		$set = count( array_filter( $essentials, static function ( $k ) use ( $res ) { return in_array( $res[ $k ]['from'] ?? '', [ 'saved', 'derived', 'wordpress' ], true ); } ) );
+		$rows[] = [ count( $essentials ) === $set ? 'ok' : 'warn', 'Business Info', $set . ' of ' . count( $essentials ) . ' essentials set (business name, phone, email, address, call to action). Until set, designs show demo values.', '<a href="' . esc_url( self::url( 'launch-builder-business' ) ) . '">Open Business Info</a>' ];
 		$tok = get_option( 'launch_builder_mcp_token' );
 		$rows[] = [ is_array( $tok ) ? 'ok' : 'warn', 'Connection token', is_array( $tok ) ? 'Active, ending ' . esc_html( (string) $tok['last4'] ) . ', expires ' . esc_html( ! empty( $tok['expires'] ) ? wp_date( 'Y-m-d', (int) $tok['expires'] ) : 'never' ) . '.' : 'None yet. Step 1 below creates one.', '' ];
 		$bh = (bool) get_theme_mod( 'blocks_header' );
-		$rows[] = [ $bh ? 'ok' : 'opt', 'Block header', $bh ? 'A Kadence block header is active (set-header).' : 'Not set yet. Your AI assistant sets it with set-header.', '' ];
+		$rows[] = [ $bh ? 'ok' : 'opt', 'Block header', $bh ? 'A Kadence block header is active.' : 'Not set yet. Choose a header in the Design hub.', '<a href="' . esc_url( self::url( Design_Hub_Admin::PAGE ) ) . '">Open the Design hub</a>' ];
 		$bp = Plugin::requirement_met( 'kadence-blocks-pro' );
 		$tp = Plugin::requirement_met( 'kadence-pro' );
-		$rows[] = [ $bp && $tp ? 'ok' : 'opt', 'Kadence Pro (optional)', ( $bp ? 'Blocks Pro active' : 'Blocks Pro not active' ) . ', ' . ( $tp ? 'Theme Kit Pro active' : 'Theme Kit Pro not active' ) . '. Pro patterns (sliders, modal, split content) and per-page Elements need them.', '' ];
+		$rows[] = [ $bp && $tp ? 'ok' : 'opt', 'Kadence Pro (optional)', ( $bp ? 'Blocks Pro active' : 'Blocks Pro not active' ) . ', ' . ( $tp ? 'Theme Kit Pro active' : 'Theme Kit Pro not active' ) . '. The Design hub places heroes, lists, the call to action and the footer as Kadence Elements (Theme Kit Pro) and builds lists with the Query Loop (Blocks Pro).', '' ];
 		$audit = Audit::results();
 		if ( $audit ) {
 			$bad = (int) ( $audit['totals']['error'] ?? 0 );
@@ -199,7 +199,7 @@ final class Admin {
 	/* ------------------------------------------------------------------ pattern preview route */
 
 	/**
-	 * Preview route (the Pattern library tab of the Design hub, class Design_Hub, loads it in its frame). ?lb_preview=<slug> renders one pattern; ?lb_preview=@<category> renders every pattern of a category in a
+	 * Preview route (the Design hub, class Design_Hub_Admin, loads it in its frames). ?lb_preview=<slug> renders one pattern; ?lb_preview=@<category> renders every pattern of a category in a
 	 * single page (one slow request, then browsing is just scrolling). Output is cached until a pattern, Business Info, the
 	 * palette, theme settings or the active plugins change.
 	 */
@@ -213,7 +213,7 @@ final class Admin {
 		$raw = (string) wp_unslash( $_GET['lb_preview'] ); // phpcs:ignore
 		$is_cat = '@' === ( $raw[0] ?? '' );
 		$slug = sanitize_key( ltrim( $raw, '@' ) );
-		// Render one pattern as a page of its role (Roles: header, or ?lb_role=) so
+		// Render one pattern as a page of its role (its piece's role, or ?lb_role=) so
 		// role-dependent output (crumbs, heroes, tokens) matches a real page; the pattern screenshot tool relies on it.
 		$role = $is_cat ? '' : Patterns::preview_role( $slug, isset( $_GET['lb_role'] ) ? sanitize_key( wp_unslash( $_GET['lb_role'] ) ) : '' ); // phpcs:ignore
 		nocache_headers();
@@ -225,7 +225,7 @@ final class Admin {
 		foreach ( $files as $fl ) {
 			$stamp = max( $stamp, is_file( $fl ) ? (int) filemtime( $fl ) : 0 );
 		}
-		$key = 'lb_pv_' . md5( implode( '|', [ $raw, 'pv4', $role, LB_VERSION, $stamp, count( $files ), wp_json_encode( get_option( Company::OPT ) ), wp_json_encode( get_option( Company::OPT_SRC ) ), (string) get_option( 'kadence_global_palette' ), md5( wp_json_encode( get_theme_mods() ) ), md5( wp_json_encode( get_option( 'active_plugins' ) ) ), (string) get_option( 'kadence_blocks_config_blocks' ) ] ) );
+		$key = 'lb_pv_' . md5( implode( '|', [ $raw, 'pv4', $role, LB_VERSION, $stamp, count( $files ), wp_json_encode( get_option( Company::OPT ) ), (string) get_option( 'kadence_global_palette' ), md5( wp_json_encode( get_theme_mods() ) ), md5( wp_json_encode( get_option( 'active_plugins' ) ) ), (string) get_option( 'kadence_blocks_config_blocks' ) ] ) );
 		$hit = get_transient( $key );
 		if ( is_string( $hit ) && '' !== $hit && empty( $_GET['lb_fresh'] ) ) { // phpcs:ignore
 			header( 'X-LB-Preview: cached' );
@@ -253,12 +253,12 @@ final class Admin {
 		wp_head();
 		echo '<style>html{margin-top:0!important}body{margin:0;background:#fff}.lb-pv-label{display:flex;gap:10px;align-items:baseline;padding:8px 16px;background:#1d2327;color:#fff;font:600 13px/1.4 system-ui,sans-serif}.lb-pv-label code{background:#2c3338;color:#c3c4c7;padding:1px 6px;border-radius:3px;font-weight:400}.lb-pv-item{scroll-margin-top:0}</style></head><body class="' . esc_attr( implode( ' ', get_body_class( 'lb-preview' ) ) ) . '">';
 		if ( ! $items ) {
-			echo '<p style="padding:24px;font-family:sans-serif">Nothing to preview here. Header patterns are applied with <code>set-header</code> and show on your site once set.</p>';
+			echo '<p style="padding:24px;font-family:sans-serif">Nothing to preview here. Headers are placed by the Design hub and show on your site once chosen.</p>';
 		}
 		$drawn = 0;
 		foreach ( $items as $p ) {
 			if ( in_array( 'launch-builder-headers', (array) $p['categories'], true ) ) {
-				echo '<p style="padding:24px;font-family:sans-serif">Header patterns are applied with <code>set-header</code>; they show on your site once set.</p>';
+				echo '<p style="padding:24px;font-family:sans-serif">Headers are placed by the Design hub; they show on your site once chosen.</p>';
 				continue;
 			}
 			$sl = substr( $p['name'], 15 );
@@ -287,9 +287,9 @@ final class Admin {
 		exit;
 	}
 
-	/** The old Pattern preview screen is now the Pattern library tab of the Design hub (the same page slug). */
+	/** The old Pattern preview screen is now the Design hub (the same page slug). */
 	public static function page_preview(): void {
-		Design_Hub::page();
+		Design_Hub_Admin::page();
 	}
 
 	/* ------------------------------------------------------------------ site health */

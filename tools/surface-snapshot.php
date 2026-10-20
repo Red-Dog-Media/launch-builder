@@ -11,7 +11,7 @@
  * Covers: every class, trait and interface under includes/ (loads, methods with a hash of their source, constants with a
  * hash of their value, properties), the module registry per hook, the three entry types and their meta, the tools, REST
  * routes, blocks, patterns, every WordPress hook with a Launch Builder callback, shortcodes, option names, the keys of
- * site-state and the playbook, audit checks, build steps, the brief schema and the module switches. Run it as a user who
+ * site-state and the playbook, audit checks, the Design hub pieces and the module switches. Run it as a user who
  * can manage options (site-state and the playbook read as that user). Restore the database between runs when the code
  * under test writes on boot (migrations), or the option list differs for that reason alone.
  */
@@ -87,7 +87,7 @@ foreach ( $names as $n => $kind ) {
 }
 
 // Module registry.
-foreach ( [ '', 'boot', 'define_tools', 'site_state', 'playbook', 'audit_checks', 'blueprint_steps', 'brief_schema', 'activate', 'deactivate' ] as $m ) {
+foreach ( [ '', 'boot', 'define_tools', 'site_state', 'playbook', 'audit_checks', 'activate', 'deactivate' ] as $m ) {
 	$out['modules'][ '' === $m ? 'all' : $m ] = LB\Plugin::modules( $m );
 }
 
@@ -139,8 +139,7 @@ $out['options'] = $opts;
 $out['site_state_keys'] = array_keys( (array) LB\Abilities::site_state() );
 $out['playbook_keys'] = array_keys( (array) LB\Content::playbook() );
 $out['audit_checks'] = array_keys( LB\Audit::checks() );
-$out['blueprint_steps'] = array_keys( LB\Blueprint::steps() );
-$out['brief_schema'] = md5( (string) wp_json_encode( LB\Brief::schema() ) );
+$out['design_pieces'] = array_keys( LB\Design_Hub::PIECES );
 foreach ( LB\Modules::all() as $info ) {
 	$out['module_switches'][ (string) ( $info['slug'] ?? $info['class'] ?? '' ) ] = $norm( $info );
 }

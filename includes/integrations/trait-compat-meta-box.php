@@ -60,9 +60,9 @@ trait Compat_Meta_Box {
 	}
 
 	/**
-	 * The option names of the settings pages that {{meta.*}} tokens may read: the page Business Info reads from, plus any a
-	 * site adds with the launch_builder_meta_token_pages filter (array $options, array $source: return option names). Other
-	 * settings pages are never read by a token: anyone who can write a post could otherwise print any field of any page.
+	 * The option names of the settings pages that {{meta.*}} tokens may read: Business Info's (Company::OPT), plus any a
+	 * site adds with the launch_builder_meta_token_pages filter (array $options: return option names). Other settings
+	 * pages are never read by a token: anyone who can write a post could otherwise print any field of any page.
 	 *
 	 * @return string[]
 	 */
@@ -70,9 +70,8 @@ trait Compat_Meta_Box {
 		if ( isset( self::$mb['token_options'] ) ) {
 			return self::$mb['token_options'];
 		}
-		$src = (array) get_option( Company::OPT_SRC, [] );
-		$out = isset( $src['option'] ) && is_string( $src['option'] ) && '' !== $src['option'] ? [ $src['option'] ] : [];
-		foreach ( (array) apply_filters( 'launch_builder_meta_token_pages', [], $src ) as $name ) {
+		$out = [ Company::OPT ];
+		foreach ( (array) apply_filters( 'launch_builder_meta_token_pages', [] ) as $name ) {
 			if ( is_string( $name ) && '' !== $name ) {
 				$out[] = $name;
 			}
@@ -86,8 +85,7 @@ trait Compat_Meta_Box {
 
 	/**
 	 * The fields {{meta.id}} may print on a page that is not an entry, from the settings pages in mb_token_options(): id =>
-	 * { option, network, field }. The page Business Info reads from comes first, so its field wins when two pages use the
-	 * same id. Only text-like types (MB_TOKEN_TYPES) and ids that do not read like a secret (MB_SECRET_ID).
+	 * { option, network, field }. Business Info's page comes first, so its field wins when two pages use the same id. Only text-like types (MB_TOKEN_TYPES) and ids that do not read like a secret (MB_SECRET_ID).
 	 *
 	 * @return array<string,array{option:string,network:bool,field:array}>
 	 */
@@ -99,7 +97,7 @@ trait Compat_Meta_Box {
 			return self::$mb['settings_index'];
 		}
 		$allowed = self::mb_token_options();
-		$pages = array_values( array_filter( Company::meta_box_pages(), static function ( $p ) use ( $allowed ) { return in_array( $p['option'], $allowed, true ); } ) );
+		$pages = array_values( array_filter( self::mb_settings_pages(), static function ( $p ) use ( $allowed ) { return in_array( $p['option'], $allowed, true ); } ) );
 		usort( $pages, static function ( $a, $b ) use ( $allowed ) {
 			return (int) ( ( $allowed[0] ?? '' ) === $b['option'] ) - (int) ( ( $allowed[0] ?? '' ) === $a['option'] );
 		} );
@@ -187,6 +185,47 @@ trait Compat_Meta_Box {
 	}
 
 	/**
+	 * Meta Box settings pages (MB Settings Page, Meta Box AIO): {option, ids[], title, network, parent}, one row per stored
+	 * option. Options that hold secrets (or that WordPress keeps for itself) are never listed.
+	 *
+	 * @return array<int,array{option:string,ids:string[],title:string,network:bool,parent:string}>
+	 */
+	public static function mb_settings_pages(): array {
+		if ( isset( self::$mb['settings_pages'] ) ) {
+			return self::$mb['settings_pages'];
+		}
+		$out = [];
+		if ( function_exists( 'rwmb_get_value' ) || has_filter( 'mb_settings_pages' ) ) {
+			foreach ( array_slice( (array) apply_filters( 'mb_settings_pages', [] ), 0, 60 ) as $page ) {
+				$page = (array) $page;
+				$id = isset( $page['id'] ) && is_scalar( $page['id'] ) ? (string) $page['id'] : '';
+				$option = ! empty( $page['option_name'] ) && is_scalar( $page['option_name'] ) ? (string) $page['option_name'] : $id;
+				if ( '' === $option || 1 !== preg_match( '/^[A-Za-z0-9_\-]+$/', $option ) || ! Abilities::option_readable( $option ) ) {
+					continue;
+				}
+				$network = ! empty( $page['network'] );
+				$key = ( $network ? 'n:' : 's:' ) . $option;
+				$title = '';
+				foreach ( [ 'menu_title', 'page_title' ] as $t ) {
+					if ( '' === $title && ! empty( $page[ $t ] ) && is_scalar( $page[ $t ] ) ) {
+						$title = trim( wp_strip_all_tags( (string) $page[ $t ] ) );
+					}
+				}
+				if ( isset( $out[ $key ] ) ) {
+					$out[ $key ]['ids'][] = $id;
+					continue;
+				}
+				$out[ $key ] = [ 'option' => $option, 'ids' => [ $id ], 'title' => '' !== $title ? $title : ( '' !== $id ? $id : $option ), 'network' => $network, 'parent' => isset( $page['parent'] ) && is_scalar( $page['parent'] ) ? (string) $page['parent'] : '' ];
+			}
+		}
+		$out = array_values( $out );
+		if ( did_action( 'init' ) ) { // Pages are registered on init: an earlier answer would be incomplete, so it is not kept.
+			self::$mb['settings_pages'] = $out;
+		}
+		return $out;
+	}
+
+	/**
 	 * Meta Box in one place, for get-compat and the admin Compatibility card: whether it is on, its version, the allowed
 	 * token fields per type (id, type) and which Card details fields it owns.
 	 *
@@ -197,14 +236,13 @@ trait Compat_Meta_Box {
 		if ( ! $out['active'] ) {
 			return $out;
 		}
-		$src = (array) get_option( Company::OPT_SRC, [] );
-		foreach ( Company::meta_box_pages() as $p ) { // Settings pages (Meta Box AIO, MB Settings Page): where Business Info can read from.
-			$out['settings_pages'][] = [ 'title' => $p['title'], 'option' => $p['option'], 'fields' => count( self::mb_setting_fields( $p['option'], $p['network'] && is_multisite() ) ), 'business_info_source' => ( $src['option'] ?? '' ) === $p['option'] ];
+		foreach ( self::mb_settings_pages() as $p ) { // Settings pages (Meta Box AIO, MB Settings Page).
+			$out['settings_pages'][] = [ 'title' => $p['title'], 'option' => $p['option'], 'fields' => count( self::mb_setting_fields( $p['option'], $p['network'] && is_multisite() ) ), 'business_info' => Company::OPT === $p['option'] ];
 		}
 		foreach ( [ Entries::SERVICE, Entries::AREA, 'page' ] as $pt ) {
 			$out['fields'][ $pt ] = array_values( array_map( static function ( $f ) { return [ 'id' => $f['id'], 'type' => $f['type'], 'shape' => $f['shape'], 'contexts' => $f['contexts'] ]; }, self::mb_fields_for( $pt ) ) );
 		}
-		$out['owns_card_fields'] = array_filter( [ '_lb_summary' => self::mb_owns_field( Entries::SERVICE, '_lb_summary' ), '_lb_icon' => self::mb_owns_field( Entries::SERVICE, '_lb_icon' ), '_lb_services' => self::mb_owns_field( Entries::AREA, '_lb_services' ) ] );
+		$out['owns_card_fields'] = array_filter( [ '_lb_summary' => self::mb_owns_field( Entries::SERVICE, '_lb_summary' ), '_lb_icon' => self::mb_owns_field( Entries::SERVICE, '_lb_icon' ), '_lb_service' => self::mb_owns_field( Entries::AREA, '_lb_service' ) ] );
 		return $out;
 	}
 

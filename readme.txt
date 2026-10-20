@@ -8,28 +8,25 @@ Stable tag: 0.12.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Build local business websites on Kadence: designed patterns, one home for business details, live service and area lists, and an MCP endpoint.
+Build local business websites on Kadence and Meta Box: a Design hub in three looks, one home for business details, services and service areas, and an MCP endpoint.
 
 == Description ==
 
-Launch Builder turns a client brief into a finished local business website on the Kadence stack. It brings a library of designed page sections, one place for the business details every page repeats, services and service areas that keep every list and menu up to date, and a secure MCP endpoint so an AI assistant or any other MCP client can build and maintain the site with you.
+Launch Builder turns a client brief into a finished local business website on the Kadence stack. It sets up services, service areas and Business Info in Meta Box, places a header, heroes, lists and footer as native Kadence objects in one of three looks, and offers a secure MCP endpoint so an AI assistant or any other MCP client can build and maintain the site with you.
 
 = Highlights =
 
-* **Designed patterns for every page type.** Heroes, service and area sections, reviews, calls to action, headers and footers, all built from Kadence blocks and the site's own palette and fonts.
-* **Business Info in one place.** Phone, address, hours, licences, buttons and forms flow into every page through dynamic text, so one change updates the whole site.
-* **Services and service areas as content types.** Lists, menus and footers read them live: add, rename or remove an entry and every page follows.
-* **Page roles.** Every page knows what it is: home, service, area, category, conversion, thank-you, legal and more.
-* **Rating widget.** Score, stars and review logos in badge, card, pill and stacked layouts.
-* **A dashboard and a Design hub.** A launch runway, module switches that save as you click, and every page type's header, hero, breadcrumbs, footer and call bar shown live.
-* **Optional modules.** URLs and redirects, safe duplication, media hygiene, local avatars, login links, Kadence Conversions popups and client branding: each switches on and off on its own.
-* **Meta Box ready.** Services, service areas and their categories can be listed and edited under Meta Box's Post Types, Taxonomies and Custom Fields, while every list and URL keeps working.
-* **One brief in, a whole site out.** Validate a brief, preview the changes, build in steps and export the site back as a brief.
+* **Native objects only.** Launch Builder sets the site up; Kadence and Meta Box run it. Services, areas and Business Info are Meta Box post types and a settings page, designs are a Kadence block header, Elements and Query Loops, so the site keeps working without the plugin.
+* **Business Info in one place.** Company name, phone, phone link, email, address, maps link and the call to action flow into every page through dynamic text.
+* **Services, sub-services and service areas.** Services at the root of the site with their sub-services under them; each service area lists its own service pages.
+* **A Design hub with three looks.** Header, heroes, breadcrumb bar, lists, call to action, footer and sidebar in Auto shop, Home services and Landscaping looks, with colours and buttons through the Kadence Style Library.
+* **One brief in, a whole site out.** A six-section brief, a dry run first, and re-running it changes nothing.
+* **Optional modules.** URLs and redirects, safe duplication, media hygiene, local avatars, login links and client branding: each switches on and off on its own.
 * **Safe automation.** Least-privilege tools, snapshots before every change and an activity log for everything an MCP client does.
 
 = Built on Kadence =
 
-Launch Builder needs the Kadence Blocks plugin and is designed for the Kadence theme. Kadence Blocks Pro and Kadence Theme Kit Pro unlock Elements-based placement and extra patterns. It works alongside Rank Math, Meta Box, Perfmatters and Kadence Conversions.
+Launch Builder is designed for the Kadence theme with Kadence Blocks, Kadence Blocks Pro (Query Loop) and Kadence Theme Kit Pro (Elements), and Meta Box AIO. It works alongside Rank Math and Perfmatters.
 
 = Updates =
 

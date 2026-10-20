@@ -5,13 +5,12 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Launch tools: go-live (final audit, then the site is switched on for search engines), detokenize (Business Info baked
- * into the content before the plugin is removed), convert-page-to-entry (a page becomes a service or service area, its old
- * URL redirects) and the legal texts (privacy policy, terms, accessibility statement) used by the brief builder and as a
- * tool. Every writer snapshots first.
+ * into the content before the plugin is removed) and convert-page-to-entry (a page becomes a service or service area, its
+ * old URL redirects). Every writer snapshots first.
  */
 final class Launch {
 
-	/** CSS class of the notice that says a generated legal text still has to be reviewed. */
+	/** CSS class of the notice that says a generated legal text (sites built before v2) still has to be reviewed. */
 	const REVIEW_CLASS = 'lb-review-notice';
 
 	/** Progress of a go-live audit that needs more than one call. */
@@ -31,21 +30,20 @@ final class Launch {
 	const DESIGN_TYPES  = [ 'wp_block', 'kadence_element', 'kadence_header', 'kadence_navigation', 'kadence_form', 'kadence_conversions' ];
 
 	public static function boot(): void {
-		add_filter( 'launch_builder_suppress_indexing', [ Brief_Build::class, 'suppress_while_building' ] );
 		Audit::register_check( 'legal_review_pending', 'content', [ __CLASS__, 'audit_legal' ] );
 	}
 
 	/* ------------------------------------------------------------------ tools */
 
 	public static function define_tools(): void {
-		Abilities::add( 'go-live', 'Launch the site', 'Last step of a build. Runs the site audit (failures only) and REFUSES when it finds errors unless force is true; then makes the site visible to search engines (Settings > Reading), stops holding back Rank Math Instant Indexing submissions, refreshes the sitemap and purges the caches, and reports what it did, with one needs_a_human list (logo, site icon, photos, form embed, legal review, WordPress sample content, Rank Math setup, Google Business Profile). A long audit stops after about 25 seconds and says so: call again with the after_id it returns. scope narrows the audit (default everything). Snapshots the settings first.',
+		Abilities::add( 'go-live', 'Launch the site', 'Last step of a build. Runs the site audit (failures only) and REFUSES when it finds errors unless force is true; then makes the site visible to search engines (Settings > Reading), stops holding back Rank Math Instant Indexing submissions, refreshes the sitemap and purges the caches, and reports what it did, with one needs_a_human list (logo, site icon, photos, legal review, WordPress sample content, Rank Math setup). A long audit stops after about 25 seconds and says so: call again with the after_id it returns. scope narrows the audit (default everything). Snapshots the settings first.',
 			[ 'properties' => [
 				'force'    => [ 'type' => 'boolean', 'description' => 'Go live even though the audit reports errors.' ],
 				'after_id' => [ 'type' => 'integer', 'description' => 'Continue a long audit here (the after_id of the previous result); 0 starts.' ],
 				'scope'    => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Audit scopes to run (default all).' ],
 			] ], [ __CLASS__, 'go_live' ], 'manage_options' );
 
-		Abilities::add( 'detokenize', 'Bake Business Info into the content', 'Run this BEFORE Launch Builder is removed from a site. It replaces the dynamic tokens ({{lb.phone}}, {{site.name}}, #lb-cta_url links, [lb field="phone"] shortcodes) with their current values: scope content = pages, posts, services and areas (page, entry, area and service tokens resolve against the post itself), designs = synced patterns, elements, headers, menus and forms (only Business Info and site values; tokens that depend on the page being viewed stay and are listed), seo = the %lb_...% variables in page titles and descriptions, all = every one of them. Tokens whose Business Info value is still the demo value are left alone and listed. The result also lists what cannot be baked (launch/entries, launch/breadcrumbs and launch/rating blocks stop working without the plugin). dry_run (default true) writes nothing. Posts are snapshotted first; call again with next_offset until it is null.',
+		Abilities::add( 'detokenize', 'Bake Business Info into the content', 'Run this BEFORE Launch Builder is removed from a site. It replaces the dynamic tokens ({{lb.phone}}, {{site.name}}, #lb-cta_url links, [lb field="phone"] shortcodes) with their current values: scope content = pages, posts, services and areas (page, entry, area and service tokens resolve against the post itself), designs = synced patterns, elements, headers, menus and forms (only Business Info and site values; tokens that depend on the page being viewed stay and are listed), seo = the %lb_...% variables in page titles and descriptions, all = every one of them. Tokens whose Business Info value is still the demo value are left alone and listed. The result also lists what cannot be baked (blocks of Launch Builder before v2, which stop working without the plugin). prepare-removal runs the whole hand-off. dry_run (default true) writes nothing. Posts are snapshotted first; call again with next_offset until it is null.',
 			[ 'properties' => [
 				'scope'   => [ 'type' => 'string', 'enum' => [ 'content', 'designs', 'seo', 'all' ], 'description' => 'What to bake (default content).' ],
 				'dry_run' => [ 'type' => 'boolean', 'description' => 'Default true: list what would change.' ],
@@ -53,30 +51,28 @@ final class Launch {
 				'limit'   => [ 'type' => 'integer', 'description' => 'Posts per call, 1-100 (default 40).' ],
 			] ], [ __CLASS__, 'detokenize' ], 'manage_options' );
 
-		Abilities::add( 'convert-page-to-entry', 'Turn a page into a service or service area', 'Moves a page into a service or service area entry: its content, excerpt (summary), SEO fields, featured image and slug go to the new entry (so every live list, menu and template picks it up), the old page becomes a draft and its old URL gets a 301 redirect to the entry. Not for the front page, the posts page, hub pages or category pages. type service takes categories (names or slugs); type area takes parent (an area id, slug or path). dry_run returns the plan without writing. Snapshots first.',
+		Abilities::add( 'prepare-removal', 'Prepare to remove Launch Builder', 'Hands the site over to Kadence and Meta Box before the plugin is removed. Reports, and with dry_run false does: Meta Box holds the services, areas, their fields and Business Info (sync-meta-box); Business Info tokens and other tokens are baked into the content and the designs (detokenize scope all, first batch; call detokenize with next_offset for the rest). Returns the hand-off pack: the services\' root URLs mapped to the URLs WordPress will use without the plugin (url_map, plus .htaccess lines to paste after removal; add them before deactivating only as Rank Math redirections, never while Launch Builder runs), and lists_snippet: a small mu-plugin that keeps the "children of this page" lists working.',
+			[ 'properties' => [
+				'dry_run' => [ 'type' => 'boolean', 'description' => 'Report only (default true).' ],
+			] ], [ __CLASS__, 'prepare_removal' ], 'manage_options' );
+
+		Abilities::add( 'convert-page-to-entry', 'Turn a page into a service or service area', 'Moves a page into a service or service area entry: its content, excerpt (summary), SEO fields, featured image and slug go to the new entry (so every list and menu picks it up), the old page becomes a draft and its old URL gets a 301 redirect to the entry. Not for the front page, the posts page or hub pages. parent: the service (for a sub-service) or area it goes under (id, slug or path). dry_run returns the plan without writing. Snapshots first.',
 			[ 'properties' => [
 				'post_id'    => [ 'type' => 'integer', 'description' => 'The page to convert.' ],
 				'type'       => [ 'type' => 'string', 'enum' => [ 'service', 'area' ] ],
-				'categories' => [ 'type' => 'array', 'items' => [ 'type' => 'string' ], 'description' => 'Service categories (type service).' ],
-				'parent'     => [ 'type' => 'string', 'description' => 'Parent area (type area): id, slug or path.' ],
+				'parent'     => [ 'type' => 'string', 'description' => 'The service or area it goes under: id, slug or path.' ],
 				'dry_run'    => [ 'type' => 'boolean' ],
 			], 'required' => [ 'post_id', 'type' ] ], [ __CLASS__, 'convert_page' ], 'manage_options' );
 
-		Abilities::add( 'get-legal-text', 'Get a legal page text', 'The text of a privacy policy, terms of service or accessibility statement as Markdown with Business Info tokens, ready for add-text or a page with the matching recipe. sms_consent adds the text message consent section (carrier registration wording for business texting: sender, purpose, frequency, rates, STOP and HELP, consent not a condition of purchase, no sharing of mobile data) and returns the label for a consent checkbox. The text is a starting point: the business owner must review it.',
-			[ 'properties' => [
-				'type'        => [ 'type' => 'string', 'enum' => Launch_Legal::TYPES ],
-				'sms_consent' => [ 'type' => [ 'boolean', 'object' ], 'description' => 'true, or { program, frequency, help } to change the wording.' ],
-			], 'required' => [ 'type' ] ], [ __CLASS__, 'legal_text' ], 'edit_pages', [ 'readonly' => true ] );
 	}
 
 	/** get-playbook: how to launch. */
 	public static function playbook( array &$pb ): void {
 		$pb['launch'] = [
 			'go_live'       => 'go-live runs the audit and refuses on errors (force overrides), then sets the site public, refreshes the sitemap and purges caches, and lists what only a person can do (needs_a_human). Once a site is live a build never hides it again, whatever launch.indexing says. Until then Rank Math Instant Indexing submissions are held back while a build is running, while Settings > Reading discourages search engines and when the brief says launch.indexing false.',
-			'legal'         => 'Privacy policy, terms and accessibility statement are generated from templates (get-legal-text, or legal in the brief). They carry a notice that the client must review them and stay drafts until the notice is deleted (or the brief says reviewed: true). sms_consent adds the text message consent wording carriers ask for.',
-			'before_removal' => 'detokenize bakes Business Info into the content before the plugin is removed (dry run first). convert-page-to-entry turns an old page into a service or area entry and redirects its URL.',
+			'before_removal' => 'prepare-removal hands the site over to Kadence and Meta Box before the plugin is removed (dry run first): tokens baked into the content (detokenize), redirects for the service URLs, and the two snippets that keep root service URLs and "children of this page" lists working. convert-page-to-entry turns an old page into a service or area entry and redirects its URL.',
 		];
-		$pb['tools_by_job']['Launch'] = 'go-live, get-legal-text, detokenize, convert-page-to-entry';
+		$pb['tools_by_job']['Launch'] = 'go-live, prepare-removal, detokenize, convert-page-to-entry';
 	}
 
 	/* ------------------------------------------------------------------ go-live */
@@ -147,7 +143,6 @@ final class Launch {
 			$report['snapshot'] = Abilities::snapshot( 'go-live', [], [ 'blog_public' ] );
 			update_option( 'blog_public', '1' );
 			update_option( self::OPT_LIVE, gmdate( 'c' ), false );
-			Brief_Build::set_indexing( true ); // The brief's launch.indexing false no longer holds anything back.
 			flush_rewrite_rules( false );
 			Cache::purge_later();
 			Cache::flush(); // Purges the page caches and Rank Math's sitemap cache now, not at the end of the request.
@@ -218,27 +213,6 @@ final class Launch {
 		return '' !== trim( $html ) && (bool) preg_match( '/REPLACE[_-]?WITH|YOUR[_-]?(FORM|ID)|FORM[_-]?ID[_-]?HERE|[<\[{]\s*FORM[_-]?ID\s*[>\]}]|\.(example|invalid|test|localhost)(?![a-z0-9-])|example\.(com|org|net)/i', $html );
 	}
 
-	/**
-	 * What the pages a brief built still show from the stock designs: sample sentences, invented figures (a review count, a
-	 * price) and links that go nowhere. Read from the page as it is now, so a page an editor has fixed no longer counts.
-	 *
-	 * @return array{pages:int,copy:int,claims:int,links:int}
-	 */
-	public static function sample_pages(): array {
-		$out = [ 'pages' => 0, 'copy' => 0, 'claims' => 0, 'links' => 0 ];
-		$ids = get_posts( [ 'post_type' => 'page', 'post_status' => [ 'publish', 'draft', 'pending', 'private', 'future' ], 'meta_key' => '_lb_brief', 'meta_value' => '1', 'numberposts' => 150, 'fields' => 'ids', 'suppress_filters' => true ] ); // phpcs:ignore WordPress.DB.SlowDBQuery
-		foreach ( $ids as $id ) {
-			$h = Brief_Build::copy_hits( (string) get_post_field( 'post_content', (int) $id ) );
-			if ( $h['default_copy'] || $h['demo_claims'] || $h['dead_links'] ) {
-				$out['pages']++;
-				$out['copy'] += count( $h['default_copy'] );
-				$out['claims'] += count( $h['demo_claims'] );
-				$out['links'] += count( $h['dead_links'] );
-			}
-		}
-		return $out;
-	}
-
 	/** How many pages, entries and shared designs still hold a placeholder picture. */
 	public static function placeholder_pictures(): int {
 		global $wpdb;
@@ -260,23 +234,14 @@ final class Launch {
 			$out[] = [ 'id' => $id, 'text' => $text, 'where' => $where ];
 		};
 		if ( ! (int) get_theme_mod( 'custom_logo' ) ) {
-			$add( 'logo', 'The logo is not set.', 'The brief: media entry with use "logo" (or brand.logo). Or Appearance, Customize, Site identity.' );
+			$add( 'logo', 'The logo is not set.', 'Appearance, Customize, Site identity (or set-brand logo_attachment_id).' );
 		}
 		if ( ! (int) get_option( 'site_icon' ) ) {
-			$add( 'site_icon', 'The site icon is not set.', 'The brief: media entry with use "site_icon" (or brand.site_icon). Or Appearance, Customize, Site identity.' );
+			$add( 'site_icon', 'The site icon is not set.', 'Appearance, Customize, Site identity.' );
 		}
 		$pics = self::placeholder_pictures();
 		if ( $pics ) {
-			$add( 'photos', $pics . ' page(s) or design(s) still show grey placeholder pictures. Real photos need the client\'s own pictures.', 'The brief: media [{key, url, alt}], then "media:<key>" in an image slot, or entries[].image.' );
-		}
-		$form = (string) ( Company::values()['form_html'] ?? '' );
-		if ( self::placeholder_embed( $form ) ) {
-			$add( 'form', 'The form embed is a stand-in, so the quote and contact forms do not work yet.', 'The brief: forms.quote.embed (or business.form_html) with the real embed code from the form tool.' );
-		}
-		$sample = self::sample_pages();
-		if ( $sample['pages'] ) {
-			$bits = array_filter( [ $sample['copy'] ? $sample['copy'] . ' sample sentence(s)' : '', $sample['claims'] ? $sample['claims'] . ' invented figure(s) such as a review count' : '', $sample['links'] ? $sample['links'] . ' link(s) that go nowhere' : '' ] );
-			$add( 'sample_content', $sample['pages'] . ' page(s) still show wording or figures that come from the stock designs, not from the business: ' . implode( ', ', $bits ) . '.', 'The brief: write the section out on the page (sitemap.pages[].sections[].slots) and set the slot. The copy_needed list of the build names every slot. Or edit the page.' );
+			$add( 'photos', $pics . ' page(s) or design(s) still show grey placeholder pictures. Real photos need the client\'s own pictures.', 'sideload-media, then set the picture in the page, the service or area (featured image), or the design in Kadence.' );
 		}
 		$review = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'page' AND post_status NOT IN ('trash','auto-draft','inherit') AND post_content LIKE %s", '%' . $wpdb->esc_like( self::REVIEW_CLASS ) . '%' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		if ( $review ) {
@@ -289,33 +254,10 @@ final class Launch {
 		if ( Compat::rm_active() && ! Compat::rm_ready() ) {
 			$add( 'rank_math_wizard', 'The Rank Math setup wizard is not finished, so Rank Math prints no titles, descriptions, schema or sitemap yet.', 'wp-admin, Rank Math: connect a free account or choose "Skip". An assistant cannot do this step.' );
 		}
-		$g = trim( (string) ( Company::values()['google'] ?? '' ) );
-		if ( '' === $g || '#' === $g ) {
-			$add( 'google_business_profile', 'No Google Business Profile link is set. Claiming or verifying the profile is done by the owner.', 'The brief: business.google (the profile link) once the profile exists.' );
-		}
 		return $out;
 	}
 
 	/* ------------------------------------------------------------------ legal texts */
-
-	/** get-legal-text. */
-	public static function legal_text( $input = [] ) {
-		$input = (array) $input;
-		$type = (string) ( $input['type'] ?? '' );
-		if ( ! in_array( $type, Launch_Legal::TYPES, true ) ) {
-			return new \WP_Error( 'lb_type', 'type must be privacy, terms or accessibility.', [ 'status' => 400 ] );
-		}
-		$sms = $input['sms_consent'] ?? false;
-		if ( null !== $sms && ! is_bool( $sms ) && ! is_array( $sms ) ) {
-			return new \WP_Error( 'lb_invalid_args', 'sms_consent must be true, false or an object.', [ 'status' => 400 ] );
-		}
-		$page = Launch_Legal::page( $type );
-		$out = [ 'type' => $type, 'title' => $page['title'], 'slug' => $page['slug'], 'markdown' => Launch_Legal::markdown( $type, $sms ), 'review' => 'Client must review: the text is a starting point and not legal advice.' ];
-		if ( $sms ) {
-			$out['consent_label'] = Launch_Legal::consent_label( $sms );
-		}
-		return $out;
-	}
 
 	/** Audit check legal_review_pending: generated legal texts whose review notice is still in the page. */
 	public static function audit_legal( $args = [] ): array {
@@ -331,6 +273,45 @@ final class Launch {
 			$live = in_array( $p->post_status, Audit::LIVE, true );
 			$out[] = Audit::post_finding( $p, $live ? 'error' : 'warning', 'legal_review_pending', $live ? 'A generated legal text is live and still carries the "client must review" notice.' : 'A generated legal text is waiting for the client to review it (the page stays a draft).', 'Have the business owner read it, delete the review notice block, then publish the page.' );
 		}
+		return $out;
+	}
+
+	/* ------------------------------------------------------------------ prepare-removal */
+
+	/** prepare-removal: what keeps working without Launch Builder, and the hand-off pack for what needs it. */
+	public static function prepare_removal( $input = [] ) {
+		$input = (array) $input;
+		$dry = ! array_key_exists( 'dry_run', $input ) || ! empty( $input['dry_run'] );
+		$out = [ 'dry_run' => $dry ];
+
+		// 1. Meta Box holds the types, the fields and Business Info.
+		if ( defined( 'RWMB_VER' ) ) {
+			$mb = Meta_Box_Sync::run( [ 'dry_run' => $dry ] );
+			$out['meta_box'] = is_wp_error( $mb ) ? $mb->get_error_message() : array_map( static function ( $o ) { return $o['state'] . ( 'none' !== ( $o['action'] ?? 'none' ) ? ' (' . $o['action'] . ')' : '' ); }, $mb['objects'] );
+		} else {
+			$out['meta_box'] = 'Meta Box is not active: without Launch Builder the services, areas and Business Info would have no screen (their data stays in the database). Activate Meta Box AIO and run this again.';
+		}
+
+		// 2. Tokens baked in.
+		$dt = self::detokenize( [ 'scope' => 'all', 'dry_run' => $dry ] );
+		$out['detokenize'] = is_wp_error( $dt ) ? $dt->get_error_message() : array_intersect_key( $dt, array_flip( [ 'totals', 'next_offset', 'skipped_demo', 'dynamic' ] ) );
+
+		// 3. Root URLs of services: WordPress alone serves them under the post type base.
+		$map = [];
+		foreach ( get_posts( [ 'post_type' => Entries::SERVICE, 'post_status' => 'publish', 'numberposts' => 500, 'orderby' => 'ID', 'order' => 'ASC' ] ) as $p ) {
+			$now = Permalinks::current_uri( 'post', (int) $p->ID );
+			$native = Permalinks::native_path( 'post', (int) $p->ID );
+			if ( null !== $now && null !== $native && trim( $now, '/' ) !== trim( $native, '/' ) ) {
+				$map[] = [ 'from' => '/' . trim( $now, '/' ) . '/', 'to' => '/' . trim( $native, '/' ) . '/' ];
+			}
+		}
+		$out['url_map'] = $map;
+		$out['htaccess'] = $map ? "# Services moved from the root of the site (Launch Builder removed)\n" . implode( "\n", array_map( static function ( $m ) { return 'Redirect 301 ' . $m['from'] . ' ' . home_url( $m['to'] ); }, $map ) ) : '';
+
+		// 4. Lists: the "children of this page" filter as a mu-plugin.
+		$out['lists'] = count( array_filter( Query_Lists::made(), static function ( $id ) { return 'kadence_query' === get_post_type( $id ); } ) ) . ' list(s) use Launch Builder\'s "children of this page" setting.';
+		$out['lists_snippet'] = Query_Lists::snippet();
+		$out['next'] = $dry ? 'Run again with dry_run false to move everything into Meta Box and bake the tokens.' : 'Save lists_snippet as wp-content/mu-plugins/service-lists.php, deactivate Launch Builder, then add the htaccess lines (or the same redirects in Rank Math).';
 		return $out;
 	}
 
@@ -352,17 +333,12 @@ final class Launch {
 		if ( ! current_user_can( 'edit_post', $id ) ) {
 			return new \WP_Error( 'lb_forbidden', 'You cannot edit that page.', [ 'status' => 403 ] );
 		}
-		foreach ( [ 'categories' ] as $k ) {
-			if ( isset( $input[ $k ] ) && ( ! is_array( $input[ $k ] ) || array_filter( $input[ $k ], static function ( $v ) { return ! is_string( $v ); } ) ) ) {
-				return new \WP_Error( 'lb_invalid_args', $k . ' must be a list of strings.', [ 'status' => 400 ] );
-			}
-		}
 		if ( isset( $input['parent'] ) && ! is_string( $input['parent'] ) ) {
 			return new \WP_Error( 'lb_invalid_args', 'parent must be a string.', [ 'status' => 400 ] );
 		}
 		$why = Roles::explain_page( $id )[1];
-		if ( in_array( $why, [ 'front_page', 'posts_page', 'hub', 'category' ], true ) ) {
-			return new \WP_Error( 'lb_page_role', 'That page is the ' . ( [ 'front_page' => 'front page', 'posts_page' => 'posts page', 'hub' => 'services or areas hub', 'category' => 'landing page of a service category' ][ $why ] ) . ': give that role to another page first (set-page-role), then convert it.', [ 'status' => 409 ] );
+		if ( in_array( $why, [ 'front_page', 'posts_page', 'hub' ], true ) ) {
+			return new \WP_Error( 'lb_page_role', 'That page is the ' . ( [ 'front_page' => 'front page', 'posts_page' => 'posts page', 'hub' => 'services or areas hub' ][ $why ] ) . ': give that role to another page first (set-page-role), then convert it.', [ 'status' => 409 ] );
 		}
 		$pt = 'area' === $type ? Entries::AREA : Entries::SERVICE;
 		$slug = (string) $page->post_name;
@@ -398,9 +374,7 @@ final class Launch {
 			'status'  => $plan['entry']['status'],
 			'summary' => (string) $page->post_excerpt,
 		];
-		if ( 'service' === $type ) {
-			$entry_in['categories'] = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $input['categories'] ?? [] ) ) ) );
-		} elseif ( isset( $input['parent'] ) && '' !== trim( (string) $input['parent'] ) ) {
+		if ( isset( $input['parent'] ) && '' !== trim( (string) $input['parent'] ) ) {
 			$entry_in['parent'] = trim( (string) $input['parent'] );
 		}
 		$r = 'area' === $type ? Entries::add_area( $entry_in ) : Entries::add_service( $entry_in );

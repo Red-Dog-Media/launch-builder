@@ -134,11 +134,6 @@ trait Compat_Seo {
 				$add( 'lb', (string) $k, (string) $f[0] );
 			}
 		}
-		foreach ( Company::computed() as $k => $label ) {
-			if ( '_br' !== substr( (string) $k, -3 ) ) {
-				$add( 'lb', (string) $k, (string) $label );
-			}
-		}
 		return $vars;
 	}
 
@@ -215,9 +210,6 @@ trait Compat_Seo {
 			}
 			return $s;
 		};
-		$cat = static function () use ( $p ): ?\WP_Term {
-			return Entries::SERVICE === $p->post_type ? self::primary_category( $p->ID ) : null;
-		};
 		switch ( $k ) {
 			case 'title':
 			case 'name':
@@ -226,12 +218,6 @@ trait Compat_Seo {
 				return in_array( $ns, [ 'entry', 'page' ], true ) ? $summary() : '';
 			case 'url':
 				return (string) get_permalink( $p );
-			case 'category':
-				return $cat() ? $cat()->name : '';
-			case 'category_url':
-				$t = $cat();
-				$link = $t ? get_term_link( $t ) : '';
-				return is_string( $link ) ? $link : '';
 			case 'parent':
 				$parent = $p->post_parent ? get_post( $p->post_parent ) : null;
 				return $parent ? self::plain_title( $parent ) : '';

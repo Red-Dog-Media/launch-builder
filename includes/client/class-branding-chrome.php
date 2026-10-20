@@ -23,7 +23,7 @@ final class Branding_Chrome {
 		$best = $candidates[0];
 		$bestr = 0.0;
 		foreach ( $candidates as $c ) {
-			$r = Style::contrast( $c, $surface );
+			$r = Color::contrast( $c, $surface );
 			if ( $r >= $min ) {
 				return $c;
 			}
@@ -42,13 +42,13 @@ final class Branding_Chrome {
 	 * @return array{colors:array<string,string>,sources:array<string,string>,warnings:string[],contrast:array<string,float>}
 	 */
 	public static function login_vars( array $l ): array {
-		$pal = Style::palette();
+		$pal = Color::palette();
 		$slug = static function ( string $s ) use ( $pal ): string {
-			return (string) Style::hex( $pal[ $s ] ?? '#FFFFFF' );
+			return (string) Color::hex( $pal[ $s ] ?? '#FFFFFF' );
 		};
 		$pick = static function ( $override, string $palette_slug ) use ( $slug ): array {
 			if ( is_string( $override ) && '' !== $override ) {
-				$h = Style::hex( $override );
+				$h = Color::hex( $override );
 				if ( $h ) {
 					return [ $h, 'override' ];
 				}
@@ -67,64 +67,64 @@ final class Branding_Chrome {
 		$ratio = [];
 
 		// Text on the form.
-		$ratio['text_on_form'] = Style::contrast( $text, $form );
-		if ( $ratio['text_on_form'] < Style::MIN_TEXT ) {
-			$fixed = self::best( $form, [ $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Style::MIN_TEXT );
+		$ratio['text_on_form'] = Color::contrast( $text, $form );
+		if ( $ratio['text_on_form'] < Color::MIN_TEXT ) {
+			$fixed = self::best( $form, [ $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Color::MIN_TEXT );
 			/* translators: 1: colour, 2: ratio, 3: corrected colour */
 			$warn[] = sprintf( __( 'Sign-in text %1$s has %2$s:1 contrast on the form (4.5:1 needed), so %3$s is used.', 'launch-builder' ), $text, $ratio['text_on_form'], $fixed );
 			$text = $fixed;
 			$src['text'] = 'auto';
-			$ratio['text_on_form'] = Style::contrast( $text, $form );
+			$ratio['text_on_form'] = Color::contrast( $text, $form );
 		}
 
 		// Button label on the button.
-		$btn_text_over = isset( $l['button_text'] ) && '' !== $l['button_text'] ? Style::hex( $l['button_text'] ) : null;
-		$btn_text = $btn_text_over ? $btn_text_over : (string) self::best( $btn, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Style::MIN_TEXT );
+		$btn_text_over = isset( $l['button_text'] ) && '' !== $l['button_text'] ? Color::hex( $l['button_text'] ) : null;
+		$btn_text = $btn_text_over ? $btn_text_over : (string) self::best( $btn, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Color::MIN_TEXT );
 		$src['button_text'] = $btn_text_over ? 'override' : 'palette';
-		$ratio['button_text_on_button'] = Style::contrast( $btn_text, $btn );
-		if ( $ratio['button_text_on_button'] < Style::MIN_TEXT ) {
-			$fixed = self::best( $btn, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Style::MIN_TEXT );
+		$ratio['button_text_on_button'] = Color::contrast( $btn_text, $btn );
+		if ( $ratio['button_text_on_button'] < Color::MIN_TEXT ) {
+			$fixed = self::best( $btn, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Color::MIN_TEXT );
 			if ( $btn_text_over ) {
 				$warn[] = sprintf( /* translators: 1: colour, 2: ratio, 3: corrected colour */ __( 'Button text %1$s has %2$s:1 contrast on the button colour (4.5:1 needed), so %3$s is used.', 'launch-builder' ), $btn_text, $ratio['button_text_on_button'], $fixed );
 			}
 			$btn_text = $fixed;
 			$src['button_text'] = 'auto';
-			$ratio['button_text_on_button'] = Style::contrast( $btn_text, $btn );
+			$ratio['button_text_on_button'] = Color::contrast( $btn_text, $btn );
 		}
 
 		// The button against the form (a UI component needs 3:1) and its hover state.
-		$ratio['button_on_form'] = Style::contrast( $btn, $form );
-		if ( $ratio['button_on_form'] < Style::MIN_UI ) {
+		$ratio['button_on_form'] = Color::contrast( $btn, $form );
+		if ( $ratio['button_on_form'] < Color::MIN_UI ) {
 			$warn[] = sprintf( /* translators: 1: ratio */ __( 'The button colour has only %s:1 contrast against the form surface (3:1 needed to see it).', 'launch-builder' ), $ratio['button_on_form'] );
 		}
-		$ratio['hover_on_form'] = Style::contrast( $hover, $form );
-		if ( $ratio['hover_on_form'] < Style::MIN_UI ) {
-			$dark = Style::blend( '#000000', $btn, 0.25 );
+		$ratio['hover_on_form'] = Color::contrast( $hover, $form );
+		if ( $ratio['hover_on_form'] < Color::MIN_UI ) {
+			$dark = Color::blend( '#000000', $btn, 0.25 );
 			$warn[] = sprintf( /* translators: 1: ratio, 2: corrected colour */ __( 'The button hover colour has %1$s:1 contrast against the form (3:1 needed), so %2$s is used.', 'launch-builder' ), $ratio['hover_on_form'], $dark );
 			$hover = $dark;
 			$src['button_hover_bg'] = 'auto';
-			$ratio['hover_on_form'] = Style::contrast( $hover, $form );
+			$ratio['hover_on_form'] = Color::contrast( $hover, $form );
 		}
 		$hover_text = $btn_text;
-		if ( Style::contrast( $hover_text, $hover ) < Style::MIN_TEXT ) {
-			$hover_text = self::best( $hover, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Style::MIN_TEXT );
+		if ( Color::contrast( $hover_text, $hover ) < Color::MIN_TEXT ) {
+			$hover_text = self::best( $hover, [ $slug( 'palette9' ), $slug( 'palette3' ), '#FFFFFF', '#111111' ], Color::MIN_TEXT );
 		}
-		$ratio['button_hover_text'] = Style::contrast( $hover_text, $hover );
+		$ratio['button_hover_text'] = Color::contrast( $hover_text, $hover );
 
 		// Links sit below the form, on the page background (on the form colour when a background picture is used).
 		$link_surface = $has_image ? $form : $bg;
-		$ratio['link_on_page'] = Style::contrast( $link, $link_surface );
-		if ( $ratio['link_on_page'] < Style::MIN_TEXT ) {
-			$fixed = self::best( $link_surface, [ $slug( 'palette2' ), $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Style::MIN_TEXT );
+		$ratio['link_on_page'] = Color::contrast( $link, $link_surface );
+		if ( $ratio['link_on_page'] < Color::MIN_TEXT ) {
+			$fixed = self::best( $link_surface, [ $slug( 'palette2' ), $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Color::MIN_TEXT );
 			$warn[] = sprintf( /* translators: 1: colour, 2: ratio, 3: corrected colour */ __( 'Link colour %1$s has %2$s:1 contrast on the page background (4.5:1 needed), so %3$s is used.', 'launch-builder' ), $link, $ratio['link_on_page'], $fixed );
 			$link = $fixed;
 			$src['link'] = 'auto';
-			$ratio['link_on_page'] = Style::contrast( $link, $link_surface );
+			$ratio['link_on_page'] = Color::contrast( $link, $link_surface );
 		}
 
 		// Text printed on the page background (the business name when there is no logo).
-		$logo_text = $has_image ? $text : self::best( $bg, [ $text, $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Style::MIN_TEXT );
-		$ratio['name_on_page'] = Style::contrast( $logo_text, $has_image ? $form : $bg );
+		$logo_text = $has_image ? $text : self::best( $bg, [ $text, $slug( 'palette3' ), '#1D2327', '#FFFFFF' ], Color::MIN_TEXT );
+		$ratio['name_on_page'] = Color::contrast( $logo_text, $has_image ? $form : $bg );
 
 		return [
 			'colors'   => [ 'bg' => $bg, 'form_bg' => $form, 'text' => $text, 'button_bg' => $btn, 'button_text' => $btn_text, 'button_hover_bg' => $hover, 'button_hover_text' => $hover_text, 'link' => $link, 'logo_text' => $logo_text ],
@@ -418,10 +418,9 @@ final class Branding_Chrome {
 		$a = Branding::section( 'admin' );
 		$css = '';
 		if ( ! empty( $a['menu_logo'] ) ) {
-			// The client's logo can have its own image made for the dark menu; an old Business Info value counts until the tidy has moved it.
+			// The client's logo can have its own image made for the dark menu.
 			$own = Branding::usable_attachment( (int) $a['menu_logo_image'] );
-			$old = $own ? [] : (array) ( Company::resolve()['logo_inverse'] ?? [] );
-			$id = 'client' === $a['menu_logo_source'] ? ( $own ?: ( ! empty( $old['id'] ) ? Branding::usable_attachment( (int) $old['id'] ) : 0 ) ) : 0;
+			$id = 'client' === $a['menu_logo_source'] ? $own : 0;
 			$choice = $id ? [ 'id' => $id, 'url' => Branding::attachment_url( $id, 'medium' ) ] : self::bar_logo_choice( (string) $a['menu_logo_source'] );
 			if ( $choice['id'] && '' !== $choice['url'] ) {
 				$icon = Branding::attachment_url( Branding::site_icon_id(), 'thumbnail' );
@@ -432,11 +431,11 @@ final class Branding_Chrome {
 		}
 		if ( ! empty( $a['editor_accent'] ) ) {
 			$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-			$accent = Style::hex( 'palette1' );
-			if ( $screen && method_exists( $screen, 'is_block_editor' ) && $screen->is_block_editor() && $accent && Style::contrast( $accent, '#FFFFFF' ) >= Style::MIN_TEXT ) {
+			$accent = Color::hex( 'palette1' );
+			if ( $screen && method_exists( $screen, 'is_block_editor' ) && $screen->is_block_editor() && $accent && Color::contrast( $accent, '#FFFFFF' ) >= Color::MIN_TEXT ) {
 				$rgb = sscanf( $accent, '#%2x%2x%2x' );
-				$d10 = Style::blend( '#000000', $accent, 0.1 );
-				$d20 = Style::blend( '#000000', $accent, 0.2 );
+				$d10 = Color::blend( '#000000', $accent, 0.1 );
+				$d20 = Color::blend( '#000000', $accent, 0.2 );
 				$css .= 'body.wp-admin{--wp-admin-theme-color:' . $accent . ';--wp-admin-theme-color--rgb:' . implode( ',', $rgb ) . ';--wp-admin-theme-color-darker-10:' . $d10 . ';--wp-admin-theme-color-darker-20:' . $d20 . '}';
 			}
 		}

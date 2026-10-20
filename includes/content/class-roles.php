@@ -4,13 +4,14 @@ namespace LaunchBuilder;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Page roles: what kind of page is being shown (home, a service, a conversion page...). Chrome (heroes, crumbs, headers,
- * footers), tokens and the audit all key off the role, so it is resolved in one place.
+ * Page roles: what kind of page is being shown (home, a service, a contact page...). Designs place the native Kadence
+ * objects by them (Element rules, page layouts), and tokens, previews and the site check read them, so a role is
+ * resolved in one place.
  *
  * Where a role comes from:
  *  - front page = home, posts page = blog (never overridable); services, areas and posts by post type;
  *  - other pages: the _lb_role page meta (page|legal|conversion|thanks), else the hubs option (services_hub/areas_hub),
- *    else category when a service category's _lb_page term meta points at the page, else page;
+ *    else page;
  *  - WooCommerce pages, other post types and other archives: other (no chrome). Opt a post type in with the filter
  *    launch_builder_role_post_types ( [ post_type => role ] ).
  *
@@ -32,23 +33,22 @@ final class Roles {
 		'legal'        => 'Legal page',
 		'services_hub' => 'Services hub',
 		'areas_hub'    => 'Service areas hub',
-		'category'     => 'Service category page',
 		'service'      => 'Service',
 		'area'         => 'Service area',
-		'conversion'   => 'Conversion page',
+		'conversion'   => 'Contact page',
 		'thanks'       => 'Thank-you page',
 		'post'         => 'Blog post',
 		'blog'         => 'Blog and archives',
 		'search'       => 'Search results',
 		'notfound'     => 'Not found (404)',
-		'other'        => 'Other (no Launch Builder chrome)',
+		'other'        => 'Other',
 	];
 
-	/** Roles a page can be given with the _lb_role meta. Hubs live in the hubs option, categories in term meta. */
+	/** Roles a page can be given with the _lb_role meta. Hubs live in the hubs option. */
 	const PAGE_ROLES = [ 'page', 'legal', 'conversion', 'thanks' ];
 
 	/** Roles set-page-role accepts ('auto' = forget the explicit role and the hub entry). */
-	const ASSIGNABLE = [ 'auto', 'page', 'legal', 'conversion', 'thanks', 'services_hub', 'areas_hub', 'category' ];
+	const ASSIGNABLE = [ 'auto', 'page', 'legal', 'conversion', 'thanks', 'services_hub', 'areas_hub' ];
 
 	/** Post types that hold designs rather than content (their role comes from _lb_roles). */
 	const TEMPLATE_TYPES = [ 'kadence_element', 'wp_block', 'kadence_header', 'kadence_navigation', 'kadence_form' ];
@@ -56,32 +56,11 @@ final class Roles {
 	const META     = '_lb_role';
 	const OPT_HUBS = 'launch_builder_hubs';
 
-	/**
-	 * Page recipe (build-site pages[].recipe) => the role a page built from it has. home is the front page
-	 * and page the default, so neither is written; category comes from the service category's _lb_page (entries.categories).
-	 */
-	const RECIPE_ROLES = [
-		'home'             => 'home',
-		'about'            => 'page',
-		'faq'              => 'page',
-		'reviews'          => 'page',
-		'service-category' => 'category',
-		'service-area'     => 'areas_hub',
-		'contact'          => 'conversion',
-		'quote'            => 'conversion',
-		'booking'          => 'conversion',
-		'landing'          => 'conversion',
-		'thank-you'        => 'thanks',
-		'privacy'          => 'legal',
-		'terms'            => 'legal',
-		'accessibility'    => 'legal',
-	];
-
-	/** Hub slot => the page path today's breadcrumb trail uses for it (derive_hubs() fills empty slots from these). */
+	/** Hub slot => the usual page path (derive_hubs() fills empty slots from these). */
 	const HUB_PATHS = [ 'services' => 'services', 'areas' => 'service-areas' ];
 
 	/** Why a page has its role, for people (the meta box and the editor panel). */
-	const WHY = [ 'front_page' => 'it is the front page', 'posts_page' => 'it is the posts page', 'meta' => 'set here', 'woo' => 'it is a WooCommerce page', 'hub' => 'set as a hub (set-page-role)', 'category' => 'a service category points at it', 'default' => 'automatic' ];
+	const WHY = [ 'front_page' => 'it is the front page', 'posts_page' => 'it is the posts page', 'meta' => 'set here', 'woo' => 'it is a WooCommerce page', 'hub' => 'set as a hub (set-page-role)', 'default' => 'automatic' ];
 
 	/** @var string|null role of the main query, once known. */
 	private static $memo = null;
@@ -161,9 +140,6 @@ final class Roles {
 		if ( is_search() ) {
 			return [ 'search', null ];
 		}
-		if ( is_tax( Entries::CAT ) ) {
-			return [ 'category', null ];
-		}
 		if ( is_home() || is_category() || is_tag() || is_date() || is_author() ) {
 			return [ 'blog', $post ];
 		}
@@ -199,7 +175,7 @@ final class Roles {
 	}
 
 	/**
-	 * A page's role and where it came from: front_page | posts_page | meta | woo | hub | category | default.
+	 * A page's role and where it came from: front_page | posts_page | meta | woo | hub | default.
 	 * WordPress honours the front and posts pages only when "Your homepage displays" is a static page (show_on_front).
 	 *
 	 * @param int  $id       page id.
@@ -227,9 +203,6 @@ final class Roles {
 		}
 		if ( $hubs['areas'] && $id === $hubs['areas'] ) {
 			return [ 'areas_hub', 'hub' ];
-		}
-		if ( isset( self::catmap()[ $id ] ) ) {
-			return [ 'category', 'category' ];
 		}
 		return [ 'page', 'default' ];
 	}
@@ -291,13 +264,6 @@ final class Roles {
 				return $page( self::hubs()['services'] );
 			case 'areas_hub':
 				return $page( self::hubs()['areas'] );
-			case 'category':
-				foreach ( array_keys( self::catmap() ) as $pid ) {
-					if ( $p = $page( (int) $pid ) ) { // phpcs:ignore WordPress.CodeAnalysis.AssignmentInCondition
-						return $p;
-					}
-				}
-				return null;
 			case 'legal':
 			case 'conversion':
 			case 'thanks':
@@ -313,7 +279,7 @@ final class Roles {
 		return null;
 	}
 
-	/* ------------------------------------------------------------------ hubs + category map */
+	/* ------------------------------------------------------------------ hubs */
 
 	/** @return array{services:int,areas:int} hub page ids (0 = none). */
 	public static function hubs(): array {
@@ -322,63 +288,16 @@ final class Roles {
 		return [ 'services' => (int) ( $h['services'] ?? 0 ), 'areas' => (int) ( $h['areas'] ?? 0 ) ];
 	}
 
-	/**
-	 * Category pages: page id => service category term id, from the terms' _lb_page meta. One get_terms per change of
-	 * the terms cache (core bumps it on every term and term-meta write, so there is nothing to invalidate by hand).
-	 * When several terms point at one page the deepest term wins (catmap_conflicts() lists them for the audit).
-	 *
-	 * @return array<int,int>
-	 */
-	public static function catmap(): array {
-		return self::catmap_data()['map'];
-	}
+	/* ------------------------------------------------------------------ derived roles (migration, builder) */
 
-	/** @return array<int,int[]> page id => every term id pointing at it, for pages claimed by more than one term. */
-	public static function catmap_conflicts(): array {
-		return self::catmap_data()['conflicts'];
-	}
-
-	private static function catmap_data(): array {
-		if ( ! taxonomy_exists( Entries::CAT ) ) {
-			return [ 'map' => [], 'conflicts' => [] ]; // Before init: nothing to read yet (and nothing cached).
-		}
-		$key = 'catmap:' . wp_cache_get_last_changed( 'terms' );
-		$hit = wp_cache_get( $key, 'launch_builder' );
-		if ( is_array( $hit ) ) {
-			return $hit;
-		}
-		$terms = get_terms( [ 'taxonomy' => Entries::CAT, 'hide_empty' => false, 'meta_key' => '_lb_page', 'orderby' => 'term_id' ] );
-		$map = [];
-		$depth = [];
-		$all = [];
-		foreach ( is_wp_error( $terms ) ? [] : $terms as $t ) {
-			$pid = (int) get_term_meta( $t->term_id, '_lb_page', true );
-			if ( $pid <= 0 ) {
-				continue;
-			}
-			$d = count( get_ancestors( $t->term_id, Entries::CAT, 'taxonomy' ) );
-			$all[ $pid ][] = (int) $t->term_id;
-			if ( ! isset( $map[ $pid ] ) || $d > $depth[ $pid ] ) {
-				$map[ $pid ] = (int) $t->term_id;
-				$depth[ $pid ] = $d;
-			}
-		}
-		$data = [ 'map' => $map, 'conflicts' => array_filter( $all, static function ( $ids ) { return count( $ids ) > 1; } ) ];
-		wp_cache_set( $key, $data, 'launch_builder' );
-		return $data;
-	}
-
-	/* ------------------------------------------------------------------ derived roles (migration, build-site) */
-
-	/** A page whose role is only the default (no _lb_role, not a hub, category, front, posts or WooCommerce page). */
+	/** A page whose role is only the default (no _lb_role, not a hub, front, posts or WooCommerce page). */
 	private static function plain_page( int $id ): bool {
 		return 'default' === self::explain_page( $id )[1];
 	}
 
 	/**
-	 * Fill EMPTY hub slots from the published pages today's breadcrumb trail uses (/services/, /service-areas/), so a
-	 * site keeps its hub crumbs when the trail moves to the hubs option. Never replaces a hub, never takes a page that
-	 * has a role of its own. Snapshots the hubs option before writing.
+	 * Fill EMPTY hub slots from the published pages at /services/ and /service-areas/. Never replaces a hub, never takes
+	 * a page that has a role of its own. Snapshots the hubs option before writing.
 	 *
 	 * @return string[] what changed.
 	 */
@@ -414,57 +333,6 @@ final class Roles {
 			$out[] = 'page ' . $priv . ' (privacy policy) = legal';
 		}
 		return [ 'done' => true, 'report' => $out ? implode( '; ', $out ) : 'nothing to derive' ];
-	}
-
-	/** Module hook: build-site gives pages the role of their recipe (RECIPE_ROLES) once pages and categories exist. */
-	public static function blueprint_steps(): array {
-		return [ [ 'id' => 'roles', 'at' => 'categories', 'run' => [ __CLASS__, 'blueprint_roles' ] ] ];
-	}
-
-	/**
-	 * Recipe roles for the blueprint's pages: conversion/thanks/legal as _lb_role, service-area as the areas hub. Only
-	 * pages without a role of their own and only empty hub slots are written, so a re-run never undoes set-page-role.
-	 * Then the derive_hubs() rule (empty slots from /services/ and /service-areas/).
-	 */
-	public static function blueprint_roles( array $bp, array $ctx ): array {
-		$ids = (array) ( $ctx['ids'] ?? [] );
-		$set = [];
-		$warnings = [];
-		$hubs = self::hubs();
-		$new = $hubs;
-		foreach ( (array) ( $bp['pages'] ?? [] ) as $pg ) {
-			$pg = (array) $pg;
-			$role = self::RECIPE_ROLES[ sanitize_key( (string) ( $pg['recipe'] ?? '' ) ) ] ?? '';
-			$slug = sanitize_title( (string) ( $pg['slug'] ?? ( $pg['title'] ?? '' ) ) );
-			$id = (int) ( $ids[ $slug ] ?? 0 );
-			if ( '' === $role || ! $id ) {
-				continue;
-			}
-			if ( in_array( $role, [ 'legal', 'conversion', 'thanks' ], true ) ) {
-				if ( self::plain_page( $id ) ) {
-					update_post_meta( $id, self::META, $role );
-					$set[ $slug ] = $role;
-				}
-			} elseif ( 'areas_hub' === $role ) {
-				if ( ! $new['areas'] && ! in_array( $id, $new, true ) && self::plain_page( $id ) ) {
-					$new['areas'] = $id;
-					$set[ $slug ] = $role;
-				}
-			} elseif ( 'category' === $role && ! isset( self::catmap()[ $id ] ) ) {
-				$warnings[] = 'page ' . $slug . ' uses the service-category recipe but no service category points at it (entries.categories[].page), so it is a standard page.';
-			}
-		}
-		if ( $new !== $hubs ) {
-			if ( current_user_can( 'edit_theme_options' ) ) {
-				Abilities::snapshot( 'build-site roles', [], [ self::OPT_HUBS ] );
-				update_option( self::OPT_HUBS, $new, true );
-			} else {
-				$warnings[] = 'hub pages not set: that needs the edit_theme_options capability.';
-				$set = array_filter( $set, static function ( $r ) { return 'areas_hub' !== $r; } );
-			}
-		}
-		$derived = current_user_can( 'edit_theme_options' ) ? self::derive_hubs( 'build-site roles' ) : [];
-		return [ 'set' => $set, 'derived' => $derived, 'warnings' => $warnings ];
 	}
 
 	/* ------------------------------------------------------------------ page meta, meta box, list column */
@@ -504,26 +372,13 @@ final class Roles {
 			echo '<option value="' . esc_attr( $r ) . '"' . selected( $meta, $r, false ) . '>' . esc_html( self::ROLES[ $r ] ) . '</option>';
 		}
 		echo '</select></p>';
-		echo '<p class="description">Currently: <strong>' . esc_html( self::label( $role ) ) . '</strong> (' . esc_html( self::WHY[ $source ] ?? $source ) . '). The role decides the page hero, breadcrumbs and header/footer variant. Conversion pages (contact, quote, booking) get no breadcrumbs.</p>';
-		$hero = (string) get_post_meta( $post->ID, Chrome::HERO_META, true );
-		echo '<p><label for="lb-hero"><strong>Hero on this page</strong></label><br><select id="lb-hero" name="lb_hero" style="width:100%">';
-		foreach ( [ '' => 'The shared hero', 'content' => 'Its own hero', 'none' => 'No hero' ] as $v => $l ) {
-			echo '<option value="' . esc_attr( $v ) . '"' . selected( $hero, $v, false ) . '>' . esc_html( $l ) . '</option>';
-		}
-		echo '</select></p><p class="description">The shared hero is set once for every page of this role in Launch Builder &gt; Design hub. &quot;Its own hero&quot; lets this page carry a different hero in its content: the shared hero and the breadcrumbs step aside here.</p>';
+		echo '<p class="description">Currently: <strong>' . esc_html( self::label( $role ) ) . '</strong> (' . esc_html( self::WHY[ $source ] ?? $source ) . '). The role decides which designs the page gets (Launch Builder &gt; Designs) and its layout.</p>';
 	}
 
 	/** Classic-editor save. Writes only when the role changed (the purge comes from meta_changed()). */
 	public static function save_box( int $post_id, \WP_Post $post ): void {
 		if ( empty( $_POST['lb_page_role_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['lb_page_role_nonce'] ) ), 'lb_page_role' ) || ! current_user_can( 'edit_post', $post_id ) || wp_is_post_revision( $post_id ) ) {
 			return;
-		}
-		if ( isset( $_POST['lb_hero'] ) ) {
-			$hero = sanitize_key( wp_unslash( $_POST['lb_hero'] ) );
-			$hero = in_array( $hero, [ 'content', 'none' ], true ) ? $hero : '';
-			if ( (string) get_post_meta( $post_id, Chrome::HERO_META, true ) !== $hero ) {
-				'' === $hero ? delete_post_meta( $post_id, Chrome::HERO_META ) : update_post_meta( $post_id, Chrome::HERO_META, $hero );
-			}
 		}
 		if ( ! isset( $_POST['lb_role'] ) ) {
 			return; // Disabled select (front or posts page): nothing posted, nothing to change.
@@ -537,46 +392,29 @@ final class Roles {
 	}
 
 	/**
-	 * Block editor: a "Page role" panel in the document sidebar, bound to the registered _lb_role meta (saved with the
-	 * post over REST, so no legacy meta box). The page's current and automatic roles are passed in for the help text.
-	 * Pages, posts and entries also get the hero choice (_lb_hero: the shared hero, its own hero, none): the way one page
-	 * differs from the page type it belongs to (a page with its own hero makes the shared hero and breadcrumbs step aside).
+	 * Block editor: a "Page role" panel in the document sidebar of pages, bound to the registered _lb_role meta (saved with
+	 * the post over REST, so no legacy meta box). The page's current and automatic roles are passed in for the help text.
 	 */
 	public static function editor_panel(): void {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		$post = get_post();
-		if ( ! $screen || ! $post || $screen->post_type !== $post->post_type || ! in_array( $post->post_type, [ 'page', 'post', Entries::SERVICE, Entries::AREA ], true ) ) {
+		if ( ! $screen || ! $post || $screen->post_type !== $post->post_type || 'page' !== $post->post_type ) {
 			return;
 		}
-		// Every type gets the hero choice (the shared hero, its own, none): it is how one page differs from its page type.
-		$data = [
-			'type' => $post->post_type,
-			'hero' => [
-				'meta'    => Chrome::HERO_META,
-				'label'   => __( 'Hero on this page', 'launch-builder' ),
-				'options' => [
-					[ 'label' => __( 'The shared hero', 'launch-builder' ), 'value' => '' ],
-					[ 'label' => __( 'Its own hero', 'launch-builder' ), 'value' => 'content' ],
-					[ 'label' => __( 'No hero', 'launch-builder' ), 'value' => 'none' ],
-				],
-				'help'    => __( 'The shared hero is set once for every page of this type in Launch Builder > Design hub. Choose "Its own hero" to put a different hero design in this page\'s content: the shared hero and the breadcrumbs then step aside here.', 'launch-builder' ),
-			],
-		];
-		if ( 'page' === $post->post_type ) {
-			[ $role, $source ] = self::explain_page( $post->ID );
-			[ $auto, $auto_source ] = self::explain_page( $post->ID, false );
-			$labels = [];
-			foreach ( self::PAGE_ROLES as $r ) {
-				$labels[ $r ] = self::ROLES[ $r ];
-			}
-			$data += [
-				'meta'    => self::META,
-				'locked'  => in_array( $source, [ 'front_page', 'posts_page' ], true ),
-				'current' => [ 'label' => self::label( $role ), 'why' => self::WHY[ $source ] ?? $source ],
-				'auto'    => [ 'label' => self::label( $auto ), 'why' => self::WHY[ $auto_source ] ?? $auto_source ],
-				'roles'   => $labels,
-			];
+		[ $role, $source ] = self::explain_page( $post->ID );
+		[ $auto, $auto_source ] = self::explain_page( $post->ID, false );
+		$labels = [];
+		foreach ( self::PAGE_ROLES as $r ) {
+			$labels[ $r ] = self::ROLES[ $r ];
 		}
+		$data = [
+			'type'    => 'page',
+			'meta'    => self::META,
+			'locked'  => in_array( $source, [ 'front_page', 'posts_page' ], true ),
+			'current' => [ 'label' => self::label( $role ), 'why' => self::WHY[ $source ] ?? $source ],
+			'auto'    => [ 'label' => self::label( $auto ), 'why' => self::WHY[ $auto_source ] ?? $auto_source ],
+			'roles'   => $labels,
+		];
 		wp_enqueue_script( 'lb-page-role', LB_URL . 'assets/js/page-role.js', [ 'wp-plugins', 'wp-element', 'wp-components', 'wp-data', 'wp-editor', 'wp-edit-post' ], (string) @filemtime( LB_DIR . 'assets/js/page-role.js' ), true ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		wp_add_inline_script( 'lb-page-role', 'window.lbPageRole = ' . wp_json_encode( $data ) . ';', 'before' );
 	}
@@ -612,15 +450,14 @@ final class Roles {
 	/* ------------------------------------------------------------------ tools */
 
 	public static function define_tools(): void {
-		Abilities::add( 'set-page-role', 'Set a page\'s role', 'Say what kind of page a page is, so it gets the right hero, breadcrumbs and header/footer variant. role: page (standard), legal (privacy, terms), conversion (contact, quote, booking, landing: no breadcrumbs), thanks (thank-you pages), services_hub / areas_hub (the page listing all services / all areas; stored in the hubs setting), category (the landing page of a service category: give term = the category slug, name or id; stored on the category), auto (forget an explicit role or hub, back to automatic). The front page is always home and the posts page always blog. Give post_id or path.',
+		Abilities::add( 'set-page-role', 'Set a page\'s role', 'Say what kind of page a page is, so it gets the right designs and layout. role: page (standard), legal (privacy, terms), conversion (contact, quote, booking: full width, no sidebar), thanks (thank-you pages: not indexed), services_hub / areas_hub (the page listing all services / all service areas; stored in the hubs setting), auto (forget an explicit role or hub, back to automatic). The front page is always home and the posts page always blog. Give post_id or path.',
 			[ 'properties' => [
 				'post_id' => [ 'type' => 'integer', 'description' => 'The page id (or give path).' ],
 				'path'    => [ 'type' => 'string', 'description' => 'The page path instead of post_id, e.g. "contact" or "services/drains".' ],
 				'role'    => [ 'type' => 'string', 'enum' => self::ASSIGNABLE ],
-				'term'    => [ 'type' => [ 'string', 'integer' ], 'description' => 'For role category: the service category (slug, name or term id).' ],
 			], 'required' => [ 'role' ] ], [ __CLASS__, 'set_role_tool' ], 'edit_pages' );
 
-		Abilities::add( 'get-roles', 'List page roles', 'The role of every page (paginated), with where it comes from (front_page, posts_page, meta, woo, hub, category, default), the hub pages and the category pages map.',
+		Abilities::add( 'get-roles', 'List page roles', 'The role of every page (paginated), with where it comes from (front_page, posts_page, meta, woo, hub, default), and the hub pages.',
 			[ 'properties' => [
 				'offset' => [ 'type' => 'integer', 'description' => 'Skip this many pages (default 0).' ],
 				'limit'  => [ 'type' => 'integer', 'description' => 'Pages per call, 1-200 (default 100).' ],
@@ -676,31 +513,6 @@ final class Roles {
 		if ( in_array( $role, [ 'services_hub', 'areas_hub' ], true ) ) {
 			$unhub[ 'services_hub' === $role ? 'services' : 'areas' ] = $id;
 		}
-		$term_id = 0;
-		if ( 'category' === $role ) {
-			$t = $input['term'] ?? '';
-			$term = is_numeric( $t ) ? get_term( (int) $t, Entries::CAT ) : null;
-			if ( ! $term || is_wp_error( $term ) ) {
-				$term = get_term_by( 'slug', sanitize_title( (string) $t ), Entries::CAT ) ?: get_term_by( 'name', sanitize_text_field( (string) $t ), Entries::CAT );
-			}
-			if ( ! $term || is_wp_error( $term ) ) {
-				return new \WP_Error( 'lb_no_term', 'role category needs term: an existing service category (slug, name or id).', [ 'status' => 400 ] );
-			}
-			if ( ! current_user_can( 'edit_term', $term->term_id ) ) {
-				return new \WP_Error( 'lb_forbidden', 'You cannot edit that service category.', [ 'status' => 403 ] );
-			}
-			$term_id = (int) $term->term_id;
-			$previous['term_page'] = (int) get_term_meta( $term_id, '_lb_page', true );
-			// Other categories that claim this page lose the claim (one page = one category); recorded so it can be undone.
-			$claims = get_terms( [ 'taxonomy' => Entries::CAT, 'hide_empty' => false, 'fields' => 'ids', 'meta_key' => '_lb_page', 'meta_value' => $id ] );
-			$claims = array_values( array_diff( array_map( 'intval', is_wp_error( $claims ) ? [] : (array) $claims ), [ $term_id ] ) );
-			foreach ( $claims as $other ) {
-				if ( ! current_user_can( 'edit_term', $other ) ) {
-					return new \WP_Error( 'lb_forbidden', 'Another service category (term ' . $other . ') points at this page and you cannot edit it.', [ 'status' => 403 ] );
-				}
-			}
-			$previous['term_claims'] = $claims;
-		}
 		$ok = $write_hubs( $unhub );
 		if ( is_wp_error( $ok ) ) {
 			return $ok;
@@ -711,25 +523,9 @@ final class Roles {
 				update_post_meta( $id, self::META, $role );
 				$changed = true;
 			}
-			if ( isset( self::catmap()[ $id ] ) ) {
-				$warnings[] = 'A service category points at this page (its _lb_page); the explicit role wins here, but the category still links to this page.';
-			}
 		} elseif ( '' !== $meta_now ) {
-			delete_post_meta( $id, self::META ); // Hub, category and auto follow the derived rules, which an explicit role would override.
+			delete_post_meta( $id, self::META ); // Hub and auto follow the derived rules, which an explicit role would override.
 			$changed = true;
-		}
-		if ( $term_id ) {
-			if ( (int) get_term_meta( $term_id, '_lb_page', true ) !== $id ) {
-				update_term_meta( $term_id, '_lb_page', $id );
-				$changed = true;
-			}
-			foreach ( $previous['term_claims'] as $other ) {
-				delete_term_meta( $other, '_lb_page', $id );
-				$changed = true;
-			}
-			if ( $previous['term_claims'] ) {
-				$warnings[] = 'Removed this page from service categor' . ( 1 === count( $previous['term_claims'] ) ? 'y' : 'ies' ) . ' ' . implode( ', ', $previous['term_claims'] ) . ' (they pointed at it too); previous.term_claims lists them.';
-			}
 		}
 		if ( $changed ) {
 			Cache::purge_later();
@@ -738,7 +534,7 @@ final class Roles {
 		if ( 'auto' !== $role && $resolved !== $role ) {
 			$warnings[] = 'The page now resolves to ' . $resolved . ' (a filter or another rule decides it).';
 		}
-		return [ 'post_id' => $id, 'title' => get_the_title( $id ), 'role' => $role, 'resolved' => $resolved, 'term_id' => (int) ( self::catmap()[ $id ] ?? 0 ), 'changed' => $changed, 'previous' => $previous, 'snapshot' => $snap, 'warnings' => $warnings ];
+		return [ 'post_id' => $id, 'title' => get_the_title( $id ), 'role' => $role, 'resolved' => $resolved, 'changed' => $changed, 'previous' => $previous, 'snapshot' => $snap, 'warnings' => $warnings ];
 	}
 
 	public static function get_roles_tool( $input = [] ): array {
@@ -754,12 +550,6 @@ final class Roles {
 		}
 		$hub = static function ( int $id ) { return $id ? [ 'id' => $id, 'title' => get_the_title( $id ), 'status' => get_post_status( $id ) ] : null; };
 		$h = self::hubs();
-		$conf = self::catmap_conflicts();
-		$cats = [];
-		foreach ( self::catmap() as $pid => $tid ) {
-			$t = get_term( $tid, Entries::CAT );
-			$cats[] = [ 'page_id' => $pid, 'page' => get_the_title( $pid ), 'term_id' => $tid, 'term' => $t && ! is_wp_error( $t ) ? $t->name : '', 'slug' => $t && ! is_wp_error( $t ) ? $t->slug : '', 'also_claimed_by' => array_values( array_diff( $conf[ $pid ] ?? [], [ $tid ] ) ) ];
-		}
 		$total = (int) $q->found_posts;
 		return [
 			'total'       => $total,
@@ -768,7 +558,6 @@ final class Roles {
 			'next_offset' => $offset + $limit < $total ? $offset + $limit : null,
 			'pages'       => $pages,
 			'hubs'        => [ 'services' => $hub( $h['services'] ), 'areas' => $hub( $h['areas'] ) ],
-			'categories'  => $cats,
 			'roles'       => self::ROLES,
 		];
 	}
@@ -783,12 +572,12 @@ final class Roles {
 			$counts[ $r ] = ( $counts[ $r ] ?? 0 ) + 1;
 		}
 		ksort( $counts );
-		$state['roles'] = [ 'hubs' => self::hubs(), 'category_pages' => count( self::catmap() ), 'pages_by_role' => $counts ];
+		$state['roles'] = [ 'hubs' => self::hubs(), 'pages_by_role' => $counts ];
 	}
 
 	/** Module hook: how roles work, in get-playbook. */
 	public static function playbook( array &$pb ): void {
-		$pb['page_roles'] = 'Every page has a ROLE that decides its hero, breadcrumbs and header/footer variant: home (front page), page, legal, services_hub, areas_hub, category (a service category landing page), service and area (entries), conversion (contact, quote, booking, landing: no breadcrumbs), thanks, post, blog, search, notfound, other. Most are automatic; set the rest with set-page-role (conversion and thanks pages, the two hubs, category pages) and check them with get-roles.';
+		$pb['page_roles'] = 'Every page has a ROLE that decides which designs and layout it gets: home (front page), page, legal, services_hub, areas_hub, service and area (entries), conversion (contact, quote, booking: full width), thanks (not indexed), post, blog, search, notfound, other. Most are automatic; set the rest with set-page-role (contact and thank-you pages, the two hubs) and check them with get-roles.';
 		$pb['tools_by_job']['Page roles'] = 'get-roles, set-page-role';
 	}
 }
