@@ -22,6 +22,16 @@ place and all 8 sample page types load with one H1, the right hero, breadcrumbs 
 (`tools/dev/check_designs.py`). Also fixed: `Design_Hub::render_crumbs()` used `method_exists( kadence(), ... )`, which is always false
 because `kadence()` reaches components through `__call`; it now uses `is_callable`.
 
+## Still open: the breadcrumb bar prints nothing without Rank Math
+
+The breadcrumb Element is placed on every page but home (verified), but without Rank Math the bar renders empty on the test site.
+`Design_Hub::render_crumbs()` (the callback of the `rank-math/breadcrumb` block this plugin registers when Rank Math is absent) should
+print Kadence's trail through `kadence()->get_breadcrumb()`; the `method_exists` check was changed to `is_callable` but the output is
+still empty. A CLI test script (`kadence()` in `wp eval`-style context) stopped silently at `is_callable`, so check inside a real front-end
+request: log what `render_crumbs()` returns, whether `function_exists( 'kadence' )` is true when the Element's blocks render
+(`kadence_hero_header` priority 20), and call `Kadence\kadence()->print_breadcrumb()` as the alternative. With Rank Math active the
+real `rank-math/breadcrumb` block is used instead (untested here). `tools/dev/check_designs.py` flags this as "crumbs missing".
+
 ## Findings from the home-services helper (not yet acted on)
 
 - Spec/pattern fixes already applied in its 12 files: Kadence button `inheritStyles` valid values are `inherit`, `inherit-secondary`, `outline`
