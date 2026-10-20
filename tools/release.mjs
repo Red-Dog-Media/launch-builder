@@ -36,7 +36,7 @@ const REPO_URL = 'https://github.com/Red-Dog-Media/launch-builder';
 const FILES = { main: 'launch-builder.php', readme: 'readme.txt', changelog: 'CHANGELOG.md' };
 const PREFIX = 'launch-builder/';
 const ASSET = 'launch-builder.zip';
-const REQUIRED = ['launch-builder.php', 'uninstall.php', 'readme.txt', 'CHANGELOG.md', 'LICENSE', 'includes/class-plugin.php', 'includes/class-updater.php'];
+const REQUIRED = ['launch-builder.php', 'uninstall.php', 'readme.txt', 'CHANGELOG.md', 'LICENSE', 'includes/classmap.php', 'includes/core/class-plugin.php', 'includes/core/class-updater.php'];
 const FORBIDDEN = [/^tools\//, /^docs\//, /^\.github\//, /^\.playground\//, /^screenshots\//, /^tests\//, /^README\.md$/i, /^\.git(attributes|ignore)$/, /\.cmd$/i, /\.mjs$/i];
 // AI vendor names that must not appear in public files (base64, so this file does not contain them itself).
 export const VENDOR_RE = new RegExp(`\\b(${['Y2xhdWRl', 'YW50aHJvcGlj'].map((b) => Buffer.from(b, 'base64').toString('utf8')).join('|')})\\b`, 'i');

@@ -1,7 +1,7 @@
 # Publish a release when a version tag is pushed (tools/release.mjs creates the tag locally; a person pushes it).
 # Checks tag == plugin header Version == LB_VERSION, lints on PHP 7.4 and 8.3, builds launch-builder.zip with
 # `git archive` (top folder launch-builder/, .gitattributes export-ignore honoured), and creates or updates the GitHub
-# release with the CHANGELOG section as notes and the zip attached. The WordPress updater (includes/class-updater.php)
+# release with the CHANGELOG section as notes and the zip attached. The WordPress updater (includes/core/class-updater.php)
 # installs that zip.
 name: Release
 

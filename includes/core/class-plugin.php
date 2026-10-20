@@ -62,7 +62,7 @@ final class Plugin {
 		Dashboard::class,   // the dashboard, the Modules page, the admin stylesheet and the WordPress Dashboard widget
 		Design_Hub::class,  // Design hub: placed designs per page type (live) and the pattern library
 		Login_Links::class, // expiring sign-in links (module, off by default)
-		Login_Links_Guard::class, // its always-on part (old-plugin notice, switch, CLI); same file, so it must follow Login_Links
+		Login_Links_Guard::class, // its always-on part (old-plugin notice, switch, CLI); boots after Login_Links
 		Branding::class,    // white-label branding: sign-in screen, Site Owner role, admin look (module, off by default)
 		Roles::class,       // page roles
 		Breadcrumbs::class, // breadcrumb trail
