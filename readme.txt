@@ -23,6 +23,7 @@ Launch Builder turns a client brief into a finished local business website on th
 * **Rating widget.** Score, stars and review logos in badge, card, pill and stacked layouts.
 * **A dashboard and a Design hub.** A launch runway, module switches that save as you click, and every page type's header, hero, breadcrumbs, footer and call bar shown live.
 * **Optional modules.** URLs and redirects, safe duplication, media hygiene, local avatars, login links, Kadence Conversions popups and client branding: each switches on and off on its own.
+* **Meta Box ready.** Services, service areas and their categories can be listed and edited under Meta Box's Post Types, Taxonomies and Custom Fields, while every list and URL keeps working.
 * **One brief in, a whole site out.** Validate a brief, preview the changes, build in steps and export the site back as a brief.
 * **Safe automation.** Least-privilege tools, snapshots before every change and an activity log for everything an MCP client does.
 

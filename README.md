@@ -27,6 +27,9 @@ one place and lets every page follow.
 - **A dashboard that shows where a site stands.** A launch runway (business facts, AI assistant, design, content, site
   check, live), the optional modules as switches that save as you click, recent activity and the design in use, with a
   Design hub that shows the header, hero, breadcrumbs, footer and call bar of every page type, live.
+- **Edit services and areas in Meta Box.** On a site with Meta Box, Services, Service areas and Service categories can be
+  listed under Meta Box's Post Types and Taxonomies and the card fields under Custom Fields, in one click from those
+  screens. Labels, menus, icons and URL bases are then edited in Meta Box while every list and URL keeps working.
 - **Optional modules, off until you want them.** URLs and redirects, safe duplication, media hygiene, local avatars, login
   links for client accounts, Kadence Conversions popups and a client-friendly Branding module each switch on and off on
   their own, and a module that is off loads nothing.
@@ -41,6 +44,11 @@ one place and lets every page follow.
 Launch Builder is made for the Kadence theme and Kadence Blocks, and uses Kadence Pro features such as Elements when
 they are available. It sits comfortably alongside the rest of a typical professional WordPress stack, including Rank
 Math SEO, Meta Box, Perfmatters and Kadence Conversions.
+
+## Code
+
+The plugin's code lives in `includes/`, in a folder per part of the plugin. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+explains how the parts fit together, what must not change and how to check a refactor.
 
 ## Updates
 

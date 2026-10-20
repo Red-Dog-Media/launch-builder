@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Meta Box sync: Services, Service areas and Service categories can be listed under Meta Box > Post Types and Taxonomies, and the Card details fields (the icon, and the services offered in each area) under Meta Box > Custom Fields, so they are edited there like the site's other types. A notice on those Meta Box screens adds them in one click; the sync-meta-box tool and `wp launch-builder meta-box-sync` do the same, with a dry run first. Your services, areas, categories and their values stay as they are. Launch Builder keeps only the few settings its lists and URLs need, never overwrites a type or field group changed or made in Meta Box unless asked, and an undo moves its copies to the Trash. Needs MB Custom Post Types and MB Builder (both in Meta Box Lite and Meta Box AIO).
+- The site audit warns when one of these types was renamed in Meta Box (its lists would then use a new, empty type).
+- docs/ARCHITECTURE.md: how the plugin fits together, what must not change and how to check a refactor (tools/surface-snapshot.php and tools/surface-diff.php).
+
+### Changed
+- Services, service areas and service categories that something else registers first (Meta Box, for example) keep that registration instead of being overwritten by Launch Builder, apart from the settings Launch Builder relies on. Saving one of them in Meta Box refreshes the site's URLs on the next page load.
+- The code is organised in folders by part of the plugin (core, AI tools, Business Info, content, design, briefs, launch, URLs, integrations, admin, client experience), one class per file. Nothing changes on a site: hooks, tools, settings and stored data are the same.
+
 ## [0.12.0] - 2026-10-19
 
 Preview release. This round tightens Business Info, finishes Branding and makes a site built from a brief come out right the first time.
