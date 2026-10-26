@@ -1,5 +1,12 @@
 # Launch Builder
 
+> [!IMPORTANT]
+> **Launch Builder is retired and this repository is archived.** It is kept read-only for reference and receives no
+> further updates. Its successor is **[LaunchLocal White Label](https://github.com/Red-Dog-Media/launchlocal-white-label)**:
+> branded admin and sign-in, a locked-down Client account, and add-ons for permalinks, profile pictures and duplication.
+> Sites running Launch Builder keep working; switch by installing LaunchLocal White Label and deactivating Launch Builder.
+> Client accounts and the Login links settings carry over.
+
 **Launch Builder turns a business brief into a finished, conversion-ready website on WordPress and Kadence.**
 
 It is the site-building toolkit LaunchLocal uses for local service businesses: plumbers, HVAC, roofing, auto shops,
